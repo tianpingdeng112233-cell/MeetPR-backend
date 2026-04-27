@@ -1,0 +1,67 @@
+{
+  "name": "meetpr-backend",
+  "version": "0.0.1",
+  "private": true,
+  "description": "MeetPR backend service — Node.js + TypeScript + Express + Postgres (Kysely)",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "kysely": "^0.27.5",
+    "pg": "^8.13.1",
+    "pino": "^9.5.0",
+    "pino-http": "^10.3.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "@types/supertest": "^6.0.2",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^9.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.4.3",
+    "prettier": "^3.4.2",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.21.0",
+    "vitest": "^2.1.8"
+  },
+  "lint-staged": {
+    "*.{ts,js,mjs,cjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,yml,yaml,md}": [
+      "prettier --write"
+    ]
+  }
+}
