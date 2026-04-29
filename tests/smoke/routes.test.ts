@@ -112,30 +112,9 @@ describe('endpoint stubs — /coach/* (protected)', () => {
       .set('Authorization', `Bearer ${signValidToken()}`);
     expect(withTok.status).toBe(501);
   });
-
-  it('POST /coach/plans: 401 without token, 501 with token', async () => {
-    const app = createApp(makeDeps());
-    const noTok = await request(app).post('/coach/plans').send({});
-    expect(noTok.status).toBe(401);
-    const withTok = await request(app)
-      .post('/coach/plans')
-      .set('Authorization', `Bearer ${signValidToken()}`)
-      .send({});
-    expect(withTok.status).toBe(501);
-  });
 });
 
 describe('endpoint stubs — /student/* (protected)', () => {
-  it('GET /student/plan: 401 without token, 501 with token', async () => {
-    const app = createApp(makeDeps());
-    const noTok = await request(app).get('/student/plan');
-    expect(noTok.status).toBe(401);
-    const withTok = await request(app)
-      .get('/student/plan')
-      .set('Authorization', `Bearer ${signValidToken('coached_student')}`);
-    expect(withTok.status).toBe(501);
-  });
-
   it('POST /student/sets: 401 without token, 501 with token', async () => {
     const app = createApp(makeDeps());
     const noTok = await request(app).post('/student/sets').send({});

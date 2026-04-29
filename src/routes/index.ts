@@ -6,7 +6,9 @@ import type { Database } from '../db/types';
 import type { Logger } from '../logger';
 import { authRouter } from './auth';
 import { coachRouter } from './coach';
+import { exercisesRouter } from './exercises';
 import { meRouter } from './me';
+import { plansRouter, studentPlansRouter } from './plans';
 import { studentRouter } from './student';
 
 interface RouteDeps {
@@ -22,6 +24,9 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   });
 
   app.use('/auth', authRouter({ config: deps.config, db: deps.db, logger: deps.logger }));
+  app.use('/plans', deps.requireAuth, plansRouter({ db: deps.db, logger: deps.logger }));
+  app.use('/students', deps.requireAuth, studentPlansRouter({ db: deps.db, logger: deps.logger }));
+  app.use('/exercises', deps.requireAuth, exercisesRouter({ db: deps.db }));
   app.use('/me', deps.requireAuth, meRouter());
   app.use('/coach', deps.requireAuth, coachRouter());
   app.use('/student', deps.requireAuth, studentRouter());

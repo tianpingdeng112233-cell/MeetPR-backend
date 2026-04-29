@@ -14,4 +14,4 @@ pnpm-debug.log*
 .vscode/
 .idea/
 
-.claude/cache/
+.claude/

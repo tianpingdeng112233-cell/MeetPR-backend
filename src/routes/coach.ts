@@ -13,9 +13,5 @@ export function coachRouter(): Router {
     notImplemented(res, 'GET /coach/students');
   });
 
-  router.post('/plans', (_req, res) => {
-    notImplemented(res, 'POST /coach/plans');
-  });
-
   return router;
 }
