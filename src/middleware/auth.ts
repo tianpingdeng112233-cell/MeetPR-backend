@@ -10,6 +10,8 @@ const AccessTokenPayloadSchema = z.object({
   role: z.enum(USER_ROLES),
 });
 
+export type AccessTokenPayload = z.infer<typeof AccessTokenPayloadSchema>;
+
 export function createRequireAuth(config: Pick<Config, 'JWT_ACCESS_SECRET'>): RequestHandler {
   return (req, res, next) => {
     const header = req.headers.authorization;
@@ -39,6 +41,22 @@ export function createRequireAuth(config: Pick<Config, 'JWT_ACCESS_SECRET'>): Re
     }
 
     req.user = { id: parsed.data.sub, role: parsed.data.role };
+    next();
+  };
+}
+
+export function requireRole(...allowed: AccessTokenPayload['role'][]): RequestHandler {
+  return (req, res, next) => {
+    if (!req.user) {
+      res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+      return;
+    }
+
+    if (!allowed.includes(req.user.role)) {
+      res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+      return;
+    }
+
     next();
   };
 }
