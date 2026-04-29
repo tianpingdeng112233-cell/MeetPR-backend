@@ -581,10 +581,21 @@ A 4-query in-transaction implementation is also acceptable. The on-the-wire shap
 Visible-set predicate:
 
 ```sql
-WHERE (created_by_coach_id IS NULL OR created_by_coach_id = $userId)
-```
+-- Coach:
+WHERE created_by_coach_id IS NULL
+   OR created_by_coach_id = $userId
 
-For students (role ∈ {coached_student, self_train_student}) tighten to `created_by_coach_id IS NULL`.
+-- Student:
+WHERE created_by_coach_id IS NULL
+   OR id IN (
+     SELECT pe.exercise_id
+       FROM plan_exercises pe
+       JOIN plan_days pd ON pe.plan_day_id = pd.id
+       JOIN plans p      ON pd.plan_id     = p.id
+      WHERE p.trainee_id = $userId
+        AND p.status     = 'published'
+   )
+```
 
 Each query string facet adds an `AND ... && ARRAY[...]::TEXT[]` clause for arrays, or `AND ... = ANY(ARRAY[...])` for scalars:
 
@@ -777,3 +788,7 @@ Replace [FOLLOWUPS.md](../../FOLLOWUPS.md) entry "First migration: define users,
 - [ ] Real-time plan-published push: replace `notifyPlanPublished` stub with Aliyun-MNS / APNs bridge once the V1.5 WebSocket spec lands.
 - [ ] `GET /exercises/:id` if iOS ever needs single-exercise lookup outside the bulk catalog (currently not needed).
 - [ ] Coach-deletion flow. `plans.coach_id` is `RESTRICT` and `exercises.created_by_coach_id` is `SET NULL` — pick a policy when account-deletion lands.
+
+## Changelog
+
+- 2026-04-29 review fixes: replaced empty-array checks with `cardinality(...) >= 1`; documented and enforced `end_date >= start_date`; broadened student exercise visibility to coach customs referenced by their own published plans; corrected seed-count and publish-authz wording; added DB name length checks; tightened `target_value` precision to max two decimal places.

@@ -613,6 +613,7 @@ describe('coach planning CRUD', () => {
   it.each([
     ['rpe out of range', { intensity_mode: 'rpe', target_value: '11.0' }, ['target_value']],
     ['rep range inverted', { target_reps: 8, target_reps_max: 5 }, ['target_reps_max']],
+    ['target value over precision', { target_value: '180.555' }, ['target_value']],
   ])('rejects invalid set creation: %s', async (_caseName, override, path) => {
     const ctx = await makeContext();
     const { exercise } = await createCompleteDraft(ctx);
