@@ -8,7 +8,14 @@ export function createLogger(config: Pick<Config, 'LOG_LEVEL' | 'NODE_ENV'>): Lo
     base: { service: 'meetpr-backend', env: config.NODE_ENV },
     timestamp: pino.stdTimeFunctions.isoTime,
     redact: {
-      paths: ['req.headers.authorization', 'req.headers.cookie', '*.password', '*.token'],
+      paths: [
+        'req.headers.authorization',
+        'req.headers.cookie',
+        '*.password',
+        '*.token',
+        '*.accessToken',
+        '*.refreshToken',
+      ],
       censor: '[REDACTED]',
     },
   });

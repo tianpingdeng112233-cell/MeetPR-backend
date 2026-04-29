@@ -1,6 +1,6 @@
 # 001-auth
 
-**Status:** Ready
+**Status:** InProgress
 **Date:** 2026-04-27
 
 ## Goal
