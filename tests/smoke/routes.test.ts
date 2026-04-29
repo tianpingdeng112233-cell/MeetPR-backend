@@ -39,24 +39,26 @@ function signValidToken(role: Role = 'coach'): string {
   });
 }
 
-describe('endpoint stubs — auth (public)', () => {
-  it('POST /auth/register → 501', async () => {
+describe('auth endpoints — public validation', () => {
+  it('POST /auth/register validates before DB access', async () => {
     const app = createApp(makeDeps());
     const res = await request(app).post('/auth/register').send({});
-    expect(res.status).toBe(501);
-    expect(res.body).toEqual({ error: 'not_implemented', endpoint: 'POST /auth/register' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
   });
 
-  it('POST /auth/login → 501', async () => {
+  it('POST /auth/login validates before DB access', async () => {
     const app = createApp(makeDeps());
     const res = await request(app).post('/auth/login').send({});
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
   });
 
-  it('POST /auth/refresh → 501', async () => {
+  it('POST /auth/refresh validates before DB access', async () => {
     const app = createApp(makeDeps());
     const res = await request(app).post('/auth/refresh').send({});
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
   });
 });
 
@@ -65,7 +67,7 @@ describe('endpoint stubs — /me (protected)', () => {
     const app = createApp(makeDeps());
     const res = await request(app).get('/me');
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: 'unauthorized' });
+    expect(res.body).toEqual({ error: 'AUTH_INVALID_TOKEN' });
   });
 
   it('with valid token → 501', async () => {
@@ -78,6 +80,7 @@ describe('endpoint stubs — /me (protected)', () => {
     const app = createApp(makeDeps());
     const res = await request(app).get('/me').set('Authorization', 'NotBearer abc');
     expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'AUTH_INVALID_TOKEN' });
   });
 
   it('with bogus JWT signature → 401', async () => {
@@ -85,6 +88,7 @@ describe('endpoint stubs — /me (protected)', () => {
     const fake = jwt.sign({ sub: 'u1', role: 'coach' }, 'wrong-secret-too-short-but-different');
     const res = await request(app).get('/me').set('Authorization', `Bearer ${fake}`);
     expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'AUTH_INVALID_TOKEN' });
   });
 });
 

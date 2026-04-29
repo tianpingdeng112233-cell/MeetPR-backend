@@ -1,20 +1,24 @@
-/**
- * Kysely Database type — placeholder until ADR 005 / data-model.md DDL lands.
- *
- * ADR 004 §2 mandates: native pg + hand-managed SQL migrations. Kysely is a
- * SQL builder (not an ORM) — it doesn't manage migrations or hide SQL semantics;
- * it just provides type safety over hand-written queries.
- *
- * Augmentation strategy: as `db/migrations/<NNN>-<name>.sql` files land, declare
- * each table interface and merge into Database here. Hand-roll types until table
- * count reaches ~15; revisit kysely-codegen only when manual maintenance hurts.
- */
-// Empty interface is intentional — it will be augmented per migration via
-// declaration merging once tables exist (e.g. `interface Database { users: UsersTable }`).
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+import type { ColumnType, Generated } from 'kysely';
+
+export const USER_ROLES = ['coach', 'coached_student', 'self_train_student'] as const;
+
+export type UserRole = (typeof USER_ROLES)[number];
+
+type NullableColumn<T> = ColumnType<T | null, T | null | undefined, T | null>;
+
+export interface UsersTable {
+  id: Generated<string>;
+  phone: string;
+  apple_user_id: NullableColumn<string>;
+  password_hash: string;
+  role: UserRole;
+  refresh_token_jti: NullableColumn<string>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 export interface Database {
-  // Tables to be added as migrations land:
-  // users: UsersTable;
+  users: UsersTable;
   // coach_profiles: CoachProfilesTable;
   // student_profiles: StudentProfilesTable;
   // training_plans: TrainingPlansTable;

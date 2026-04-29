@@ -39,6 +39,9 @@ export function createApp(deps: AppDeps): Express {
   app.use(createGlobalRateLimit(config));
 
   mountRoutes(app, {
+    config,
+    db: deps.db,
+    logger,
     requireAuth: createRequireAuth(config),
   });
 
