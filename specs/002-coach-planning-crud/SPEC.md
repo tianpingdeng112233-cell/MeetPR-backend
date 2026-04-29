@@ -1,6 +1,6 @@
 # 002-coach-planning-crud
 
-**Status:** Draft
+**Status:** InProgress
 **Date:** 2026-04-28
 
 ## Goal
