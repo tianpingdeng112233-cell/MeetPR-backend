@@ -52,7 +52,7 @@ CREATE TABLE video_attachments (
   thumbnail_oss_key    TEXT NOT NULL,
   recorded_at          TIMESTAMPTZ NOT NULL,
   uploaded_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  coach_visible_at     TIMESTAMPTZ,    -- filled when student gives consent (NULL = not yet shareable)
+  coach_visible_at     TIMESTAMPTZ NOT NULL,  -- D3=a strict ordering:complete handler 前置 consent check 保证此值始终 = uploaded_at,无 NULL 中间态(per PR #8 review blocker 3)
   CONSTRAINT video_attachments_unique_set UNIQUE (student_id, plan_exercise_id, set_index)
     -- enforce: one video per (student, set) slot. Re-record overwrites via abort + new initiate.
 );
@@ -75,7 +75,7 @@ CREATE TABLE privacy_consents (
 CREATE INDEX privacy_consents_user_idx ON privacy_consents (user_id, agreed_at DESC);
 ```
 
-> `coach_visible_at` defaults NULL: a video uploaded but consent not yet given is NOT served to coach. `POST /privacy/consent` of kind `video_visibility_v1` flips a flag elsewhere; for V0.1 simple, **uploading itself implies consent** because iOS spec 027 shows the modal `[同意上传] / [不上传]` before any upload starts. So in practice `coach_visible_at = uploaded_at` at insert time IF `privacy_consents.video_visibility_v1` exists for the student. Implementer logic: `coach_visible_at = (consent exists ? uploaded_at : NULL)` set during `POST /upload/complete`.
+> `coach_visible_at` 改为 **NOT NULL**(per PR #8 review blocker 3 — D3=a strict consent ordering)。complete handler 前置已 enforce 409 CONSENT_MISSING if `privacy_consents.video_visibility_v1` 不存在,所以 INSERT 进 video_attachments 时 consent 必 exists,`coach_visible_at = uploaded_at` 一次性 set。无 NULL 中间态,无 retro update path。Audit 角度:任何 video_attachments row 一旦 INSERT,即 visible 时序确定。
 
 > `duration_seconds <= 121.0`: 120s max + 1.0 fp slack (iOS `AVAssetExportSession` may yield 120.04s after re-encode). Hard reject > 121.
 
