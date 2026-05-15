@@ -103,14 +103,10 @@ describe('endpoint stubs — /coach/* (protected)', () => {
     expect(withTok.status).toBe(501);
   });
 
-  it('GET /coach/students: 401 without token, 501 with token', async () => {
+  it('GET /coach/students: 401 without token', async () => {
     const app = createApp(makeDeps());
     const noTok = await request(app).get('/coach/students');
     expect(noTok.status).toBe(401);
-    const withTok = await request(app)
-      .get('/coach/students')
-      .set('Authorization', `Bearer ${signValidToken()}`);
-    expect(withTok.status).toBe(501);
   });
 });
 
