@@ -25,6 +25,11 @@ const config: Config = {
   RATE_LIMIT_MAX: 10_000,
   CORS_ORIGIN: '*',
   TRUST_PROXY: 0,
+  OSS_ACCESS_KEY_ID: 'test-access-key-id',
+  OSS_ACCESS_KEY_SECRET: 'test-access-key-secret',
+  OSS_BUCKET: 'meetpr-videos-prod',
+  OSS_REGION: 'oss-cn-hangzhou',
+  OSS_ENDPOINT: 'https://oss-cn-hangzhou.aliyuncs.com',
 };
 
 const coachId = '10000000-0000-4000-8000-000000000001';

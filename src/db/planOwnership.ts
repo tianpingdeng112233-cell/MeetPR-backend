@@ -35,6 +35,24 @@ export async function planIdForExercise(
   return row?.plan_id ?? null;
 }
 
+export async function publishedPlanExerciseForStudent(
+  db: Kysely<Database>,
+  planExerciseId: string,
+  studentId: string,
+): Promise<boolean> {
+  const row = await db
+    .selectFrom('plan_exercises')
+    .innerJoin('plan_days', 'plan_days.id', 'plan_exercises.plan_day_id')
+    .innerJoin('plans', 'plans.id', 'plan_days.plan_id')
+    .select('plan_exercises.id')
+    .where('plan_exercises.id', '=', planExerciseId)
+    .where('plans.trainee_id', '=', studentId)
+    .where('plans.status', '=', 'published')
+    .executeTakeFirst();
+
+  return row !== undefined;
+}
+
 export async function planIdForSet(
   db: Kysely<Database>,
   setId: string,

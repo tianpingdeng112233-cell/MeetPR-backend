@@ -13,6 +13,11 @@ export const ConfigSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   CORS_ORIGIN: z.string().default('*'),
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+  OSS_ACCESS_KEY_ID: z.string().min(1).optional(),
+  OSS_ACCESS_KEY_SECRET: z.string().min(1).optional(),
+  OSS_BUCKET: z.string().min(1).default('meetpr-videos-prod'),
+  OSS_REGION: z.string().min(1).default('oss-cn-hangzhou'),
+  OSS_ENDPOINT: z.string().min(1).default('https://oss-cn-hangzhou.aliyuncs.com'),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

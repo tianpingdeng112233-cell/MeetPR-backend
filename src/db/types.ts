@@ -38,6 +38,8 @@ export type SetType = (typeof SET_TYPES)[number];
 
 type NullableColumn<T> = ColumnType<T | null, T | null | undefined, T | null>;
 type TimestampColumn = ColumnType<Date, Date | undefined, Date>;
+type NumericColumn = ColumnType<string, string | number, string | number>;
+type BigIntColumn = ColumnType<string, string | number, string | number>;
 
 export interface UsersTable {
   id: Generated<string>;
@@ -107,6 +109,30 @@ export interface PlanSetsTable {
   created_at: TimestampColumn;
 }
 
+export interface VideoAttachmentsTable {
+  id: Generated<string>;
+  student_id: string;
+  plan_exercise_id: string;
+  set_index: number;
+  oss_key: string;
+  oss_upload_id: string;
+  duration_seconds: NumericColumn;
+  file_size_bytes: BigIntColumn;
+  thumbnail_oss_key: string;
+  recorded_at: TimestampColumn;
+  uploaded_at: TimestampColumn;
+  coach_visible_at: TimestampColumn;
+}
+
+export interface PrivacyConsentsTable {
+  id: Generated<string>;
+  user_id: string;
+  consent_kind: string;
+  agreed_at: TimestampColumn;
+  user_agent: NullableColumn<string>;
+  ip_address: NullableColumn<string>;
+}
+
 export interface Database {
   users: UsersTable;
   exercises: ExercisesTable;
@@ -114,6 +140,8 @@ export interface Database {
   plan_days: PlanDaysTable;
   plan_exercises: PlanExercisesTable;
   plan_sets: PlanSetsTable;
+  video_attachments: VideoAttachmentsTable;
+  privacy_consents: PrivacyConsentsTable;
   // coach_profiles: CoachProfilesTable;
   // student_profiles: StudentProfilesTable;
 }

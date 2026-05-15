@@ -12,12 +12,14 @@ import { createErrorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 import { createGlobalRateLimit } from './middleware/rateLimit';
 import { requestId } from './middleware/requestId';
+import { createAliyunOSSClient, type OSSClient } from './oss/client';
 import { mountRoutes } from './routes';
 
 export interface AppDeps {
   config: Config;
   logger: Logger;
   db: Kysely<Database>;
+  oss?: OSSClient;
 }
 
 export function createApp(deps: AppDeps): Express {
@@ -42,6 +44,7 @@ export function createApp(deps: AppDeps): Express {
     config,
     db: deps.db,
     logger,
+    oss: deps.oss ?? createAliyunOSSClient(config),
     requireAuth: createRequireAuth(config),
   });
 
