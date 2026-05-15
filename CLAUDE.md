@@ -2,25 +2,27 @@
 
 This file is the primary onboarding doc for any Claude session working on this repo.
 
-> ❄️ **FROZEN until iOS triggers a backend dep** (set 2026-05-09)
+> ✅ **UNFROZEN 2026-05-15 — V0.1 wave triggered**
 >
-> Backend has shipped `001-auth` (PR #4) + `002-coach-planning-crud` (PR #5) on `staging`. **iOS still uses `InMemoryPlanRepository` per spec 005 — no production backend consumer exists yet.**
+> iOS V0.1 wave 6 specs(024-029)已合 main(`~/Projects/apps/MeetPR/specs/`),其中 spec 026 / 027 / 029 显式需要 backend 实装。**Unfreeze trigger met**:
 >
-> Until iOS V0 TestFlight ships (target 2026-06-20, see `~/Brain/wiki/projects/MeetPR/roadmap.md`), this repo is in maintenance mode. **Do not start new backend specs proactively.** Building backend ahead of iOS demand = building twice (iOS UX still drifting; spec 005 review showed `BackendPlanRepository` is still a fatalError stub).
+> - spec 026 `Backend 真接入` 触发 backend **003-student-actions** spec(`/coach/students` + set_logs + feedback + 3 张 missing tables migration + seed)
+> - spec 027 `Video upload` 触发 backend **004-video-upload** spec(`/upload/{initiate,sign-parts,complete,abort}` + `/students/:id/videos`(带短期 presigned URLs) + `/privacy/consent` + OSS bucket 4 项配置 + 0007 video_attachments migration)
 >
-> **Allowed during freeze:**
+> **V0 期 backend 历史**:`001-auth`(PR #4)+ `002-coach-planning-crud`(PR #5)已合 staging,但 `/coach/students` 仍是 501 stub(per spec 026 §来源 注),003 必须实装。
 >
+> **V0.1+ 内测期允许**:
+>
+> - 起 003-student-actions / 004-video-upload spec + impl PR
+> - 修补 001 / 002 stub endpoint(/coach/students 等)
 > - Security / dependency CVE fixes
-> - Real bug in `001-auth` or `002-coach-planning-crud` that breaks something in current use
-> - Documentation fixes
+> - 阿里云 SAE 部署 + RDS 重申(per spec 026 §1.1 / §1.2)
 >
-> **Not allowed during freeze:**
+> **仍不允许**:
 >
-> - New endpoints / new specs
+> - 投机性 backend feature(无对应 iOS spec 触发)
 > - Speculative refactor / "clean up before V1"
-> - Migrations not driven by an iOS spec
->
-> **Unfreeze trigger:** iOS has a specific spec calling a backend endpoint (e.g. `BackendPlanRepository` real wiring spec, or `student-onboarding` 邀请码验证 spec). At that point a fresh backend spec opens to support that exact iOS call.
+> - V0.2+ 范围工作(evaluation-workflow / MPS 转码 / KMS / 多端 polling 等)— V0.1 内测稳定后再 unfreeze
 
 ## Project
 
