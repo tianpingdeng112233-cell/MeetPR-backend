@@ -222,7 +222,7 @@ Authorization + verification(per blocker 4 + D2=c + D3=a):
 
 ```
 1. 解析 oss_key(anchored regex,同 sign-parts 规则)— 验证 studentId === req.user.id + planExerciseId published-plan ownership;失败 → 403
-2. 解析 thumbnail_oss_key(anchored regex,但路径前缀必须是 students/<self>/thumbs/) — 验证 studentId === req.user.id;失败 → 403
+2. 解析 thumbnail_oss_key(anchored regex,但路径前缀必须是 students/<self>/thumbs/) — 验证 studentId === req.user.id;**且** thumbnail parsed planExerciseId / setIndex **必须与 video oss_key 解析出的 planExerciseId / setIndex 完全一致**(per PR #8 second-pass non-blocking #2 — 防同一学生把别 set 的 thumbnail 绑到当前 video)。失败 → 403
 3. Verify upload still in progress:ListMultipartUploads(bucket, prefix=oss_key) returns 1 row with matching upload_id;失败 → 400 UPLOAD_NOT_FOUND
 4. CompleteMultipartUpload(bucket, oss_key, upload_id, parts) → final object etag;失败 → 400 UPLOAD_INVALID_PARTS
 5. HeadObject(bucket, oss_key) → 取 video file_size_bytes(authoritative — 防 client 报假 size);若 > 1 GiB → 400 UPLOAD_TOO_LARGE
@@ -350,7 +350,7 @@ Returns 204。
 学员 app 首次想上传视频
   ↓ iOS 显示"视频对教练可见"同意 modal
   ↓ 用户点同意
-await POST /privacy/consent { kind: 'video_visibility_v1' } → 200 OK
+await POST /privacy/consent { kind: 'video_visibility_v1' } → 204 No Content
   ↓
 await POST /upload/initiate { ... } → 200 OK { upload_id, ... }
   ↓
@@ -370,10 +370,17 @@ Reuse `requireAuth` from 001 + `requireRole(...)` from 002. **`oss_key` 解析�
 
 ```ts
 // helpers/oss-key-parse.ts(新建)
-const VIDEO_OSS_KEY_RE =
-  /^students\/(?<studentId>[0-9a-f-]{36})\/sets\/(?<planExerciseId>[0-9a-f-]{36})\/(?<setIndex>\d{1,2})\/(?<filename>[0-9a-f-]{36}\.(?:mp4|mov))$/;
-const THUMB_OSS_KEY_RE =
-  /^students\/(?<studentId>[0-9a-f-]{36})\/thumbs\/(?<planExerciseId>[0-9a-f-]{36})\/(?<setIndex>\d{1,2})\/(?<filename>[0-9a-f-]{36}\.jpg)$/;
+// 严格 UUID v4-style 格式:8-4-4-4-12 hex,hyphen 位置固定(per PR #8 second-pass blocker)
+// **禁用** [0-9a-f-]{36}(允许 hyphen 任意位置 → "------------------------------------"
+//   或 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" 都会通过 — 不合法 UUID 也接受)
+const UUID = String.raw`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`;
+
+const VIDEO_OSS_KEY_RE = new RegExp(
+  String.raw`^students\/(?<studentId>${UUID})\/sets\/(?<planExerciseId>${UUID})\/(?<setIndex>\d{1,2})\/(?<filename>${UUID}\.(?:mp4|mov))$`,
+);
+const THUMB_OSS_KEY_RE = new RegExp(
+  String.raw`^students\/(?<studentId>${UUID})\/thumbs\/(?<planExerciseId>${UUID})\/(?<setIndex>\d{1,2})\/(?<filename>${UUID}\.jpg)$`,
+);
 
 export function parseVideoOssKey(key: string): {
   studentId: string;
@@ -388,19 +395,23 @@ export function parseVideoOssKey(key: string): {
     setIndex: parseInt(m.groups!.setIndex, 10),
   };
 }
-// 同 parseThumbnailOssKey
+// parseThumbnailOssKey 同 pattern,用 THUMB_OSS_KEY_RE
 ```
 
 每个 upload handler 第一步:`parseVideoOssKey(req.body.oss_key)` + `parseThumbnailOssKey(req.body.thumbnail_oss_key)` → 比 `parsed.studentId === req.user.id` else throw 403。
 
-`tests/oss-key-parse.test.ts`(新)必须覆盖 traversal:
+`tests/oss-key-parse.test.ts`(新)必须覆盖 traversal + 各 component UUID 严格性:
 
-- `students/<self>/../<other>/sets/<pe>/0/<uuid>.mp4` → 403
+- `students/<self>/../<other>/sets/<pe>/0/<uuid>.mp4` → 403(path traversal)
 - `students/<self>/sets/<pe>%2F0/<uuid>.mp4` → 403(URL-encoded slash)
 - `students/<self>/thumbs/<pe>/0/<uuid>.mp4` 用 video parser → 403(wrong prefix `thumbs` vs `sets`)
 - `students/<self>/sets/<pe>/0/<uuid>.jpg` 用 video parser → 403(wrong extension)
 - `students/<self>/sets/<pe>/100/<uuid>.mp4` → 403(set_index 超 2 digit)
 - `students/<self>/sets/not-uuid/0/<uuid>.mp4` → 403(plan_exercise_id 非 UUID 格式)
+- **`students/------------------------------------/sets/<pe>/0/<uuid>.mp4` → 403**(36 hyphen,旧 `[0-9a-f-]{36}` 会通过但严格 8-4-4-4-12 拒绝;per PR #8 second-pass blocker)
+- **`students/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/sets/<pe>/0/<uuid>.mp4` → 403**(36 hex 无 hyphen,长度对但 hyphen 位置错)
+- **`students/12345678-1234-1234-1234-12345678901z/sets/<pe>/0/<uuid>.mp4` → 403**(末位 `z` 非 hex,8-4-4-4-12 长度对但字符越界)
+- **`students/12345678-1234-1234-12345-1234567890ab/sets/<pe>/0/<uuid>.mp4` → 403**(第 4 段 5 字符,hyphen 位置错)
 
 ### Error code catalogue (additions)
 
