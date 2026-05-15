@@ -53,13 +53,19 @@ All endpoints sit under their respective resource roots, all require Bearer acce
   "students": [
     {
       "id": "uuid",
-      "displayName": "xty",
-      "profile": { "userId": "uuid", "displayName": "xty", "createdAt": "..." },
+      "display_name": "xty",
+      "profile": {
+        "user_id": "uuid",
+        "display_name": "xty",
+        "created_at": "2026-05-15T14:00:00.000Z"
+      },
       "status": "active"
     }
   ]
 }
 ```
+
+(snake_case wire shape per backend 002 convention;iOS `MeetPRCodec` 自动转 camelCase domain)
 
 Implementation query:
 
@@ -80,12 +86,21 @@ ORDER BY u.created_at DESC;
 
 V0.1 returns only `status='accepted'` students. V0.2+ adds `'evaluating'` / `'pending'` statuses (gated by evaluation-workflow spec).
 
+#### Wire shape convention (applies to all endpoints below)
+
+**HTTP request / response 全 snake_case**(per backend 002 已建 wire format + iOS `MeetPRCodec.encoder/decoder` 走 `.convertToSnakeCase` / `.convertFromSnakeCase`)。本 spec 任何 JSON 例子用 snake_case。iOS 端 Swift domain type 用 camelCase(`planExerciseId` / `weightKg` 等),`MeetPRCodec` 在 encode 时自动转 snake;backend zod schema 永远收 snake_case。
+
+DTO mapping tests(`tests/dto/*.test.ts`)必须显式验证:
+
+- backend zod schema 收 snake_case 字段 → 拒绝 camelCase(400 VALIDATION_ERROR)
+- backend response 输出 snake_case → 与 iOS test fixture(camelCase domain decoded from snake)round-trip 对齐
+
 #### Student set log
 
-| Method + Path                                          | Roles                                                 | Request                                                         | Success                  |
-| ------------------------------------------------------ | ----------------------------------------------------- | --------------------------------------------------------------- | ------------------------ |
-| `POST /sets/log`                                       | student                                               | `{ planExerciseId, setIndex, weightKg, reps, rpe?, completed }` | `201 { id, loggedAt }`   |
-| `GET /students/:id/sets?from=YYYY-MM-DD&to=YYYY-MM-DD` | student(self) / coach(owner of plan where trainee=id) | —                                                               | `200 { logs: SetLog[] }` |
+| Method + Path                                          | Roles                                                 | Request                                                             | Success                  |
+| ------------------------------------------------------ | ----------------------------------------------------- | ------------------------------------------------------------------- | ------------------------ |
+| `POST /sets/log`                                       | student                                               | `{ plan_exercise_id, set_index, weight_kg, reps, rpe?, completed }` | `201 { id, logged_at }`  |
+| `GET /students/:id/sets?from=YYYY-MM-DD&to=YYYY-MM-DD` | student(self) / coach(owner of plan where trainee=id) | —                                                                   | `200 { logs: SetLog[] }` |
 
 `POST /sets/log` semantics — **upsert** via UNIQUE constraint:
 
@@ -123,77 +138,122 @@ No row → `400 SETS_PLAN_EXERCISE_NOT_PUBLISHED` (do not reveal whether `plan_e
 
 Authorization (`GET /students/:id/sets`):
 
-- If `req.user.id === params.id` (student self) → allow regardless of role
-- Else require `req.user.role === 'coach'` AND coach owns ≥1 published plan for `params.id`:
+- If `req.user.id === params.id` (student self) → allow regardless of role,query `WHERE student_id = $userId`
+- Else require `req.user.role === 'coach'` AND **only return set_logs originating from plan_exercises within plans where `plans.coach_id = $coachId`** — 不是先 ownership check 通过再返全部 student set_logs(那会泄露其他 coach 的 set_logs 给当前 coach,如果该 student 历史 / 同时 multiple coaches)
+
+**Coach query 正确写法**(per PR #7 Codex review blocker 3):
 
 ```sql
-SELECT 1 FROM plans
- WHERE coach_id   = $coachId
-   AND trainee_id = $studentId
-   AND status     = 'published'
- LIMIT 1;
+SELECT sl.*
+  FROM set_logs sl
+  JOIN plan_exercises pe ON sl.plan_exercise_id = pe.id
+  JOIN plan_days pd      ON pe.plan_day_id      = pd.id
+  JOIN plans p           ON pd.plan_id          = p.id
+ WHERE sl.student_id  = $studentId
+   AND p.coach_id     = $coachId      -- ← 关键 invariant:绑定到当前 coach
+   AND p.trainee_id   = $studentId
+   AND p.status       = 'published'
+   AND sl.logged_at  >= $from
+   AND sl.logged_at   < $to
+ ORDER BY sl.logged_at DESC;
 ```
 
-No row → `403 AUTHORIZATION_FORBIDDEN`.
+**禁止** 写法:先 `SELECT 1 FROM plans WHERE coach_id=$1 AND trainee_id=$2 AND status='published' LIMIT 1` 通过后再 `SELECT * FROM set_logs WHERE student_id=$2` — 这会泄露其他 coach 的 plan_exercise 产出的 set_logs 给当前 coach(若该 student 历史上 / 同时有 multiple coaches)。
 
-`SetLog` wire shape:
+无返回 → `200 { logs: [] }`(空列表,不是 403 — 学员可能确实没在该 coach 的 plan 下产生 logs)。
+
+`SetLog` wire shape(snake_case):
 
 ```json
 {
   "id": "uuid",
-  "studentId": "uuid",
-  "planExerciseId": "uuid",
-  "setIndex": 1,
-  "weightKg": "100.00",
+  "student_id": "uuid",
+  "plan_exercise_id": "uuid",
+  "set_index": 1,
+  "weight_kg": "100.00",
   "reps": 5,
   "rpe": "8.0",
   "completed": true,
-  "loggedAt": "2026-05-15T14:00:00.000Z"
+  "logged_at": "2026-05-15T14:00:00.000Z"
 }
 ```
 
-`weightKg` and `rpe` as JSON strings per existing `Decimal-as-string` convention (per 002 SPEC §wire format), aligning with iOS `MeetPRCodec.decimalStringDecoder`.
+`weight_kg` and `rpe` as JSON strings per existing `Decimal-as-string` convention (per 002 SPEC §wire format), aligning with iOS `MeetPRCodec.decimalStringDecoder`.
 
 #### Coach feedback + student inbox
 
-| Method + Path                | Roles                        | Request                                          | Success                                                  |
-| ---------------------------- | ---------------------------- | ------------------------------------------------ | -------------------------------------------------------- |
-| `POST /coach/feedback`       | coach                        | `{ studentId, dayDate?, planExerciseId?, text }` | `201 Feedback`                                           |
-| `GET /students/:id/feedback` | student(self) / coach(owner) | —                                                | `200 { items: Feedback[] }` (ordered by `postedAt DESC`) |
-| `PATCH /feedback/:id/read`   | student (self)               | —                                                | `204`                                                    |
+| Method + Path                | Roles                        | Request                                              | Success                                                   |
+| ---------------------------- | ---------------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| `POST /coach/feedback`       | coach                        | `{ student_id, day_date?, plan_exercise_id?, text }` | `201 Feedback`                                            |
+| `GET /students/:id/feedback` | student(self) / coach(owner) | —                                                    | `200 { items: Feedback[] }` (ordered by `posted_at DESC`) |
+| `PATCH /feedback/:id/read`   | student (self)               | —                                                    | `204`                                                     |
 
-`POST /coach/feedback` authorization: coach must own ≥1 published plan for `studentId` (same query as `GET /students/:id/sets`). Otherwise `403`.
+`POST /coach/feedback` authorization:
+
+- 必须 `req.user.role === 'coach'` else `403`
+- coach must own ≥1 published plan for `student_id`(coarse-grained 通过检查)
+- **加上(per PR #7 review blocker 3)**:若 request body 带 `plan_exercise_id`,**必须** 校验 `plan_exercise_id` 属于 **当前 coach 的** published plan(不只是属于 student):
+
+```sql
+SELECT 1
+  FROM plan_exercises pe
+  JOIN plan_days pd ON pe.plan_day_id = pd.id
+  JOIN plans p      ON pd.plan_id     = p.id
+ WHERE pe.id          = $planExerciseId
+   AND p.coach_id     = $coachId       -- ← 防 coach 给其他 coach plan 的 exercise 写反馈
+   AND p.trainee_id   = $studentId
+   AND p.status       = 'published'
+ LIMIT 1;
+```
+
+无返回 → `400 FEEDBACK_PLAN_EXERCISE_NOT_OWNED`(coach 反馈必须挂在自己的 published plan 的 exercise 上)。
 
 `text` validation:
 
 - `z.string().min(1).max(2000)` — DB also CHECK constraint
 - Trim whitespace before insert (no leading/trailing space stored)
 
-`dayDate` (optional) — `YYYY-MM-DD` if provided; rejected if format mismatch.
-`planExerciseId` (optional) — if provided, validate exists + reaches student's published plan (same query as sets log).
+`day_date` (optional) — `YYYY-MM-DD` if provided; rejected if format mismatch.
 
-`PATCH /feedback/:id/read`:
+`GET /students/:id/feedback` authorization(per PR #7 review blocker 3 同源):
 
-- Only `req.user.role === 'student' && req.user.id === feedback.student_id` can mark read
-- Idempotent: re-mark = no-op (return 204; do not overwrite `read_at` to a new timestamp)
+- 学员自看 → `SELECT * FROM feedback WHERE student_id = $userId`
+- coach 看 → **只看自己 coach_id 写的反馈**(不是该 student 的全部反馈),防多 coach 历史泄露:
+
+```sql
+SELECT f.*
+  FROM feedback f
+ WHERE f.student_id = $studentId
+   AND f.coach_id   = $coachId       -- ← 当前 coach 只看自己写的
+ ORDER BY f.posted_at DESC;
+```
+
+无返回 → `200 { items: [] }`(空,coach 可能确实没给该 student 写过反馈)。
+
+`PATCH /feedback/:id/read`(per PR #7 review blocker 2 — role literal 修正):
+
+- **角色**:`req.user.role === 'coached_student' || req.user.role === 'self_train_student'` else `403 AUTHORIZATION_FORBIDDEN`(原 spec 写 `'student'` literal **不存在** 此 role,会让两类学员角色都无法 markRead)
+- **归属**:`req.user.id === feedback.student_id`(学员只 mark 自己的反馈)
+- Idempotent: re-mark = no-op(return 204;do not overwrite `read_at` to a new timestamp)
 - `UPDATE feedback SET read_at = COALESCE(read_at, now()) WHERE id = $1 AND student_id = $2`
+- `tests/feedback-mark-read.test.ts` 必须覆盖 3 种 case:`coached_student` self mark ✅ / `self_train_student` self mark ✅ / `coach` mark → `403`
 
-`Feedback` wire shape:
+`Feedback` wire shape(snake_case):
 
 ```json
 {
   "id": "uuid",
-  "coachId": "uuid",
-  "studentId": "uuid",
-  "dayDate": "2026-05-15",
-  "planExerciseId": "uuid",
+  "coach_id": "uuid",
+  "student_id": "uuid",
+  "day_date": "2026-05-15",
+  "plan_exercise_id": "uuid",
   "text": "...",
-  "postedAt": "2026-05-15T14:00:00.000Z",
-  "readAt": "2026-05-15T15:30:00.000Z"
+  "posted_at": "2026-05-15T14:00:00.000Z",
+  "read_at": "2026-05-15T15:30:00.000Z"
 }
 ```
 
-`dayDate` / `planExerciseId` / `readAt` are nullable.
+`day_date` / `plan_exercise_id` / `read_at` are nullable.
 
 ### Migrations — full SQL
 
@@ -237,17 +297,12 @@ CREATE TABLE bind_requests (
   responded_at      TIMESTAMPTZ,
   expired_at        TIMESTAMPTZ NOT NULL,  -- submitted_at + 7 days at insert time
   skip_evaluation   BOOLEAN NOT NULL DEFAULT FALSE,
-  rejection_silent  BOOLEAN NOT NULL DEFAULT TRUE,
-
-  -- V0.1 invariant: at most one accepted bond per (student, coach) pair
-  -- (multiple historical pending/rejected/expired/cancelled rows allowed)
-  CONSTRAINT bind_requests_unique_accepted UNIQUE NULLS NOT DISTINCT (student_id, coach_id, status)
-    -- relies on partial-index-like behavior via DEFERRABLE... actually pg lacks "WHERE status='accepted'" on UNIQUE constraint
-    -- See partial index alternative below
+  rejection_silent  BOOLEAN NOT NULL DEFAULT TRUE
 );
 
--- Replace constraint with partial unique index (correct pg syntax):
-ALTER TABLE bind_requests DROP CONSTRAINT bind_requests_unique_accepted;
+-- V0.1 invariant: at most one accepted bond per (student, coach) pair
+-- (multiple historical pending/rejected/expired/cancelled rows allowed)
+-- Use partial unique index (PG syntax;CONSTRAINT UNIQUE doesn't support WHERE)
 CREATE UNIQUE INDEX bind_requests_unique_accepted
   ON bind_requests (student_id, coach_id) WHERE status = 'accepted';
 
@@ -415,20 +470,21 @@ src/
 
 ### Tests
 
-| File                                                   | Coverage                                                                                                           |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| `tests/coach-students.test.ts` (new)                   | GET /coach/students returns 200 with bonded students;empty list when no bonds;403 for non-coach role;auth required |
-| `tests/sets-log.test.ts` (new)                         | POST happy path;upsert idempotency;authorization (student self);403 wrong role;400 plan_exercise not published     |
-| `tests/sets-fetch.test.ts` (new)                       | GET self;GET as owning coach;date range filter;403 non-owner coach                                                 |
-| `tests/feedback-post.test.ts` (new)                    | POST happy;text trim;dayDate / planExerciseId optional;403 not-owning coach                                        |
-| `tests/feedback-fetch.test.ts` (new)                   | GET self student;GET as coach;ordering by posted_at DESC;empty list                                                |
-| `tests/feedback-mark-read.test.ts` (new)               | PATCH happy;idempotent re-mark (no overwrite of read_at);403 not-self student;404 wrong feedback ID                |
-| `tests/migrations/0003.5-profile-tables.test.ts` (new) | Migration runs;UNIQUE PK enforced;CASCADE on user delete                                                           |
-| `tests/migrations/0003.6-bind-requests.test.ts` (new)  | Migration runs;partial unique index (only `status='accepted'`)允许多 `pending` 行;CASCADE                          |
-| `tests/migrations/0004-seed.test.ts` (new)             | Migration inserts 4 rows (2 users + 2 profiles + 1 bond);idempotent (re-run ON CONFLICT DO NOTHING)                |
-| `tests/migrations/0005-set-logs.test.ts` (new)         | UNIQUE enforced;upsert via ON CONFLICT                                                                             |
-| `tests/migrations/0006-feedback.test.ts` (new)         | CHECK length;partial index unread                                                                                  |
-| `tests/auth-integration.test.ts` (extend if exists)    | Login with seed account after `psql UPDATE` real hash (manual deploy step,test mocks via local-dev hash)           |
+| File                                                   | Coverage                                                                                                                           |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/coach-students.test.ts` (new)                   | GET /coach/students returns 200 with bonded students;empty list when no bonds;403 for non-coach role;auth required                 |
+| `tests/sets-log.test.ts` (new)                         | POST happy path;upsert idempotency;authorization (student self);403 wrong role;400 plan_exercise not published                     |
+| `tests/sets-fetch.test.ts` (new)                       | GET self;GET as owning coach;date range filter;403 non-owner coach                                                                 |
+| `tests/feedback-post.test.ts` (new)                    | POST happy;text trim;dayDate / planExerciseId optional;403 not-owning coach                                                        |
+| `tests/feedback-fetch.test.ts` (new)                   | GET self student;GET as coach;ordering by posted_at DESC;empty list                                                                |
+| `tests/feedback-mark-read.test.ts` (new)               | PATCH happy;idempotent re-mark (no overwrite of read_at);403 not-self student;404 wrong feedback ID                                |
+| `tests/migrations/0003.5-profile-tables.test.ts` (new) | Migration runs;UNIQUE PK enforced;CASCADE on user delete                                                                           |
+| `tests/migrations/0003.6-bind-requests.test.ts` (new)  | Migration runs;partial unique index (only `status='accepted'`)允许多 `pending` 行;CASCADE                                          |
+| `tests/migrations/0004-seed.test.ts` (new)             | Migration inserts 5 rows (2 users + 2 profiles + 1 bond_requests);idempotent (re-run ON CONFLICT DO NOTHING)                       |
+| `tests/dto/snake-case-validation.test.ts` (new)        | All endpoints reject camelCase input (400 VALIDATION_ERROR);emit snake_case responses;round-trip with iOS MeetPRCodec test fixture |
+| `tests/migrations/0005-set-logs.test.ts` (new)         | UNIQUE enforced;upsert via ON CONFLICT                                                                                             |
+| `tests/migrations/0006-feedback.test.ts` (new)         | CHECK length;partial index unread                                                                                                  |
+| `tests/auth-integration.test.ts` (extend if exists)    | Login with seed account after `psql UPDATE` real hash (manual deploy step,test mocks via local-dev hash)                           |
 
 Test DB strategy unchanged from 002: per-test transaction rollback via supertest fixture.
 
@@ -467,20 +523,24 @@ Test DB strategy unchanged from 002: per-test transaction rollback via supertest
 
 1. **Migration ordering**: `0003.5` / `0003.6` must run after `0003-init-plans.sql` (lex order naturally satisfies). `0004-seed-internal-users` references `0003.5` profiles + `0003.6` bind_requests — if any of the 3 migration fails the seed will too. Run in transaction unit per migration (existing migration script does this).
 2. **bcrypt placeholder hash is non-login**: placeholder strings (`$2b$10$PLACEHOLDER...`) are syntactically valid bcrypt format but not real hashes. Login attempts will fail until deploy step `psql UPDATE` runs. CHECKLIST item.
-3. **Partial UNIQUE index syntax**: `CREATE UNIQUE INDEX ... WHERE status='accepted'` (the standard pattern). The `CONSTRAINT UNIQUE ... NULLS NOT DISTINCT` syntax in `0003.6` is invalid PG — implementer must use the partial index. SPEC keeps the failed form to document the intent inversion.
+3. **Partial UNIQUE index syntax**: `CREATE UNIQUE INDEX ... WHERE status='accepted'` is the standard PG pattern;`CONSTRAINT UNIQUE ... NULLS NOT DISTINCT` 不支持 WHERE子句,无法表达 "仅 accepted 唯一"。0003.6 SPEC 已写成 final form(per PR #7 review non-blocking)。
 4. **`/coach/students` empty-list semantics**: V0.1 `status='accepted'` only. If a coach has 0 students returns `200 { students: [] }` — not 404. iOS spec 029 StudentRosterView empty state handles this.
-5. **iOS `MeetPRCodec` decimal-as-string round-trip**: `weightKg` / `rpe` / `target_value` etc. must serialize as JSON string (`"100.00"`) not number — pg's NUMERIC default serialization does this. Don't `Number()` coerce in handlers.
+5. **iOS `MeetPRCodec` decimal-as-string round-trip**: `weight_kg` / `rpe` / `target_value` etc. must serialize as JSON string (`"100.00"`) not number — pg's NUMERIC default serialization does this. Don't `Number()` coerce in handlers. **HTTP wire snake_case** + iOS Swift domain camelCase 由 `MeetPRCodec` 转(per §Wire shape convention)。
 6. **iOS spec 029 hard prerequisite**: this spec's impl PR must land before iOS spec 029 impl PR can start. Track explicitly.
 7. **Authorization SQL duplication**: ownership check pattern repeats in ~5 handlers. Per backend `Hard rule 1: No ORM` + composition over abstraction — accept duplication for V0.1; if pattern stabilizes V0.1.x extract `helpers/ownership.ts` with explicit SQL functions (not middleware).
+8. **Multi-coach data leakage prevention(per PR #7 review blocker 3)**:任何 coach-side query 必须 join `plans p` + `p.coach_id = $coachId` 加入 WHERE,而**不是** 先 "coach 拥有该 student 任一 published plan" 通过后再返该 student 全部数据。fixture test 必须覆盖 "student 同时被 2 个 coach 接收" case 验证 coach A 不能看 coach B plan_exercise 产出的 set_logs / feedback。
+9. **Spec status timing**:本 SPEC.md 当前 `Status: Draft`。**impl 启动前**(Codex 开 `feat/003-student-actions` impl PR 的第一个 commit 前)必须翻 `Status: InProgress`,impl PR 合 staging 时翻 `Status: Done`。AGENTS.md startup checklist 会检查这个 transition。
 
 ## Codex review focus
 
-- Endpoint contract matches iOS specs 024 / 026 / 029 wire shapes (especially `CoachStudentSummary` / `SetLog` / `Feedback` JSON keys)
-- Authorization SQL queries are correct (no IDOR — student can't read other student's sets; coach can't see non-trainee's data)
-- `0003.6 bind_requests` enum + partial unique index syntax is valid PG
-- `0004 seed` migration is idempotent (`ON CONFLICT DO NOTHING` everywhere; safe to re-run)
+- Endpoint contract matches iOS specs 024 / 026 / 029 wire shapes (`CoachStudentSummary` / `SetLog` / `Feedback` JSON keys 全 snake_case;`MeetPRCodec` 转 camelCase domain)
+- Authorization SQL queries are correct (no IDOR — student can't read other student's sets; coach can't see non-owned-plan data + multi-coach leakage prevention per §Risks #8)
+- `0003.6 bind_requests` partial unique index syntax is valid PG(`CREATE UNIQUE INDEX ... WHERE status = 'accepted'`)
+- `0004 seed` migration is idempotent (`ON CONFLICT DO NOTHING` everywhere; safe to re-run);5 rows = 2 users + 2 profiles + 1 bond_requests
 - `rpe ≤ 10.0` CHECK aligns with iOS spec 028 §RPE 边界 (`rpe > 10 → nil` invariant)
-- Test coverage above is sufficient (8-9 new test files;migrations + endpoints + auth bypass attempts)
+- `PATCH /feedback/:id/read` role check 用 `coached_student | self_train_student`(不是不存在的 `'student'` literal)
+- Wire shape 全 snake_case + DTO mapping test 校验 camelCase 输入被拒绝
+- Test coverage above is sufficient (9-10 new test files;migrations + endpoints + auth bypass attempts + DTO snake_case validation + multi-coach leakage fixture)
 
 ## Per AGENTS.md / repo Spec workflow
 
