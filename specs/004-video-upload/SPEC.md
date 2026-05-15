@@ -1,6 +1,6 @@
 # 004-video-upload
 
-**Status:** InProgress
+**Status:** Done
 **Date:** 2026-05-15
 
 ## Goal
