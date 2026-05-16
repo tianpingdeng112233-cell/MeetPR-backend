@@ -30,6 +30,21 @@ describe('POST /upload/sign-parts', () => {
     expect(ctx.oss.signatures).toHaveLength(2);
   });
 
+  it('requires consent', async () => {
+    const ctx = await makeVideoContext();
+    const res = await request(ctx.app)
+      .post('/upload/sign-parts')
+      .set(auth(ctx.studentToken))
+      .send({
+        upload_id: 'upload-test-1',
+        oss_key: validVideoKey(),
+        part_numbers: [1],
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: 'CONSENT_MISSING' });
+  });
+
   it('rejects thumbnail keys for video part signing', async () => {
     const ctx = await makeVideoContext();
     await giveVideoConsent(ctx);
