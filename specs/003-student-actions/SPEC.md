@@ -1,6 +1,6 @@
 # 003-student-actions
 
-**Status:** Draft
+**Status:** InProgress
 **Date:** 2026-05-15
 
 ## Goal

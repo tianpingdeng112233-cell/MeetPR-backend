@@ -22,6 +22,13 @@ export const PLAN_STATUSES = ['draft', 'published', 'completed', 'paused'] as co
 export const PATCHABLE_PLAN_STATUSES = ['published', 'paused', 'completed'] as const;
 export const INTENSITY_MODES = ['weight', 'rpe'] as const;
 export const SET_TYPES = ['warmup', 'working', 'failed', 'amrap', 'backoff'] as const;
+export const BIND_REQUEST_STATUSES = [
+  'pending',
+  'accepted',
+  'rejected',
+  'expired',
+  'cancelled',
+] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
 export type LiftFamily = (typeof LIFT_FAMILIES)[number];
@@ -35,6 +42,7 @@ export type PlanStatus = (typeof PLAN_STATUSES)[number];
 export type PatchablePlanStatus = (typeof PATCHABLE_PLAN_STATUSES)[number];
 export type IntensityMode = (typeof INTENSITY_MODES)[number];
 export type SetType = (typeof SET_TYPES)[number];
+export type BindRequestStatus = (typeof BIND_REQUEST_STATUSES)[number];
 
 type NullableColumn<T> = ColumnType<T | null, T | null | undefined, T | null>;
 type TimestampColumn = ColumnType<Date, Date | undefined, Date>;
@@ -107,6 +115,55 @@ export interface PlanSetsTable {
   created_at: TimestampColumn;
 }
 
+export interface CoachProfilesTable {
+  user_id: string;
+  display_name: string;
+  created_at: TimestampColumn;
+  updated_at: TimestampColumn;
+}
+
+export interface StudentProfilesTable {
+  user_id: string;
+  display_name: string;
+  created_at: TimestampColumn;
+  updated_at: TimestampColumn;
+}
+
+export interface BindRequestsTable {
+  id: Generated<string>;
+  student_id: string;
+  coach_id: string;
+  status: Generated<BindRequestStatus>;
+  submitted_at: TimestampColumn;
+  responded_at: NullableColumn<Date>;
+  expired_at: TimestampColumn;
+  skip_evaluation: Generated<boolean>;
+  rejection_silent: Generated<boolean>;
+}
+
+export interface SetLogsTable {
+  id: Generated<string>;
+  student_id: string;
+  plan_exercise_id: string;
+  set_index: number;
+  weight_kg: string;
+  reps: number;
+  rpe: NullableColumn<string>;
+  completed: Generated<boolean>;
+  logged_at: TimestampColumn;
+}
+
+export interface FeedbackTable {
+  id: Generated<string>;
+  coach_id: string;
+  student_id: string;
+  day_date: NullableColumn<string>;
+  plan_exercise_id: NullableColumn<string>;
+  text: string;
+  posted_at: TimestampColumn;
+  read_at: NullableColumn<Date>;
+}
+
 export interface Database {
   users: UsersTable;
   exercises: ExercisesTable;
@@ -114,6 +171,9 @@ export interface Database {
   plan_days: PlanDaysTable;
   plan_exercises: PlanExercisesTable;
   plan_sets: PlanSetsTable;
-  // coach_profiles: CoachProfilesTable;
-  // student_profiles: StudentProfilesTable;
+  coach_profiles: CoachProfilesTable;
+  student_profiles: StudentProfilesTable;
+  bind_requests: BindRequestsTable;
+  set_logs: SetLogsTable;
+  feedback: FeedbackTable;
 }
