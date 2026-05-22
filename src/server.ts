@@ -13,7 +13,7 @@ import { createLogger } from './logger';
 function main(): void {
   const config = loadConfig();
   const logger = createLogger(config);
-  const pool = createPool(config.DATABASE_URL);
+  const pool = createPool(config.DATABASE_URL, {}, config.DATABASE_SSL, config.NODE_ENV);
   const db = createDb(pool);
 
   const app = createApp({ config, logger, db });
