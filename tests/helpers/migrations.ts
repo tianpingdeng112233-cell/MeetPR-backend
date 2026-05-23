@@ -44,6 +44,7 @@ export function createPlanSchema(mem: ReturnType<typeof newDb>): void {
     CREATE TABLE exercises (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name TEXT NOT NULL,
+      name_en TEXT,
       exercise_type TEXT NOT NULL,
       main_lift_family TEXT,
       is_competition_lift BOOLEAN NOT NULL DEFAULT FALSE,

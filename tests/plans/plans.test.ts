@@ -76,6 +76,7 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
     CREATE TABLE exercises (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name TEXT NOT NULL,
+      name_en TEXT,
       exercise_type TEXT NOT NULL,
       main_lift_family TEXT,
       is_competition_lift BOOLEAN NOT NULL DEFAULT FALSE,
@@ -90,16 +91,16 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       ('20000000-0000-4000-8000-000000000001', '竞技深蹲', 'main_lift', 'squat', TRUE, ARRAY['quad','glute','core']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY[]::TEXT[]),
       ('20000000-0000-4000-8000-000000000002', '高杠深蹲', 'main_lift_variation', 'squat', FALSE, ARRAY['quad','glute','core']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY[]::TEXT[]),
       ('20000000-0000-4000-8000-000000000003', '哈克深蹲', 'main_lift_variation', 'squat', FALSE, ARRAY['quad','glute']::TEXT[], ARRAY['machine']::TEXT[], ARRAY[]::TEXT[]),
-      ('20000000-0000-4000-8000-000000000004', '竞技卧推', 'main_lift', 'bench', TRUE, ARRAY['chest','triceps','shoulder']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY['push']::TEXT[]),
-      ('20000000-0000-4000-8000-000000000005', '窄距卧推', 'main_lift_variation', 'bench', FALSE, ARRAY['triceps','chest']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY['push']::TEXT[]),
-      ('20000000-0000-4000-8000-000000000006', '传统硬拉', 'main_lift', 'deadlift', TRUE, ARRAY['hamstring','glute','back','core']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY['pull']::TEXT[]),
-      ('20000000-0000-4000-8000-000000000007', '相扑硬拉', 'main_lift_variation', 'deadlift', FALSE, ARRAY['hamstring','glute','quad','back','core']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY['pull']::TEXT[]),
-      ('20000000-0000-4000-8000-000000000008', '引体向上', 'accessory', NULL, FALSE, ARRAY['back','biceps']::TEXT[], ARRAY['bodyweight']::TEXT[], ARRAY['pull']::TEXT[]),
-      ('20000000-0000-4000-8000-000000000009', '杠铃划船', 'accessory', NULL, FALSE, ARRAY['back','biceps']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY['pull']::TEXT[]),
-      ('20000000-0000-4000-8000-000000000010', '哑铃肩推', 'accessory', NULL, FALSE, ARRAY['shoulder','triceps']::TEXT[], ARRAY['dumbbell']::TEXT[], ARRAY['push']::TEXT[]),
-      ('20000000-0000-4000-8000-000000000011', '臂屈伸', 'accessory', NULL, FALSE, ARRAY['triceps','chest']::TEXT[], ARRAY['bodyweight']::TEXT[], ARRAY['push']::TEXT[]),
-      ('20000000-0000-4000-8000-000000000012', '哑铃弯举', 'accessory', NULL, FALSE, ARRAY['biceps']::TEXT[], ARRAY['dumbbell']::TEXT[], ARRAY['pull']::TEXT[]),
-      ('20000000-0000-4000-8000-000000000013', '罗马尼亚硬拉', 'accessory', NULL, FALSE, ARRAY['hamstring','glute','back']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY['pull']::TEXT[]),
+      ('20000000-0000-4000-8000-000000000004', '竞技卧推', 'main_lift', 'bench', TRUE, ARRAY['chest','triceps','shoulder']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY['horizontal_push']::TEXT[]),
+      ('20000000-0000-4000-8000-000000000005', '窄距卧推', 'main_lift_variation', 'bench', FALSE, ARRAY['triceps','chest']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY['horizontal_push']::TEXT[]),
+      ('20000000-0000-4000-8000-000000000006', '传统硬拉', 'main_lift', 'deadlift', TRUE, ARRAY['hamstring','glute','back','core']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY['hip_hinge']::TEXT[]),
+      ('20000000-0000-4000-8000-000000000007', '相扑硬拉', 'main_lift_variation', 'deadlift', FALSE, ARRAY['hamstring','glute','quad','back','core']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY['hip_hinge']::TEXT[]),
+      ('20000000-0000-4000-8000-000000000008', '引体向上', 'accessory', NULL, FALSE, ARRAY['back','biceps']::TEXT[], ARRAY['bodyweight']::TEXT[], ARRAY['vertical_pull']::TEXT[]),
+      ('20000000-0000-4000-8000-000000000009', '杠铃划船', 'accessory', NULL, FALSE, ARRAY['back','biceps']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY['horizontal_pull']::TEXT[]),
+      ('20000000-0000-4000-8000-000000000010', '哑铃肩推', 'accessory', NULL, FALSE, ARRAY['shoulder','triceps']::TEXT[], ARRAY['dumbbell']::TEXT[], ARRAY['vertical_push']::TEXT[]),
+      ('20000000-0000-4000-8000-000000000011', '臂屈伸', 'accessory', NULL, FALSE, ARRAY['triceps','chest']::TEXT[], ARRAY['bodyweight']::TEXT[], ARRAY['horizontal_push']::TEXT[]),
+      ('20000000-0000-4000-8000-000000000012', '哑铃弯举', 'accessory', NULL, FALSE, ARRAY['biceps']::TEXT[], ARRAY['dumbbell']::TEXT[], ARRAY['other']::TEXT[]),
+      ('20000000-0000-4000-8000-000000000013', '罗马尼亚硬拉', 'accessory', NULL, FALSE, ARRAY['hamstring','glute','back']::TEXT[], ARRAY['barbell']::TEXT[], ARRAY['hip_hinge']::TEXT[]),
       ('20000000-0000-4000-8000-000000000014', '腿举', 'accessory', NULL, FALSE, ARRAY['quad','glute']::TEXT[], ARRAY['machine']::TEXT[], ARRAY[]::TEXT[]),
       ('20000000-0000-4000-8000-000000000015', '卷腹', 'accessory', NULL, FALSE, ARRAY['core']::TEXT[], ARRAY['bodyweight']::TEXT[], ARRAY[]::TEXT[]);
 
@@ -647,7 +648,7 @@ describe('coach planning CRUD', () => {
         is_competition_lift: false,
         muscle_groups: ['back'],
         equipment: ['barbell'],
-        movement_pattern: ['pull'],
+        movement_pattern: ['horizontal_pull'],
         created_by_coach_id: otherCoachId,
       })
       .returningAll()

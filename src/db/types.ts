@@ -4,18 +4,47 @@ export const USER_ROLES = ['coach', 'coached_student', 'self_train_student'] as 
 export const LIFT_FAMILIES = ['squat', 'bench', 'deadlift'] as const;
 export const EXERCISE_TYPES = ['main_lift', 'main_lift_variation', 'accessory'] as const;
 export const MUSCLE_GROUPS = [
-  'chest',
-  'shoulder',
+  'adductor',
   'back',
   'biceps',
-  'triceps',
+  'calf',
+  'cardio',
+  'chest',
   'core',
-  'quad',
-  'hamstring',
+  'forearm',
   'glute',
+  'grip',
+  'hamstring',
+  'hip',
+  'hip_flexor',
+  'mobility',
+  'quad',
+  'shoulder',
+  'tibialis',
+  'trap',
+  'triceps',
 ] as const;
-export const EQUIPMENT = ['barbell', 'dumbbell', 'machine', 'bodyweight'] as const;
-export const MOVEMENT_PATTERNS = ['push', 'pull'] as const;
+export const EQUIPMENT = [
+  'band',
+  'barbell',
+  'bodyweight',
+  'cable',
+  'dumbbell',
+  'kettlebell',
+  'machine',
+  'other',
+  'specialty_bar',
+] as const;
+export const MOVEMENT_PATTERNS = [
+  'squat',
+  'hip_hinge',
+  'horizontal_push',
+  'vertical_push',
+  'horizontal_pull',
+  'vertical_pull',
+  'warm_up',
+  'other',
+] as const;
 export const PLAN_SOURCES = ['coach', 'template', 'algorithm'] as const;
 export const API_PLAN_SOURCES = ['coach', 'template'] as const;
 export const PLAN_STATUSES = ['draft', 'published', 'completed', 'paused'] as const;
@@ -61,6 +90,7 @@ export interface UsersTable {
 export interface ExercisesTable {
   id: Generated<string>;
   name: string;
+  name_en: NullableColumn<string>;
   exercise_type: ExerciseType;
   main_lift_family: NullableColumn<LiftFamily>;
   is_competition_lift: Generated<boolean>;
