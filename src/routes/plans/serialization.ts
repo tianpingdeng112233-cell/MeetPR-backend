@@ -73,6 +73,7 @@ export interface PlanWithChildrenResponse extends PlanResponse {
 export interface ExerciseResponse {
   id: string;
   name: string;
+  name_en: string | null;
   exercise_type: ExerciseRow['exercise_type'];
   main_lift_family: ExerciseRow['main_lift_family'];
   is_competition_lift: boolean;
@@ -147,6 +148,7 @@ export function toExercise(row: ExerciseRow): ExerciseResponse {
   return {
     id: row.id,
     name: row.name,
+    name_en: row.name_en,
     exercise_type: row.exercise_type,
     main_lift_family: row.main_lift_family,
     is_competition_lift: row.is_competition_lift,

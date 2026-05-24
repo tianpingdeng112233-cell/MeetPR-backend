@@ -56,9 +56,9 @@ export const CreateExerciseBodySchema = z
     exercise_type: ExerciseTypeSchema,
     main_lift_family: LiftFamilySchema.nullable().optional(),
     is_competition_lift: z.boolean(),
-    muscle_groups: z.array(MuscleGroupSchema).min(1).max(9),
-    equipment: z.array(EquipmentSchema).min(1).max(4),
-    movement_pattern: z.array(MovementPatternSchema).max(2),
+    muscle_groups: z.array(MuscleGroupSchema).min(1).max(MUSCLE_GROUPS.length),
+    equipment: z.array(EquipmentSchema).min(1).max(EQUIPMENT.length),
+    movement_pattern: z.array(MovementPatternSchema).max(MOVEMENT_PATTERNS.length),
   })
   .superRefine((data, ctx) => {
     if (data.exercise_type === 'accessory' && data.main_lift_family != null) {
