@@ -12,11 +12,14 @@ import { meRouter } from './me';
 import { plansRouter, studentPlansRouter } from './plans';
 import { setsRouter, studentSetsRouter } from './sets';
 import { studentRouter } from './student';
+import { uploadsRouter } from './uploads';
+import type { OssService } from '../services/oss';
 
 interface RouteDeps {
   config: Config;
   db: Kysely<Database>;
   logger: Logger;
+  oss?: OssService | undefined;
   requireAuth: RequestHandler;
 }
 
@@ -37,4 +40,9 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use('/coach', deps.requireAuth, coachRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachFeedbackRouter({ db: deps.db }));
   app.use('/student', deps.requireAuth, studentRouter());
+  app.use(
+    '/uploads',
+    deps.requireAuth,
+    uploadsRouter({ db: deps.db, logger: deps.logger, oss: deps.oss }),
+  );
 }

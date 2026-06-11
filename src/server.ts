@@ -9,14 +9,19 @@ import { loadConfig } from './config';
 import { createDb } from './db/kysely';
 import { createPool } from './db/pool';
 import { createLogger } from './logger';
+import { maybeCreateOssService } from './services/oss';
 
 function main(): void {
   const config = loadConfig();
   const logger = createLogger(config);
   const pool = createPool(config.DATABASE_URL);
   const db = createDb(pool);
+  const oss = maybeCreateOssService(config);
+  if (!oss) {
+    logger.warn({}, 'oss_not_configured_uploads_disabled');
+  }
 
-  const app = createApp({ config, logger, db });
+  const app = createApp({ config, logger, db, oss });
 
   const server = app.listen(config.PORT, () => {
     logger.info({ port: config.PORT, env: config.NODE_ENV }, 'server_listening');

@@ -13,6 +13,12 @@ export const ConfigSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   CORS_ORIGIN: z.string().default('*'),
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+  // OSS credentials are optional: local dev runs without them and /uploads/* responds 503.
+  OSS_ACCESS_KEY_ID: z.string().min(1).optional(),
+  OSS_ACCESS_KEY_SECRET: z.string().min(1).optional(),
+  OSS_BUCKET: z.string().min(1).optional(),
+  OSS_REGION: z.string().min(1).optional(),
+  OSS_ENDPOINT: z.string().min(1).optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
