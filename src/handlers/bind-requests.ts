@@ -69,7 +69,28 @@ export type CreateBindRequestResult =
   | { type: 'already-bound' }
   | { type: 'invalid-code' };
 
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
+}
+
 export async function createBindRequest(
+  db: Kysely<Database>,
+  studentId: string,
+  input: { code: string; display_name: string },
+): Promise<CreateBindRequestResult> {
+  try {
+    return await createBindRequestInTransaction(db, studentId, input);
+  } catch (error: unknown) {
+    // bind_requests_unique_pending backstops two concurrent submissions; the
+    // loser reads as a duplicate, not a 500 (Codex review P1).
+    if (isUniqueViolation(error)) {
+      return { type: 'already-pending' };
+    }
+    throw error;
+  }
+}
+
+async function createBindRequestInTransaction(
   db: Kysely<Database>,
   studentId: string,
   input: { code: string; display_name: string },

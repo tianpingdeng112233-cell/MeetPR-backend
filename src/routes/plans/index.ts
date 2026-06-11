@@ -439,6 +439,20 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           }
         }
 
+        // Days must fit the declared horizon: a 1-week adaptation plan with
+        // week-2+ days is a disguised full plan slipping past the evaluation
+        // gate (Codex review P1).
+        const overflowDay = await trx
+          .selectFrom('plan_days')
+          .select(['id'])
+          .where('plan_id', '=', plan.id)
+          .where('week_number', '>', plan.plan_weeks)
+          .limit(1)
+          .executeTakeFirst();
+        if (overflowDay) {
+          return { type: 'weeks-overflow' as const, planId: plan.id };
+        }
+
         const counts = await publishCounts(trx, plan.id);
         if (isPublishIncomplete(counts)) {
           return { type: 'incomplete' as const, planId: plan.id, counts };
@@ -470,6 +484,15 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         res.status(403).json({ error: 'EVALUATION_IN_PROGRESS' });
         return;
       }
+      if (result.type === 'weeks-overflow') {
+        deps.logger.warn(
+          { planId: result.planId, reason: 'days_exceed_plan_weeks' },
+          'plan_publish_rejected',
+        );
+        res.status(422).json({ error: 'PLAN_DAYS_EXCEED_WEEKS' });
+        return;
+      }
+
       if (result.type === 'incomplete') {
         deps.logger.warn(
           {

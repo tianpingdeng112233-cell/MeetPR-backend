@@ -109,6 +109,30 @@ describe('publish evaluation hard gate', () => {
     expect(plan.status).toBe('draft');
   });
 
+  it('rejects a 1-week adaptation plan smuggling week-2 days (gate bypass)', async () => {
+    const ctx = await makeContext();
+    await createEvaluationPeriod(ctx);
+    const { planId } = await createDraftPlan(ctx, { kind: 'adaptation', planWeeks: 1 });
+    // Disguise: declared 1 week, but content spans week 2 (Codex review P1).
+    await ctx.db
+      .insertInto('plan_days')
+      .values({ plan_id: planId, day_of_week: 3, week_number: 2, sort_order: 0 })
+      .execute();
+
+    const publish = await request(ctx.app)
+      .post(`/plans/${planId}/publish`)
+      .set(auth(ctx.coachToken));
+
+    expect(publish.status).toBe(422);
+    expect(publish.body).toEqual({ error: 'PLAN_DAYS_EXCEED_WEEKS' });
+    const plan = await ctx.db
+      .selectFrom('plans')
+      .select(['status'])
+      .where('id', '=', planId)
+      .executeTakeFirstOrThrow();
+    expect(plan.status).toBe('draft');
+  });
+
   it('allows publishing a 1-week adaptation plan during the evaluation', async () => {
     const ctx = await makeContext();
     await createEvaluationPeriod(ctx);

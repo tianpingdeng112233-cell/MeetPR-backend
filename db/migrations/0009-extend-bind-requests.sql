@@ -11,4 +11,9 @@ ALTER TABLE bind_requests
 ALTER TABLE bind_requests
   ADD COLUMN skip_reason TEXT CHECK (skip_reason IS NULL OR length(skip_reason) BETWEEN 1 AND 500);
 
+-- One live pending request per student: backstops concurrent POST /bind-requests
+-- (the in-transaction SELECT guard alone is racy — Codex review P1).
+CREATE UNIQUE INDEX bind_requests_unique_pending
+  ON bind_requests (student_id) WHERE status = 'pending';
+
 COMMIT;

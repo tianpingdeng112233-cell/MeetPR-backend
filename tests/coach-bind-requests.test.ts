@@ -175,6 +175,32 @@ describe('coach bind request queue', () => {
     expect(accept.body.error).toBe('BIND_REQUEST_NOT_PENDING');
   });
 
+  it('accept after a student cancel loses cleanly (conditional transition)', async () => {
+    const ctx = await makeContext();
+    const bindRequestId = await createPendingRequest(ctx);
+
+    const cancel = await request(ctx.app)
+      .delete(`/bind-requests/${bindRequestId}`)
+      .set(auth(ctx.freeStudentToken));
+    expect(cancel.status).toBe(204);
+
+    const accept = await request(ctx.app)
+      .post(`/coach/bind-requests/${bindRequestId}/accept`)
+      .set(auth(ctx.coachToken))
+      .send({ skip_evaluation: false });
+
+    expect(accept.status).toBe(409);
+    expect(accept.body).toEqual({ error: 'BIND_REQUEST_NOT_PENDING' });
+    const row = await ctx.db
+      .selectFrom('bind_requests')
+      .select(['status'])
+      .where('id', '=', bindRequestId)
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe('cancelled');
+    const periods = await ctx.db.selectFrom('evaluation_periods').selectAll().execute();
+    expect(periods).toHaveLength(0);
+  });
+
   it('hides other coaches requests and expires stale ones on the mutation path', async () => {
     const ctx = await makeContext();
     const requestId = await createPendingRequest(ctx);

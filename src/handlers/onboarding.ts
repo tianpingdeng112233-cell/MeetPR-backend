@@ -168,10 +168,14 @@ export async function upsertOnboardingProfile(
   return db.transaction().execute(async (trx): Promise<UpsertOnboardingResult> => {
     const touchesOneRm = ONE_RM_FIELDS.some((field) => field in patch);
     if (touchesOneRm) {
+      // Row lock so a concurrent /complete can't slip completed_at in
+      // between this check and the upsert (Codex review P2; no-op in pg-mem,
+      // enforced on real PG).
       const existing = await trx
         .selectFrom('student_onboarding_profiles')
         .select(['completed_at'])
         .where('user_id', '=', userId)
+        .forUpdate()
         .executeTakeFirst();
       if (existing && existing.completed_at !== null) {
         return { type: 'one-rm-locked' };

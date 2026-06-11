@@ -91,6 +91,7 @@ export const CreatePlanBodySchema = z
     // Defaults to 'regular'; immutable after creation (spec 005 D9).
     kind: z.enum(PLAN_KINDS).optional(),
   })
+  .strict()
   .superRefine((data, ctx) => {
     validateDateOrder(data, ctx);
     validateSourceTemplate(data, ctx);
@@ -113,6 +114,7 @@ export const PatchPlanBodySchema = z
     status: z.enum(PATCHABLE_PLAN_STATUSES).optional(),
     source_template_id: SourceTemplateIdSchema,
   })
+  .strict()
   .superRefine(validateDateOrder);
 
 export const CreatePlanDayBodySchema = z.object({

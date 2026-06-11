@@ -145,6 +145,9 @@ export async function acceptBindRequest(
       const gate = await gatePendingRequest(trx, coachId, bindRequestId);
       if (gate.type !== 'ok') return gate;
 
+      // Conditional transition: a concurrent cancel/reject/expiry between the
+      // gate read and this write loses cleanly instead of being overwritten
+      // (Codex review P1).
       const updated = await trx
         .updateTable('bind_requests')
         .set({
@@ -154,8 +157,13 @@ export async function acceptBindRequest(
           skip_reason: input.skip_reason,
         })
         .where('id', '=', bindRequestId)
+        .where('status', '=', 'pending')
+        .where('expired_at', '>', sql<Date>`now()`)
         .returningAll()
-        .executeTakeFirstOrThrow();
+        .executeTakeFirst();
+      if (!updated) {
+        return { type: 'not-pending' };
+      }
 
       let evaluationPeriod: EvaluationPeriodResponse | null = null;
       if (!input.skip_evaluation) {
@@ -194,12 +202,18 @@ export async function rejectBindRequest(
     if (gate.type !== 'ok') return gate;
 
     // Silent neutral rejection: no reason field (evaluation-workflow §3.4).
+    // Conditional transition mirrors accept (Codex review P1).
     const updated = await trx
       .updateTable('bind_requests')
       .set({ status: 'rejected', responded_at: sql<Date>`now()` })
       .where('id', '=', bindRequestId)
+      .where('status', '=', 'pending')
+      .where('expired_at', '>', sql<Date>`now()`)
       .returningAll()
-      .executeTakeFirstOrThrow();
+      .executeTakeFirst();
+    if (!updated) {
+      return { type: 'not-pending' };
+    }
 
     return { type: 'rejected', bindRequest: toBindRequest(updated) };
   });

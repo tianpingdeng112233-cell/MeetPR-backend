@@ -719,6 +719,36 @@ describe('coach planning CRUD', () => {
     expect(response.body.error).toBe('VALIDATION_ERROR');
   });
 
+  it('rejects unknown/camelCase keys on plan create and patch (strict wire shape)', async () => {
+    const ctx = await makeContext();
+
+    const camelCreate = await request(ctx.app).post('/plans').set(auth(ctx.coachToken)).send({
+      trainee_id: traineeId,
+      name: 'Strict',
+      start_date: '2026-06-15',
+      end_date: '2026-07-12',
+      planWeeks: 4,
+      source: 'coach',
+    });
+    expect(camelCreate.status).toBe(400);
+    expect(camelCreate.body.error).toBe('VALIDATION_ERROR');
+
+    const created = await createPlan(ctx);
+    const planId = (created.body as { id: string }).id;
+    const kindPatch = await request(ctx.app)
+      .patch(`/plans/${planId}`)
+      .set(auth(ctx.coachToken))
+      .send({ kind: 'adaptation' });
+    expect(kindPatch.status).toBe(400);
+    expect(kindPatch.body.error).toBe('VALIDATION_ERROR');
+    const row = await ctx.db
+      .selectFrom('plans')
+      .select(['kind'])
+      .where('id', '=', planId)
+      .executeTakeFirstOrThrow();
+    expect(row.kind).toBe('regular');
+  });
+
   it('rejects publishing an already-published plan', async () => {
     const ctx = await makeContext();
     const { plan } = await createCompleteDraft(ctx);
