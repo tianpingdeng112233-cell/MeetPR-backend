@@ -43,8 +43,20 @@ export const InitiateBodySchema = z
     size_bytes: z.number().int().positive(),
     part_count: z.number().int().min(1).max(MAX_PART_COUNT),
     filename: z.string().min(1).max(255).optional(),
+    // set_video only: links the upload to the student's own set log so the
+    // coach-side video wall can resolve it server-side (spec 007).
+    set_log_id: z.string().uuid().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.set_log_id !== undefined && data.kind !== 'set_video') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['set_log_id'],
+        message: 'set_log_id is only valid for kind=set_video',
+      });
+    }
+  });
 
 export type InitiateBody = z.infer<typeof InitiateBodySchema>;
 

@@ -39,6 +39,7 @@ describe('POST /uploads/:attachmentId/complete', () => {
       content_type: 'video/mp4',
       size_bytes: 50 * 1024 * 1024,
       filename: 'squat-day1.mp4',
+      set_log_id: null,
       status: 'ready',
       created_at: expect.any(String),
       updated_at: expect.any(String),

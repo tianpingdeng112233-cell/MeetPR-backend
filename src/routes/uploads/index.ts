@@ -86,6 +86,20 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
         return;
       }
 
+      // Real gate: a set_video may only link to the uploader's own set log.
+      if (body.data.set_log_id !== undefined) {
+        const ownedLog = await db
+          .selectFrom('set_logs')
+          .select(['id'])
+          .where('id', '=', body.data.set_log_id)
+          .where('student_id', '=', req.user.id)
+          .executeTakeFirst();
+        if (!ownedLog) {
+          res.status(404).json({ error: 'SET_LOG_NOT_FOUND' });
+          return;
+        }
+      }
+
       const ossKey = `attachments/${req.user.id}/${randomUUID()}${extension}`;
       const uploadId = await oss.initiateMultipartUpload(ossKey, body.data.content_type);
 
@@ -97,6 +111,7 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
         content_type: body.data.content_type,
         size_bytes: body.data.size_bytes,
         filename: body.data.filename ?? null,
+        set_log_id: body.data.set_log_id ?? null,
       });
 
       const partUrls = await oss.signPartUrls(
