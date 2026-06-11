@@ -58,6 +58,8 @@ export const BIND_REQUEST_STATUSES = [
   'expired',
   'cancelled',
 ] as const;
+export const ATTACHMENT_KINDS = ['set_video', 'onboarding_video', 'onboarding_doc'] as const;
+export const ATTACHMENT_STATUSES = ['uploading', 'ready', 'aborted'] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
 export type LiftFamily = (typeof LIFT_FAMILIES)[number];
@@ -72,6 +74,8 @@ export type PatchablePlanStatus = (typeof PATCHABLE_PLAN_STATUSES)[number];
 export type IntensityMode = (typeof INTENSITY_MODES)[number];
 export type SetType = (typeof SET_TYPES)[number];
 export type BindRequestStatus = (typeof BIND_REQUEST_STATUSES)[number];
+export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
+export type AttachmentStatus = (typeof ATTACHMENT_STATUSES)[number];
 
 type NullableColumn<T> = ColumnType<T | null, T | null | undefined, T | null>;
 type TimestampColumn = ColumnType<Date, Date | undefined, Date>;
@@ -194,6 +198,21 @@ export interface FeedbackTable {
   read_at: NullableColumn<Date>;
 }
 
+export interface AttachmentsTable {
+  id: Generated<string>;
+  owner_id: string;
+  kind: AttachmentKind;
+  oss_key: string;
+  oss_upload_id: NullableColumn<string>;
+  content_type: string;
+  // BIGINT: node-pg returns int8 as string; pg-mem returns a number. Normalize at serialization.
+  size_bytes: ColumnType<string | number, number, number>;
+  filename: NullableColumn<string>;
+  status: Generated<AttachmentStatus>;
+  created_at: TimestampColumn;
+  updated_at: TimestampColumn;
+}
+
 export interface Database {
   users: UsersTable;
   exercises: ExercisesTable;
@@ -206,4 +225,5 @@ export interface Database {
   bind_requests: BindRequestsTable;
   set_logs: SetLogsTable;
   feedback: FeedbackTable;
+  attachments: AttachmentsTable;
 }

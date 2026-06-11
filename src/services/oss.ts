@@ -1,0 +1,133 @@
+import OSS from 'ali-oss';
+
+import type { Config } from '../config';
+
+export interface CompletedPart {
+  part_number: number;
+  etag: string;
+}
+
+export interface PresignedPartUrl {
+  part_number: number;
+  url: string;
+}
+
+/**
+ * Network boundary for Aliyun OSS. Routes depend on this interface only;
+ * tests inject a fake (repo rule: mock only at network/DB boundaries).
+ */
+export interface OssService {
+  /** InitiateMultipartUpload — returns the OSS upload ID. */
+  initiateMultipartUpload(key: string, contentType: string): Promise<string>;
+  /** Presigned PUT URL per part (local HMAC signing, no OSS round-trip). */
+  signPartUrls(
+    key: string,
+    uploadId: string,
+    partCount: number,
+    expiresSeconds: number,
+  ): Promise<PresignedPartUrl[]>;
+  /** CompleteMultipartUpload — throws on etag mismatch / unknown upload. */
+  completeMultipartUpload(key: string, uploadId: string, parts: CompletedPart[]): Promise<void>;
+  /** AbortMultipartUpload — swallows NoSuchUpload so abort stays idempotent. */
+  abortMultipartUpload(key: string, uploadId: string): Promise<void>;
+  /** Presigned GET URL (local HMAC signing, no OSS round-trip). */
+  signGetUrl(key: string, expiresSeconds: number): Promise<string>;
+}
+
+export interface OssServiceOptions {
+  accessKeyId: string;
+  accessKeySecret: string;
+  bucket: string;
+  region: string;
+  endpoint?: string;
+}
+
+function isNoSuchUpload(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const { code, name } = err as { code?: unknown; name?: unknown };
+  return code === 'NoSuchUpload' || name === 'NoSuchUploadError';
+}
+
+export function createOssService(options: OssServiceOptions): OssService {
+  const client = new OSS({
+    accessKeyId: options.accessKeyId,
+    accessKeySecret: options.accessKeySecret,
+    bucket: options.bucket,
+    region: options.region,
+    ...(options.endpoint !== undefined ? { endpoint: options.endpoint } : {}),
+    secure: true,
+  });
+
+  return {
+    async initiateMultipartUpload(key, contentType) {
+      const result = await client.initMultipartUpload(key, {
+        headers: { 'Content-Type': contentType },
+      });
+      return result.uploadId;
+    },
+
+    signPartUrls(key, uploadId, partCount, expiresSeconds) {
+      const urls = Array.from({ length: partCount }, (_, index) => {
+        const partNumber = index + 1;
+        return {
+          part_number: partNumber,
+          url: client.signatureUrl(key, {
+            method: 'PUT',
+            expires: expiresSeconds,
+            subResource: { partNumber: String(partNumber), uploadId },
+          }),
+        };
+      });
+      return Promise.resolve(urls);
+    },
+
+    async completeMultipartUpload(key, uploadId, parts) {
+      await client.completeMultipartUpload(
+        key,
+        uploadId,
+        parts.map((part) => ({ number: part.part_number, etag: part.etag })),
+      );
+    },
+
+    async abortMultipartUpload(key, uploadId) {
+      try {
+        await client.abortMultipartUpload(key, uploadId);
+      } catch (err) {
+        if (isNoSuchUpload(err)) return;
+        throw err;
+      }
+    },
+
+    signGetUrl(key, expiresSeconds) {
+      return Promise.resolve(client.signatureUrl(key, { method: 'GET', expires: expiresSeconds }));
+    },
+  };
+}
+
+/**
+ * Builds the OSS service from env-derived config. Returns undefined when any
+ * required variable is missing so /uploads/* can answer 503 UPLOADS_NOT_CONFIGURED.
+ */
+export function maybeCreateOssService(
+  config: Pick<
+    Config,
+    'OSS_ACCESS_KEY_ID' | 'OSS_ACCESS_KEY_SECRET' | 'OSS_BUCKET' | 'OSS_REGION' | 'OSS_ENDPOINT'
+  >,
+): OssService | undefined {
+  if (
+    config.OSS_ACCESS_KEY_ID === undefined ||
+    config.OSS_ACCESS_KEY_SECRET === undefined ||
+    config.OSS_BUCKET === undefined ||
+    config.OSS_REGION === undefined
+  ) {
+    return undefined;
+  }
+
+  return createOssService({
+    accessKeyId: config.OSS_ACCESS_KEY_ID,
+    accessKeySecret: config.OSS_ACCESS_KEY_SECRET,
+    bucket: config.OSS_BUCKET,
+    region: config.OSS_REGION,
+    ...(config.OSS_ENDPOINT !== undefined ? { endpoint: config.OSS_ENDPOINT } : {}),
+  });
+}
