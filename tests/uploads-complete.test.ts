@@ -156,4 +156,30 @@ describe('POST /uploads/:attachmentId/complete', () => {
       expect(res.body.error).toBe('VALIDATION_ERROR');
     }
   });
+
+  it('concurrent double-complete: loser gets 409 before OSS is touched', async () => {
+    const ctx = await makeUploadsContext();
+    const attachmentId = await initiatedAttachmentId(ctx, ctx.traineeToken);
+
+    const fire = () =>
+      request(ctx.app)
+        .post(`/uploads/${attachmentId}/complete`)
+        .set(auth(ctx.traineeToken))
+        .send(parts);
+    const [first, second] = await Promise.all([fire(), fire()]);
+
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([200, 409]);
+    const loser = first.status === 409 ? first : second;
+    expect(loser.body).toEqual({ error: 'UPLOAD_INVALID_STATE' });
+    // The atomic claim must keep the loser away from OSS entirely.
+    expect(ctx.oss.calls.complete).toHaveLength(1);
+
+    const row = await ctx.db
+      .selectFrom('attachments')
+      .selectAll()
+      .where('id', '=', attachmentId)
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe('ready');
+  });
 });

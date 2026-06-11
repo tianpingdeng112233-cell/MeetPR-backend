@@ -18,6 +18,7 @@ import { route, validationEnvelope } from '../http';
 import {
   AttachmentIdParamSchema,
   CompleteBodySchema,
+  AbortBodySchema,
   CONTENT_TYPE_EXTENSIONS,
   InitiateBodySchema,
   KIND_LIMITS,
@@ -153,6 +154,19 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
         return;
       }
 
+      // Atomic claim BEFORE touching OSS: a concurrent complete/abort loser
+      // must see 409 here and never reach completeMultipartUpload (review P1).
+      const claimed = await transitionAttachmentStatus(
+        db,
+        attachment.id,
+        'uploading',
+        'completing',
+      );
+      if (!claimed) {
+        res.status(409).json({ error: 'UPLOAD_INVALID_STATE' });
+        return;
+      }
+
       try {
         await oss.completeMultipartUpload(
           attachment.oss_key,
@@ -164,13 +178,14 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
           { err, attachmentId: attachment.id, ownerId: req.user.id },
           'upload_complete_oss_failed',
         );
+        await transitionAttachmentStatus(db, attachment.id, 'completing', 'uploading');
         res.status(400).json({ error: 'UPLOAD_INVALID_PARTS' });
         return;
       }
 
-      const updated = await transitionAttachmentStatus(db, attachment.id, 'uploading', 'ready');
+      const updated = await transitionAttachmentStatus(db, attachment.id, 'completing', 'ready');
       if (!updated) {
-        // Lost a concurrent complete/abort race after the OSS call.
+        // completing -> ready can only be raced by operators poking the DB.
         res.status(409).json({ error: 'UPLOAD_INVALID_STATE' });
         return;
       }
@@ -191,6 +206,11 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
       const params = AttachmentIdParamSchema.safeParse(req.params);
       if (!params.success) {
         res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+      const abortBody = AbortBodySchema.safeParse(req.body ?? {});
+      if (!abortBody.success) {
+        res.status(400).json(validationEnvelope(abortBody.error));
         return;
       }
 

@@ -63,4 +63,24 @@ describe('POST /uploads/:attachmentId/abort', () => {
     expect(unknown.status).toBe(404);
     expect(ctx.oss.calls.abort).toHaveLength(0);
   });
+
+  it('rejects a non-empty abort body (strict wire shape)', async () => {
+    const ctx = await makeUploadsContext();
+    const initiated = await initiateUpload(ctx, ctx.traineeToken, { part_count: 1 });
+    const attachmentId = (initiated.body as { attachment_id: string }).attachment_id;
+
+    const res = await request(ctx.app)
+      .post(`/uploads/${attachmentId}/abort`)
+      .set(auth(ctx.traineeToken))
+      .send({ foo: 'bar' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+    const row = await ctx.db
+      .selectFrom('attachments')
+      .selectAll()
+      .where('id', '=', attachmentId)
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe('uploading');
+  });
 });

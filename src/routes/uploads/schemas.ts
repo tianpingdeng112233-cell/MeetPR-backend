@@ -66,6 +66,9 @@ export const CompleteBodySchema = z
 
 export type CompleteBody = z.infer<typeof CompleteBodySchema>;
 
+/// Abort takes an empty body; unknown/camelCase keys are wire-shape errors.
+export const AbortBodySchema = z.object({}).strict();
+
 export const AttachmentIdParamSchema = z.object({
   attachmentId: z.string().uuid(),
 });

@@ -16,7 +16,7 @@ CREATE TABLE attachments (
   -- Original client filename, display-only (never used in oss_key).
   filename      TEXT CHECK (filename IS NULL OR length(filename) BETWEEN 1 AND 255),
   status        TEXT NOT NULL DEFAULT 'uploading'
-                CHECK (status IN ('uploading', 'ready', 'aborted')),
+                CHECK (status IN ('uploading', 'completing', 'ready', 'aborted')),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
