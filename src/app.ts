@@ -13,11 +13,14 @@ import { notFound } from './middleware/notFound';
 import { createGlobalRateLimit } from './middleware/rateLimit';
 import { requestId } from './middleware/requestId';
 import { mountRoutes } from './routes';
+import type { OssService } from './services/oss';
 
 export interface AppDeps {
   config: Config;
   logger: Logger;
   db: Kysely<Database>;
+  /** Absent when OSS env vars are not configured — /uploads/* answers 503. */
+  oss?: OssService | undefined;
 }
 
 export function createApp(deps: AppDeps): Express {
@@ -42,6 +45,7 @@ export function createApp(deps: AppDeps): Express {
     config,
     db: deps.db,
     logger,
+    oss: deps.oss,
     requireAuth: createRequireAuth(config),
   });
 

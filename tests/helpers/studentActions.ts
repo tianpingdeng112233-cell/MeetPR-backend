@@ -9,6 +9,7 @@ import { createApp } from '../../src/app';
 import type { Config } from '../../src/config';
 import { createDb } from '../../src/db/kysely';
 import type { Database, UserRole } from '../../src/db/types';
+import type { OssService } from '../../src/services/oss';
 
 export const config: Config = {
   NODE_ENV: 'test',
@@ -222,10 +223,27 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       posted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       read_at TIMESTAMPTZ
     );
+
+    CREATE TABLE attachments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      oss_key TEXT NOT NULL UNIQUE,
+      oss_upload_id TEXT,
+      content_type TEXT NOT NULL,
+      size_bytes BIGINT NOT NULL,
+      filename TEXT,
+      status TEXT NOT NULL DEFAULT 'uploading',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
 }
 
-export async function makeContext(logger = pino({ level: 'silent' })): Promise<TestContext> {
+export async function makeContext(
+  logger = pino({ level: 'silent' }),
+  extras: { oss?: OssService } = {},
+): Promise<TestContext> {
   const mem = newDb();
   registerPgMemFunctions(mem);
   createSchema(mem);
@@ -320,7 +338,7 @@ export async function makeContext(logger = pino({ level: 'silent' })): Promise<T
     .execute();
 
   return {
-    app: createApp({ config, logger, db }),
+    app: createApp({ config, logger, db, ...extras }),
     db,
     coachToken: signToken(ids.coach, 'coach'),
     otherCoachToken: signToken(ids.otherCoach, 'coach'),
