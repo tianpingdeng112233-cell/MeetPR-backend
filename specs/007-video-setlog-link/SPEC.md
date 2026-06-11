@@ -8,7 +8,7 @@
 
 1. **migration 0015**: `attachments.set_log_id UUID NULL REFERENCES set_logs(id) ON DELETE SET NULL` + 视频墙部分索引 `(owner_id, created_at DESC) WHERE kind='set_video' AND status='ready'`
 2. **`POST /uploads/initiate`** 接受可选 `set_log_id`（仅 kind=set_video，zod superRefine）；**真 gate**：set_log 必须属于上传者本人，否则 404 `SET_LOG_NOT_FOUND`；附件 wire 全面带 `set_log_id`
-3. **`GET /students/:id/videos`**（新）：ready 状态 set_video 列表（倒序、cap 100），每项含 `set_log_id` / `plan_exercise_id` / `logged_at`（join set_logs）+ 15min presigned 播放 URL；授权矩阵照抄 `GET /students/:id/sets`（self / accepted-bind coach）；OSS 未配置 503
+3. **`GET /students/:id/videos`**（新）：ready 状态 set_video **元数据**列表（倒序、cap 100），每项含 `set_log_id` / `plan_exercise_id` / `logged_at`（join set_logs）。**不带播放 URL**——播放走既有 `GET /uploads/:id/url` 逐个换（单响应被截留不会泄露一整墙活 URL，per Codex review）；授权 = self / accepted-bind coach，且 coach 按 **plan 归属过滤**（只见自己计划下的关联视频 + 无关联视频；双教练学员跨教练不泄露，对齐 sets 端点语义）
 
 ## 不做
 

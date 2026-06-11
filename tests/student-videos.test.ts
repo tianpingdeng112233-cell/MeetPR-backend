@@ -120,11 +120,39 @@ describe('GET /students/:id/videos (spec 007)', () => {
     expect(linked).toMatchObject({
       set_log_id: setLogId,
       content_type: 'video/mp4',
-      url_expires_in: 900,
     });
     expect(linked.plan_exercise_id).toEqual(expect.any(String));
     expect(linked.logged_at).toEqual(expect.any(String));
-    expect(linked.url).toContain('fake-oss');
+    // Metadata only: playback URLs come from GET /uploads/:id/url per item.
+    expect(linked.url).toBeUndefined();
+  });
+
+  it('scopes a bonded coach to videos from their own plans plus unlinked ones', async () => {
+    const ctx = await makeUploadsContext();
+    // Linked video hangs off ids.coach's plan (createPublishedPlan default).
+    const setLogId = await seedSetLog(ctx);
+    await uploadReadyVideo(ctx, setLogId);
+    await uploadReadyVideo(ctx); // unlinked
+
+    const owningCoach = await request(ctx.app)
+      .get(`/students/${ids.trainee}/videos`)
+      .set(auth(ctx.coachToken));
+    expect(owningCoach.status).toBe(200);
+    expect(owningCoach.body.videos).toHaveLength(2);
+
+    // The other bonded coach (dual-coach seed) sees only the unlinked one.
+    const otherCoach = await request(ctx.app)
+      .get(`/students/${ids.trainee}/videos`)
+      .set(auth(ctx.otherCoachToken));
+    expect(otherCoach.status).toBe(200);
+    expect(otherCoach.body.videos).toHaveLength(1);
+    expect(otherCoach.body.videos[0].set_log_id).toBeNull();
+
+    // The student always sees everything of their own.
+    const self = await request(ctx.app)
+      .get(`/students/${ids.trainee}/videos`)
+      .set(auth(ctx.traineeToken));
+    expect(self.body.videos).toHaveLength(2);
   });
 
   it('enforces the sets authorization matrix', async () => {

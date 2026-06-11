@@ -42,7 +42,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use('/students', deps.requireAuth, studentFeedbackRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentEvaluationsRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentOnboardingRouter({ db: deps.db }));
-  app.use('/students', deps.requireAuth, studentVideosRouter({ db: deps.db, oss: deps.oss }));
+  app.use('/students', deps.requireAuth, studentVideosRouter({ db: deps.db }));
   app.use('/bind-requests', deps.requireAuth, studentBindRequestsRouter({ db: deps.db }));
   app.use('/exercises', deps.requireAuth, exercisesRouter({ db: deps.db }));
   app.use('/sets', deps.requireAuth, setsRouter({ db: deps.db }));
