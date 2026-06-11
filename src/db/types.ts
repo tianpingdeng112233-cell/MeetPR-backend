@@ -83,6 +83,19 @@ export const INJURY_AREAS = [
   'ankle',
   'other',
 ] as const;
+// Readiness check-in muscle vocabulary. Single source of truth on the iOS side
+// is ReadinessCheckin.allowedMuscleGroups (spec 030 §C1) — this is its verbatim
+// mirror. Adding a muscle group = change both sides + tests + spec revision.
+export const READINESS_MUSCLE_GROUPS = [
+  'quad',
+  'hamstring',
+  'glute',
+  'back',
+  'chest',
+  'shoulder',
+  'triceps',
+  'core',
+] as const;
 export const ATTACHMENT_KINDS = ['set_video', 'onboarding_video', 'onboarding_doc'] as const;
 export const ATTACHMENT_STATUSES = [
   'uploading',
@@ -116,6 +129,7 @@ export type BenchGrip = (typeof BENCH_GRIPS)[number];
 export type GymTier = (typeof GYM_TIERS)[number];
 export type TrainingDay = (typeof TRAINING_DAYS)[number];
 export type InjuryArea = (typeof INJURY_AREAS)[number];
+export type ReadinessMuscleGroup = (typeof READINESS_MUSCLE_GROUPS)[number];
 export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
 export type AttachmentStatus = (typeof ATTACHMENT_STATUSES)[number];
 
@@ -318,6 +332,26 @@ export interface SetLogsTable {
   logged_at: TimestampColumn;
 }
 
+export interface MuscleFatigueEntry {
+  muscle_group: ReadinessMuscleGroup;
+  severity: number;
+}
+
+export interface ReadinessCheckinsTable {
+  id: Generated<string>;
+  student_id: string;
+  // DATE-as-text (OID 1082 parser); pg-mem (tests) returns a Date — normalize at serialization.
+  checkin_date: ColumnType<string | Date, string, string>;
+  sleep_quality: number;
+  mood: number;
+  stress: number;
+  // JSONB: insert as a JSON string (node-pg would otherwise encode a JS array as a
+  // Postgres array literal); node-pg returns parsed JSON, pg-mem may return a string.
+  muscle_fatigue: ColumnType<MuscleFatigueEntry[] | string, string, string>;
+  submitted_at: TimestampColumn;
+  updated_at: TimestampColumn;
+}
+
 export interface FeedbackTable {
   id: Generated<string>;
   coach_id: string;
@@ -355,6 +389,7 @@ export interface Database {
   student_profiles: StudentProfilesTable;
   bind_requests: BindRequestsTable;
   set_logs: SetLogsTable;
+  readiness_checkins: ReadinessCheckinsTable;
   feedback: FeedbackTable;
   invite_codes: InviteCodesTable;
   evaluation_periods: EvaluationPeriodsTable;
