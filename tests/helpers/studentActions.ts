@@ -213,6 +213,19 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       UNIQUE (student_id, plan_exercise_id, set_index)
     );
 
+    CREATE TABLE readiness_checkins (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      checkin_date DATE NOT NULL,
+      sleep_quality SMALLINT NOT NULL,
+      mood SMALLINT NOT NULL,
+      stress SMALLINT NOT NULL,
+      muscle_fatigue JSONB NOT NULL DEFAULT '[]',
+      submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (student_id, checkin_date)
+    );
+
     CREATE TABLE feedback (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
