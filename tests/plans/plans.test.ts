@@ -115,8 +115,21 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       source TEXT NOT NULL,
       source_template_id UUID,
       status TEXT NOT NULL DEFAULT 'draft',
+      kind TEXT NOT NULL DEFAULT 'regular',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+
+    CREATE TABLE evaluation_periods (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      bind_request_id UUID NOT NULL,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expected_end_at TIMESTAMPTZ NOT NULL,
+      completed_at TIMESTAMPTZ,
+      completion_type TEXT
     );
 
     CREATE TABLE plan_days (
@@ -704,6 +717,36 @@ describe('coach planning CRUD', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects unknown/camelCase keys on plan create and patch (strict wire shape)', async () => {
+    const ctx = await makeContext();
+
+    const camelCreate = await request(ctx.app).post('/plans').set(auth(ctx.coachToken)).send({
+      trainee_id: traineeId,
+      name: 'Strict',
+      start_date: '2026-06-15',
+      end_date: '2026-07-12',
+      planWeeks: 4,
+      source: 'coach',
+    });
+    expect(camelCreate.status).toBe(400);
+    expect(camelCreate.body.error).toBe('VALIDATION_ERROR');
+
+    const created = await createPlan(ctx);
+    const planId = (created.body as { id: string }).id;
+    const kindPatch = await request(ctx.app)
+      .patch(`/plans/${planId}`)
+      .set(auth(ctx.coachToken))
+      .send({ kind: 'adaptation' });
+    expect(kindPatch.status).toBe(400);
+    expect(kindPatch.body.error).toBe('VALIDATION_ERROR');
+    const row = await ctx.db
+      .selectFrom('plans')
+      .select(['kind'])
+      .where('id', '=', planId)
+      .executeTakeFirstOrThrow();
+    expect(row.kind).toBe('regular');
   });
 
   it('rejects publishing an already-published plan', async () => {

@@ -11,6 +11,7 @@ import type {
   PlanStatus,
   UserRole,
 } from '../../db/types';
+import { hasActiveEvaluation } from '../../handlers/evaluations';
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
 import { notifyPlanPublished } from '../../services/notifications';
@@ -261,6 +262,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           plan_weeks: body.data.plan_weeks,
           source: body.data.source,
           source_template_id: body.data.source_template_id ?? null,
+          kind: body.data.kind ?? 'regular',
         })
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -426,6 +428,31 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           return { type: 'not-draft' as const };
         }
 
+        // Evaluation hard gate (spec 005 D9): while the coach has an active
+        // evaluation period with this trainee, only a 1-week adaptation plan
+        // may be published. Server-side enforcement — not just hidden UI.
+        const isAdaptationWeek = plan.kind === 'adaptation' && plan.plan_weeks === 1;
+        if (!isAdaptationWeek) {
+          const evaluating = await hasActiveEvaluation(trx, user.id, plan.trainee_id);
+          if (evaluating) {
+            return { type: 'evaluation-in-progress' as const, planId: plan.id };
+          }
+        }
+
+        // Days must fit the declared horizon: a 1-week adaptation plan with
+        // week-2+ days is a disguised full plan slipping past the evaluation
+        // gate (Codex review P1).
+        const overflowDay = await trx
+          .selectFrom('plan_days')
+          .select(['id'])
+          .where('plan_id', '=', plan.id)
+          .where('week_number', '>', plan.plan_weeks)
+          .limit(1)
+          .executeTakeFirst();
+        if (overflowDay) {
+          return { type: 'weeks-overflow' as const, planId: plan.id };
+        }
+
         const counts = await publishCounts(trx, plan.id);
         if (isPublishIncomplete(counts)) {
           return { type: 'incomplete' as const, planId: plan.id, counts };
@@ -449,6 +476,23 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         res.status(409).json({ error: 'PLAN_NOT_DRAFT' });
         return;
       }
+      if (result.type === 'evaluation-in-progress') {
+        deps.logger.warn(
+          { planId: result.planId, reason: 'evaluation_in_progress' },
+          'plan_publish_rejected',
+        );
+        res.status(403).json({ error: 'EVALUATION_IN_PROGRESS' });
+        return;
+      }
+      if (result.type === 'weeks-overflow') {
+        deps.logger.warn(
+          { planId: result.planId, reason: 'days_exceed_plan_weeks' },
+          'plan_publish_rejected',
+        );
+        res.status(422).json({ error: 'PLAN_DAYS_EXCEED_WEEKS' });
+        return;
+      }
+
       if (result.type === 'incomplete') {
         deps.logger.warn(
           {

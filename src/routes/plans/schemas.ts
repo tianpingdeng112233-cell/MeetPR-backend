@@ -4,6 +4,7 @@ import {
   API_PLAN_SOURCES,
   INTENSITY_MODES,
   PATCHABLE_PLAN_STATUSES,
+  PLAN_KINDS,
   SET_TYPES,
 } from '../../db/types';
 
@@ -87,10 +88,21 @@ export const CreatePlanBodySchema = z
     plan_weeks: PlanWeeksSchema,
     source: z.enum(API_PLAN_SOURCES),
     source_template_id: SourceTemplateIdSchema,
+    // Defaults to 'regular'; immutable after creation (spec 005 D9).
+    kind: z.enum(PLAN_KINDS).optional(),
   })
+  .strict()
   .superRefine((data, ctx) => {
     validateDateOrder(data, ctx);
     validateSourceTemplate(data, ctx);
+    // Adaptation week plans are always exactly 1 week (evaluation-workflow §4.2).
+    if (data.kind === 'adaptation' && data.plan_weeks !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['plan_weeks'],
+        message: 'Adaptation plans must be exactly 1 week',
+      });
+    }
   });
 
 export const PatchPlanBodySchema = z
@@ -102,6 +114,7 @@ export const PatchPlanBodySchema = z
     status: z.enum(PATCHABLE_PLAN_STATUSES).optional(),
     source_template_id: SourceTemplateIdSchema,
   })
+  .strict()
   .superRefine(validateDateOrder);
 
 export const CreatePlanDayBodySchema = z.object({

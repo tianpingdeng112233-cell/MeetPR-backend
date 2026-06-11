@@ -31,6 +31,7 @@ export interface PlanResponse {
   source: PlanRow['source'];
   source_template_id: string | null;
   status: PlanRow['status'];
+  kind: PlanRow['kind'];
   created_at: string;
   updated_at: string;
 }
@@ -96,6 +97,7 @@ export function toPlan(row: PlanRow): PlanResponse {
     source: row.source,
     source_template_id: row.source_template_id,
     status: row.status,
+    kind: row.kind,
     created_at: timestamp(row.created_at),
     updated_at: timestamp(row.updated_at),
   };

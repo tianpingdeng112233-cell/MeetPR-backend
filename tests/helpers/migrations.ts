@@ -22,6 +22,14 @@ export function makeMigrationDb() {
     returns: DataType.text,
     implementation: (value: string) => value.trim(),
   });
+  // pg-mem has no built-in array_length; needed by 0013 CHECK constraints.
+  mem.public.registerFunction({
+    name: 'array_length',
+    args: [mem.public.getType(DataType.text).asArray(), DataType.integer],
+    returns: DataType.integer,
+    implementation: (value: string[] | null, _dimension: number) =>
+      value === null ? null : value.length,
+  });
   return mem;
 }
 
