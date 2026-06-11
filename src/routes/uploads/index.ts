@@ -305,6 +305,24 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
           res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
           return;
         }
+        // Wall-scoping parity (spec 007): a linked video belongs to the plan's
+        // coach; another bonded coach must not bypass the wall filter by
+        // exchanging a known attachment id directly.
+        if (attachment.set_log_id !== null) {
+          const owned = await db
+            .selectFrom('set_logs as sl')
+            .innerJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
+            .innerJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
+            .innerJoin('plans as p', 'p.id', 'pd.plan_id')
+            .select(['sl.id'])
+            .where('sl.id', '=', attachment.set_log_id)
+            .where('p.coach_id', '=', req.user.id)
+            .executeTakeFirst();
+          if (!owned) {
+            res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
+            return;
+          }
+        }
       }
 
       if (attachment.status !== 'ready') {

@@ -177,3 +177,28 @@ describe('GET /students/:id/videos (spec 007)', () => {
     expect(otherStudent.status).toBe(403);
   });
 });
+
+describe('GET /uploads/:id/url wall-scoping parity (spec 007)', () => {
+  it('denies the other bonded coach a linked video URL but allows unlinked', async () => {
+    const ctx = await makeUploadsContext();
+    const setLogId = await seedSetLog(ctx);
+    const linkedId = await uploadReadyVideo(ctx, setLogId);
+    const unlinkedId = await uploadReadyVideo(ctx);
+
+    // Owning coach exchanges fine.
+    const owning = await request(ctx.app).get(`/uploads/${linkedId}/url`).set(auth(ctx.coachToken));
+    expect(owning.status).toBe(200);
+
+    // The other bonded coach (dual-coach seed) must not reach a video linked
+    // to a different coach's plan — same 404 as nonexistence.
+    const otherLinked = await request(ctx.app)
+      .get(`/uploads/${linkedId}/url`)
+      .set(auth(ctx.otherCoachToken));
+    expect(otherLinked.status).toBe(404);
+
+    const otherUnlinked = await request(ctx.app)
+      .get(`/uploads/${unlinkedId}/url`)
+      .set(auth(ctx.otherCoachToken));
+    expect(otherUnlinked.status).toBe(200);
+  });
+});
