@@ -59,7 +59,13 @@ export const BIND_REQUEST_STATUSES = [
   'cancelled',
 ] as const;
 export const ATTACHMENT_KINDS = ['set_video', 'onboarding_video', 'onboarding_doc'] as const;
-export const ATTACHMENT_STATUSES = ['uploading', 'completing', 'ready', 'aborted'] as const;
+export const ATTACHMENT_STATUSES = [
+  'uploading',
+  'completing',
+  'aborting',
+  'ready',
+  'aborted',
+] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
 export type LiftFamily = (typeof LIFT_FAMILIES)[number];

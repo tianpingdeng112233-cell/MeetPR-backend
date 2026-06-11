@@ -229,18 +229,34 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
         return;
       }
 
-      // Service swallows NoSuchUpload (already expired/cleaned on OSS side).
-      await oss.abortMultipartUpload(attachment.oss_key, attachment.oss_upload_id);
-      const aborted = await transitionAttachmentStatus(db, attachment.id, 'uploading', 'aborted');
-      if (!aborted) {
-        // Lost a concurrent transition; only a parallel abort still counts as success.
+      // Atomic claim BEFORE touching OSS, mirroring complete: a stale abort
+      // that lost to a concurrent complete-claim must never abort the OSS
+      // upload out from under it (Codex second-pass P1).
+      const claimed = await transitionAttachmentStatus(db, attachment.id, 'uploading', 'aborting');
+      if (!claimed) {
         const current = await findOwnedAttachment(db, attachment.id, req.user.id);
-        if (current?.status !== 'aborted') {
-          res.status(409).json({ error: 'UPLOAD_INVALID_STATE' });
+        if (current?.status === 'aborted') {
+          res.status(204).send();
           return;
         }
+        res.status(409).json({ error: 'UPLOAD_INVALID_STATE' });
+        return;
       }
 
+      try {
+        // Service swallows NoSuchUpload (already expired/cleaned on OSS side).
+        await oss.abortMultipartUpload(attachment.oss_key, attachment.oss_upload_id);
+      } catch (err) {
+        logger.warn(
+          { err, attachmentId: attachment.id, ownerId: req.user.id },
+          'upload_abort_oss_failed',
+        );
+        await transitionAttachmentStatus(db, attachment.id, 'aborting', 'uploading');
+        res.status(502).json({ error: 'UPLOAD_ABORT_FAILED' });
+        return;
+      }
+
+      await transitionAttachmentStatus(db, attachment.id, 'aborting', 'aborted');
       logger.info({ attachmentId: attachment.id, ownerId: req.user.id }, 'upload_aborted');
       res.status(204).send();
     }),

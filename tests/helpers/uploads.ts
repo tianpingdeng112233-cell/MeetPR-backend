@@ -19,6 +19,8 @@ export interface FakeOss {
 export interface FakeOssOptions {
   completeError?: Error;
   abortError?: Error;
+  /** When set, completeMultipartUpload awaits this gate before resolving/rejecting — lets tests freeze a request mid-OSS-call. */
+  completeGate?: () => Promise<void>;
 }
 
 export function makeFakeOss(options: FakeOssOptions = {}): FakeOss {
@@ -46,10 +48,10 @@ export function makeFakeOss(options: FakeOssOptions = {}): FakeOss {
         })),
       );
     },
-    completeMultipartUpload(key, uploadId, parts) {
+    async completeMultipartUpload(key, uploadId, parts) {
       calls.complete.push({ key, uploadId, parts });
-      if (options.completeError) return Promise.reject(options.completeError);
-      return Promise.resolve();
+      if (options.completeGate) await options.completeGate();
+      if (options.completeError) throw options.completeError;
     },
     abortMultipartUpload(key, uploadId) {
       calls.abort.push({ key, uploadId });
