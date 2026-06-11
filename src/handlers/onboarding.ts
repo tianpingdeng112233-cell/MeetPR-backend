@@ -231,10 +231,13 @@ export async function completeOnboardingProfile(
   userId: string,
 ): Promise<CompleteOnboardingResult> {
   return db.transaction().execute(async (trx): Promise<CompleteOnboardingResult> => {
+    // Locked read: serializes against the 1RM-touching upsert's FOR UPDATE so
+    // a student edit can't land mid-completion (Codex second-pass).
     const row = await trx
       .selectFrom('student_onboarding_profiles')
       .selectAll()
       .where('user_id', '=', userId)
+      .forUpdate()
       .executeTakeFirst();
 
     if (!row) {
