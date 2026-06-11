@@ -19,6 +19,7 @@ describe('GET /coach/students', () => {
         display_name: 'Trainee One',
       },
       status: 'active',
+      evaluation: null,
     });
     expect(res.body.students[0].profile.created_at).toEqual(expect.any(String));
   });
@@ -42,5 +43,42 @@ describe('GET /coach/students', () => {
     expect(noToken.status).toBe(401);
     expect(asStudent.status).toBe(403);
     expect(asStudent.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
+  });
+
+  it('marks students with an active evaluation period as in_evaluation', async () => {
+    const ctx = await makeContext();
+    const bond = await ctx.db
+      .selectFrom('bind_requests')
+      .select(['id'])
+      .where('student_id', '=', ids.trainee)
+      .where('coach_id', '=', ids.coach)
+      .executeTakeFirstOrThrow();
+    await ctx.db
+      .insertInto('evaluation_periods')
+      .values({
+        student_id: ids.trainee,
+        coach_id: ids.coach,
+        bind_request_id: bond.id,
+        expected_end_at: new Date(Date.now() + 7 * 24 * 3600 * 1000),
+      })
+      .execute();
+
+    const res = await request(ctx.app).get('/coach/students').set(auth(ctx.coachToken));
+
+    expect(res.status).toBe(200);
+    const student = res.body.students[0];
+    expect(student.status).toBe('in_evaluation');
+    expect(student.evaluation).toMatchObject({ overdue: false });
+    expect(student.evaluation.expected_end_at).toEqual(expect.any(String));
+
+    // Completing the evaluation flips the roster back to active.
+    await ctx.db
+      .updateTable('evaluation_periods')
+      .set({ completed_at: new Date(), completion_type: 'coach_completed' })
+      .where('student_id', '=', ids.trainee)
+      .execute();
+    const after = await request(ctx.app).get('/coach/students').set(auth(ctx.coachToken));
+    expect(after.body.students[0].status).toBe('active');
+    expect(after.body.students[0].evaluation).toBeNull();
   });
 });
