@@ -373,6 +373,8 @@ export interface AttachmentsTable {
   // BIGINT: node-pg returns int8 as string; pg-mem returns a number. Normalize at serialization.
   size_bytes: ColumnType<string | number, number, number>;
   filename: NullableColumn<string>;
+  // set_video association (spec 007); SET NULL on log deletion.
+  set_log_id: NullableColumn<string>;
   status: Generated<AttachmentStatus>;
   created_at: TimestampColumn;
   updated_at: TimestampColumn;

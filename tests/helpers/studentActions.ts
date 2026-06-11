@@ -246,6 +246,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       content_type TEXT NOT NULL,
       size_bytes BIGINT NOT NULL,
       filename TEXT,
+      set_log_id UUID REFERENCES set_logs(id) ON DELETE SET NULL,
       status TEXT NOT NULL DEFAULT 'uploading',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

@@ -14,6 +14,7 @@ export interface AttachmentWire {
   content_type: string;
   size_bytes: number;
   filename: string | null;
+  set_log_id: string | null;
   status: AttachmentStatus;
   created_at: string;
   updated_at: string;
@@ -29,6 +30,7 @@ export function serializeAttachment(row: AttachmentRow): AttachmentWire {
     // BIGINT arrives as string from node-pg; caps (<= 200 MB) keep Number() exact.
     size_bytes: Number(row.size_bytes),
     filename: row.filename,
+    set_log_id: row.set_log_id,
     status: row.status,
     created_at: timestamp(row.created_at),
     updated_at: timestamp(row.updated_at),
@@ -43,6 +45,7 @@ export interface NewAttachment {
   content_type: string;
   size_bytes: number;
   filename: string | null;
+  set_log_id: string | null;
 }
 
 export async function insertAttachment(
@@ -59,6 +62,7 @@ export async function insertAttachment(
       content_type: input.content_type,
       size_bytes: input.size_bytes,
       filename: input.filename,
+      set_log_id: input.set_log_id,
       status: 'uploading',
     })
     .returningAll()
