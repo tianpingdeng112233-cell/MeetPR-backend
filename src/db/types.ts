@@ -58,6 +58,31 @@ export const BIND_REQUEST_STATUSES = [
   'expired',
   'cancelled',
 ] as const;
+export const PLAN_KINDS = ['regular', 'adaptation'] as const;
+export const INVITE_CODE_TYPES = ['personal_permanent', 'single_use', 'time_limited'] as const;
+export const EVALUATION_COMPLETION_TYPES = [
+  'coach_completed',
+  'auto_completed',
+  'overdue',
+  'cancelled',
+] as const;
+export const UNIT_PREFERENCES = ['kg', 'lb'] as const;
+export const GENDERS = ['male', 'female', 'other'] as const;
+export const SQUAT_STANCES = ['high_bar', 'low_bar'] as const;
+export const DEADLIFT_STYLES = ['conventional', 'sumo'] as const;
+export const BENCH_GRIPS = ['narrow', 'standard', 'wide'] as const;
+export const GYM_TIERS = ['home_with_rack', 'commercial', 'professional'] as const;
+export const TRAINING_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+export const INJURY_AREAS = [
+  'shoulder',
+  'elbow',
+  'wrist',
+  'lower_back',
+  'hip',
+  'knee',
+  'ankle',
+  'other',
+] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
 export type LiftFamily = (typeof LIFT_FAMILIES)[number];
@@ -72,6 +97,17 @@ export type PatchablePlanStatus = (typeof PATCHABLE_PLAN_STATUSES)[number];
 export type IntensityMode = (typeof INTENSITY_MODES)[number];
 export type SetType = (typeof SET_TYPES)[number];
 export type BindRequestStatus = (typeof BIND_REQUEST_STATUSES)[number];
+export type PlanKind = (typeof PLAN_KINDS)[number];
+export type InviteCodeType = (typeof INVITE_CODE_TYPES)[number];
+export type EvaluationCompletionType = (typeof EVALUATION_COMPLETION_TYPES)[number];
+export type UnitPreference = (typeof UNIT_PREFERENCES)[number];
+export type Gender = (typeof GENDERS)[number];
+export type SquatStance = (typeof SQUAT_STANCES)[number];
+export type DeadliftStyle = (typeof DEADLIFT_STYLES)[number];
+export type BenchGrip = (typeof BENCH_GRIPS)[number];
+export type GymTier = (typeof GYM_TIERS)[number];
+export type TrainingDay = (typeof TRAINING_DAYS)[number];
+export type InjuryArea = (typeof INJURY_AREAS)[number];
 
 type NullableColumn<T> = ColumnType<T | null, T | null | undefined, T | null>;
 type TimestampColumn = ColumnType<Date, Date | undefined, Date>;
@@ -112,6 +148,7 @@ export interface PlansTable {
   source: PlanSource;
   source_template_id: NullableColumn<string>;
   status: Generated<PlanStatus>;
+  kind: Generated<PlanKind>;
   created_at: TimestampColumn;
   updated_at: TimestampColumn;
 }
@@ -169,6 +206,94 @@ export interface BindRequestsTable {
   expired_at: TimestampColumn;
   skip_evaluation: Generated<boolean>;
   rejection_silent: Generated<boolean>;
+  invite_code_id: NullableColumn<string>;
+  skip_reason: NullableColumn<string>;
+}
+
+export interface InviteCodesTable {
+  id: Generated<string>;
+  coach_id: string;
+  code: string;
+  type: InviteCodeType;
+  max_uses: NullableColumn<number>;
+  used_count: Generated<number>;
+  expires_at: NullableColumn<Date>;
+  revoked_at: NullableColumn<Date>;
+  label: NullableColumn<string>;
+  created_at: TimestampColumn;
+}
+
+export interface EvaluationPeriodsTable {
+  id: Generated<string>;
+  student_id: string;
+  coach_id: string;
+  bind_request_id: string;
+  started_at: TimestampColumn;
+  expected_end_at: Date;
+  completed_at: NullableColumn<Date>;
+  completion_type: NullableColumn<EvaluationCompletionType>;
+}
+
+export interface StudentEvaluationsTable {
+  id: Generated<string>;
+  student_id: string;
+  coach_id: string;
+  evaluation_period_id: NullableColumn<string>;
+  overall_assessment: string;
+  training_plan: string;
+  words_to_student: NullableColumn<string>;
+  first_saved_at: TimestampColumn;
+  last_updated_at: TimestampColumn;
+  is_active: Generated<boolean>;
+}
+
+export interface StudentEvaluationVersionsTable {
+  id: Generated<string>;
+  evaluation_id: string;
+  overall_assessment: string;
+  training_plan: string;
+  words_to_student: NullableColumn<string>;
+  notified_student: Generated<boolean>;
+  saved_at: TimestampColumn;
+}
+
+export interface StudentOnboardingProfilesTable {
+  user_id: string;
+  unit_preference: NullableColumn<UnitPreference>;
+  gender: NullableColumn<Gender>;
+  birth_date: NullableColumn<string>;
+  height_cm: NullableColumn<string>;
+  weight_kg: NullableColumn<string>;
+  training_years: NullableColumn<number>;
+  squat_stance: NullableColumn<SquatStance>;
+  deadlift_style: NullableColumn<DeadliftStyle>;
+  bench_grip: NullableColumn<BenchGrip>;
+  squat_1rm_kg: NullableColumn<string>;
+  bench_1rm_kg: NullableColumn<string>;
+  deadlift_1rm_kg: NullableColumn<string>;
+  training_days: NullableColumn<TrainingDay[]>;
+  gym_tier: NullableColumn<GymTier>;
+  equipment_overrides: NullableColumn<string[]>;
+  daily_life_intensity: NullableColumn<number>;
+  life_stress: NullableColumn<number>;
+  recovery_speed: NullableColumn<number>;
+  sleep_hours: NullableColumn<number>;
+  muscle_groups_to_strengthen: NullableColumn<MuscleGroup[]>;
+  injury_notes: NullableColumn<string>;
+  injury_areas: NullableColumn<InjuryArea[]>;
+  is_competing: NullableColumn<boolean>;
+  competition_date: NullableColumn<string>;
+  target_weight_class: NullableColumn<string>;
+  note_to_coach: NullableColumn<string>;
+  completed_at: NullableColumn<Date>;
+  created_at: TimestampColumn;
+  updated_at: TimestampColumn;
+}
+
+export interface OnboardingUploadsTable {
+  user_id: string;
+  attachment_id: string;
+  created_at: TimestampColumn;
 }
 
 export interface SetLogsTable {
@@ -206,4 +331,10 @@ export interface Database {
   bind_requests: BindRequestsTable;
   set_logs: SetLogsTable;
   feedback: FeedbackTable;
+  invite_codes: InviteCodesTable;
+  evaluation_periods: EvaluationPeriodsTable;
+  student_evaluations: StudentEvaluationsTable;
+  student_evaluation_versions: StudentEvaluationVersionsTable;
+  student_onboarding_profiles: StudentOnboardingProfilesTable;
+  onboarding_uploads: OnboardingUploadsTable;
 }

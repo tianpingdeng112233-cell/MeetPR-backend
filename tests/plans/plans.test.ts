@@ -115,8 +115,21 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       source TEXT NOT NULL,
       source_template_id UUID,
       status TEXT NOT NULL DEFAULT 'draft',
+      kind TEXT NOT NULL DEFAULT 'regular',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+
+    CREATE TABLE evaluation_periods (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      bind_request_id UUID NOT NULL,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expected_end_at TIMESTAMPTZ NOT NULL,
+      completed_at TIMESTAMPTZ,
+      completion_type TEXT
     );
 
     CREATE TABLE plan_days (

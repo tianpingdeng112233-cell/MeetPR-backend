@@ -3,19 +3,18 @@ import jwt from 'jsonwebtoken';
 import type { Kysely } from 'kysely';
 import { DataType, newDb } from 'pg-mem';
 import pino from 'pino';
-import type { Response } from 'supertest';
 
 import { createApp } from '../../src/app';
 import type { Config } from '../../src/config';
 import { createDb } from '../../src/db/kysely';
-import type { Database, UserRole } from '../../src/db/types';
+import type { Database, PlanKind, UserRole } from '../../src/db/types';
 
 export const config: Config = {
   NODE_ENV: 'test',
   PORT: 3000,
   DATABASE_URL: 'postgres://test:test@localhost:5432/test',
-  JWT_ACCESS_SECRET: 'access-secret-for-student-actions-tests-32',
-  JWT_REFRESH_SECRET: 'refresh-secret-for-student-actions-tests-32',
+  JWT_ACCESS_SECRET: 'access-secret-for-bind-eval-tests-000032',
+  JWT_REFRESH_SECRET: 'refresh-secret-for-bind-eval-tests-00032',
   JWT_ACCESS_TTL: '15m',
   JWT_REFRESH_TTL: '30d',
   LOG_LEVEL: 'silent',
@@ -26,12 +25,15 @@ export const config: Config = {
 };
 
 export const ids = {
-  coach: '10000000-0000-4000-8000-000000000001',
-  otherCoach: '10000000-0000-4000-8000-000000000002',
-  trainee: '10000000-0000-4000-8000-000000000003',
-  otherStudent: '10000000-0000-4000-8000-000000000004',
-  selfTrainStudent: '10000000-0000-4000-8000-000000000005',
-  exercise: '20000000-0000-4000-8000-000000000001',
+  coach: '60000000-0000-4000-8000-000000000001',
+  otherCoach: '60000000-0000-4000-8000-000000000002',
+  // freeStudent: no profile row, no bonds — bind-request bootstrap scenarios.
+  freeStudent: '60000000-0000-4000-8000-000000000003',
+  // boundStudent: profile row + accepted bond with coach.
+  boundStudent: '60000000-0000-4000-8000-000000000004',
+  selfTrainStudent: '60000000-0000-4000-8000-000000000005',
+  exercise: '70000000-0000-4000-8000-000000000001',
+  acceptedBindRequest: '80000000-0000-4000-8000-000000000001',
 };
 
 export interface TestContext {
@@ -39,15 +41,9 @@ export interface TestContext {
   db: Kysely<Database>;
   coachToken: string;
   otherCoachToken: string;
-  traineeToken: string;
-  otherStudentToken: string;
+  freeStudentToken: string;
+  boundStudentToken: string;
   selfTrainStudentToken: string;
-}
-
-export interface PublishedPlanFixture {
-  planId: string;
-  dayId: string;
-  planExerciseId: string;
 }
 
 export function signToken(userId: string, role: UserRole): string {
@@ -59,10 +55,6 @@ export function signToken(userId: string, role: UserRole): string {
 
 export function auth(token: string) {
   return { Authorization: `Bearer ${token}` };
-}
-
-export function responseId(response: Response): string {
-  return (response.body as { id: string }).id;
 }
 
 function registerPgMemFunctions(mem: ReturnType<typeof newDb>): void {
@@ -84,8 +76,21 @@ function registerPgMemFunctions(mem: ReturnType<typeof newDb>): void {
     returns: DataType.text,
     implementation: (value: string) => value.trim(),
   });
+  mem.public.registerFunction({
+    name: 'array_length',
+    args: [mem.public.getType(DataType.text).asArray(), DataType.integer],
+    returns: DataType.integer,
+    implementation: (value: string[] | null, _dimension: number) =>
+      value === null ? null : value.length,
+  });
 }
 
+// NOTE: the real migrations add three partial unique indexes (one active
+// personal code / one accepted bond / one active evaluation per pair). They
+// are deliberately OMITTED here: pg-mem wrongly serves plain
+// `WHERE coach_id = ?` lookups from partial indexes, hiding rows that fall
+// outside the index predicate. The invariants are covered by the migration
+// tests (0008 / 0011) which run the real SQL files.
 function createSchema(mem: ReturnType<typeof newDb>): void {
   mem.public.none(`
     CREATE TABLE users (
@@ -127,18 +132,6 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       kind TEXT NOT NULL DEFAULT 'regular',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-
-
-    CREATE TABLE evaluation_periods (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      bind_request_id UUID NOT NULL,
-      started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      expected_end_at TIMESTAMPTZ NOT NULL,
-      completed_at TIMESTAMPTZ,
-      completion_type TEXT
     );
 
     CREATE TABLE plan_days (
@@ -184,6 +177,19 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    CREATE TABLE invite_codes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      code TEXT NOT NULL UNIQUE,
+      type TEXT NOT NULL,
+      max_uses INT,
+      used_count INT NOT NULL DEFAULT 0,
+      expires_at TIMESTAMPTZ,
+      revoked_at TIMESTAMPTZ,
+      label TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE bind_requests (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -193,34 +199,84 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       responded_at TIMESTAMPTZ,
       expired_at TIMESTAMPTZ NOT NULL,
       skip_evaluation BOOLEAN NOT NULL DEFAULT FALSE,
-      rejection_silent BOOLEAN NOT NULL DEFAULT TRUE
+      rejection_silent BOOLEAN NOT NULL DEFAULT TRUE,
+      invite_code_id UUID REFERENCES invite_codes(id) ON DELETE SET NULL,
+      skip_reason TEXT
     );
 
-    CREATE UNIQUE INDEX bind_requests_unique_accepted
-      ON bind_requests (student_id, coach_id) WHERE status = 'accepted';
-
-    CREATE TABLE set_logs (
+    CREATE TABLE evaluation_periods (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      plan_exercise_id UUID NOT NULL REFERENCES plan_exercises(id) ON DELETE CASCADE,
-      set_index INT NOT NULL,
-      weight_kg NUMERIC(6,2) NOT NULL,
-      reps INT NOT NULL,
-      rpe NUMERIC(3,1),
-      completed BOOLEAN NOT NULL DEFAULT FALSE,
-      logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      UNIQUE (student_id, plan_exercise_id, set_index)
-    );
-
-    CREATE TABLE feedback (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      bind_request_id UUID NOT NULL REFERENCES bind_requests(id) ON DELETE CASCADE,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expected_end_at TIMESTAMPTZ NOT NULL,
+      completed_at TIMESTAMPTZ,
+      completion_type TEXT
+    );
+
+    CREATE TABLE student_evaluations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      day_date DATE,
-      plan_exercise_id UUID REFERENCES plan_exercises(id) ON DELETE SET NULL,
-      text TEXT NOT NULL,
-      posted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      read_at TIMESTAMPTZ
+      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      evaluation_period_id UUID REFERENCES evaluation_periods(id) ON DELETE SET NULL,
+      overall_assessment TEXT NOT NULL,
+      training_plan TEXT NOT NULL,
+      words_to_student TEXT,
+      first_saved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      UNIQUE (student_id, coach_id)
+    );
+
+    CREATE TABLE student_evaluation_versions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      evaluation_id UUID NOT NULL REFERENCES student_evaluations(id) ON DELETE CASCADE,
+      overall_assessment TEXT NOT NULL,
+      training_plan TEXT NOT NULL,
+      words_to_student TEXT,
+      notified_student BOOLEAN NOT NULL DEFAULT FALSE,
+      saved_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE student_onboarding_profiles (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      unit_preference TEXT,
+      gender TEXT,
+      birth_date DATE,
+      height_cm NUMERIC(5,1),
+      weight_kg NUMERIC(5,2),
+      training_years SMALLINT,
+      squat_stance TEXT,
+      deadlift_style TEXT,
+      bench_grip TEXT,
+      squat_1rm_kg NUMERIC(6,2),
+      bench_1rm_kg NUMERIC(6,2),
+      deadlift_1rm_kg NUMERIC(6,2),
+      training_days TEXT[],
+      gym_tier TEXT,
+      equipment_overrides TEXT[],
+      daily_life_intensity SMALLINT,
+      life_stress SMALLINT,
+      recovery_speed SMALLINT,
+      sleep_hours SMALLINT,
+      muscle_groups_to_strengthen TEXT[],
+      injury_notes TEXT,
+      injury_areas TEXT[],
+      is_competing BOOLEAN,
+      competition_date DATE,
+      target_weight_class TEXT,
+      note_to_coach TEXT,
+      completed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE onboarding_uploads (
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      attachment_id UUID NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, attachment_id)
     );
   `);
 }
@@ -237,33 +293,23 @@ export async function makeContext(logger = pino({ level: 'silent' })): Promise<T
   await db
     .insertInto('users')
     .values([
+      { id: ids.coach, phone: '+8613800005001', password_hash: 'hash', role: 'coach' },
+      { id: ids.otherCoach, phone: '+8613800005002', password_hash: 'hash', role: 'coach' },
       {
-        id: ids.coach,
-        phone: '+8613800001001',
-        password_hash: 'hash',
-        role: 'coach',
-      },
-      {
-        id: ids.otherCoach,
-        phone: '+8613800001002',
-        password_hash: 'hash',
-        role: 'coach',
-      },
-      {
-        id: ids.trainee,
-        phone: '+8613800001003',
+        id: ids.freeStudent,
+        phone: '+8613800005003',
         password_hash: 'hash',
         role: 'coached_student',
       },
       {
-        id: ids.otherStudent,
-        phone: '+8613800001004',
+        id: ids.boundStudent,
+        phone: '+8613800005004',
         password_hash: 'hash',
         role: 'coached_student',
       },
       {
         id: ids.selfTrainStudent,
-        phone: '+8613800001005',
+        phone: '+8613800005005',
         password_hash: 'hash',
         role: 'self_train_student',
       },
@@ -278,31 +324,24 @@ export async function makeContext(logger = pino({ level: 'silent' })): Promise<T
     ])
     .execute();
 
+  // freeStudent intentionally has NO student_profiles row: the bind request
+  // bootstraps it (spec 005 D1).
   await db
     .insertInto('student_profiles')
-    .values([
-      { user_id: ids.trainee, display_name: 'Trainee One' },
-      { user_id: ids.otherStudent, display_name: 'Other Student' },
-      { user_id: ids.selfTrainStudent, display_name: 'Self Student' },
-    ])
+    .values([{ user_id: ids.boundStudent, display_name: 'Bound Student' }])
     .execute();
 
   await db
     .insertInto('bind_requests')
-    .values([
-      {
-        student_id: ids.trainee,
-        coach_id: ids.coach,
-        status: 'accepted',
-        expired_at: new Date('2026-05-22T00:00:00.000Z'),
-      },
-      {
-        student_id: ids.trainee,
-        coach_id: ids.otherCoach,
-        status: 'accepted',
-        expired_at: new Date('2026-05-22T00:00:00.000Z'),
-      },
-    ])
+    .values({
+      id: ids.acceptedBindRequest,
+      student_id: ids.boundStudent,
+      coach_id: ids.coach,
+      status: 'accepted',
+      responded_at: new Date('2026-06-01T00:00:00.000Z'),
+      expired_at: new Date('2026-06-08T00:00:00.000Z'),
+      skip_evaluation: true,
+    })
     .execute();
 
   await db
@@ -324,41 +363,46 @@ export async function makeContext(logger = pino({ level: 'silent' })): Promise<T
     db,
     coachToken: signToken(ids.coach, 'coach'),
     otherCoachToken: signToken(ids.otherCoach, 'coach'),
-    traineeToken: signToken(ids.trainee, 'coached_student'),
-    otherStudentToken: signToken(ids.otherStudent, 'coached_student'),
+    freeStudentToken: signToken(ids.freeStudent, 'coached_student'),
+    boundStudentToken: signToken(ids.boundStudent, 'coached_student'),
     selfTrainStudentToken: signToken(ids.selfTrainStudent, 'self_train_student'),
   };
 }
 
-export async function createPublishedPlan(
+export interface DraftPlanFixture {
+  planId: string;
+}
+
+/** Complete draft plan tree (1 day / 1 exercise / 1 set) ready to publish. */
+export async function createDraftPlan(
   ctx: TestContext,
-  coachId = ids.coach,
-  studentId = ids.trainee,
-): Promise<PublishedPlanFixture> {
+  options: { coachId?: string; studentId?: string; kind?: PlanKind; planWeeks?: number } = {},
+): Promise<DraftPlanFixture> {
+  const coachId = options.coachId ?? ids.coach;
+  const studentId = options.studentId ?? ids.boundStudent;
+  const kind = options.kind ?? 'regular';
+  const planWeeks = options.planWeeks ?? (kind === 'adaptation' ? 1 : 4);
+
   const plan = await ctx.db
     .insertInto('plans')
     .values({
       coach_id: coachId,
       trainee_id: studentId,
-      name: 'Published Block',
-      start_date: '2026-05-01',
-      end_date: '2026-05-28',
-      plan_weeks: 4,
+      name: kind === 'adaptation' ? 'Adaptation Week' : 'Regular Block',
+      start_date: '2026-06-15',
+      end_date: planWeeks === 1 ? '2026-06-21' : '2026-07-12',
+      plan_weeks: planWeeks,
       source: 'coach',
       source_template_id: null,
-      status: 'published',
+      status: 'draft',
+      kind,
     })
     .returning(['id'])
     .executeTakeFirstOrThrow();
 
   const day = await ctx.db
     .insertInto('plan_days')
-    .values({
-      plan_id: plan.id,
-      day_of_week: 1,
-      week_number: 1,
-      sort_order: 0,
-    })
+    .values({ plan_id: plan.id, day_of_week: 1, week_number: 1, sort_order: 0 })
     .returning(['id'])
     .executeTakeFirstOrThrow();
 
@@ -387,9 +431,32 @@ export async function createPublishedPlan(
     })
     .execute();
 
-  return {
-    planId: plan.id,
-    dayId: day.id,
-    planExerciseId: exercise.id,
-  };
+  return { planId: plan.id };
+}
+
+/** Insert an evaluation period directly; defaults to active (uncompleted). */
+export async function createEvaluationPeriod(
+  ctx: TestContext,
+  options: {
+    coachId?: string;
+    studentId?: string;
+    bindRequestId?: string;
+    expectedEndAt?: Date;
+    completedAt?: Date | null;
+  } = {},
+): Promise<{ evaluationId: string }> {
+  const row = await ctx.db
+    .insertInto('evaluation_periods')
+    .values({
+      student_id: options.studentId ?? ids.boundStudent,
+      coach_id: options.coachId ?? ids.coach,
+      bind_request_id: options.bindRequestId ?? ids.acceptedBindRequest,
+      expected_end_at: options.expectedEndAt ?? new Date(Date.now() + 7 * 24 * 3600 * 1000),
+      completed_at: options.completedAt ?? null,
+      completion_type: options.completedAt ? 'coach_completed' : null,
+    })
+    .returning(['id'])
+    .executeTakeFirstOrThrow();
+
+  return { evaluationId: row.id };
 }
