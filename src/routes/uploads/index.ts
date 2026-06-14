@@ -14,6 +14,7 @@ import {
 } from '../../handlers/attachments';
 import type { Logger } from '../../logger';
 import type { OssService } from '../../services/oss';
+import { uuidEquals } from '../../utils/uuid';
 import { route, validationEnvelope } from '../http';
 import {
   AttachmentIdParamSchema,
@@ -297,7 +298,7 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
         return;
       }
 
-      if (attachment.owner_id !== req.user.id) {
+      if (!uuidEquals(attachment.owner_id, req.user.id)) {
         // Only the owner's accepted-bind coach may read; everyone else gets the
         // same 404 as a missing row so attachment existence never leaks.
         const bound = await coachHasAcceptedBind(db, req.user.id, attachment.owner_id);

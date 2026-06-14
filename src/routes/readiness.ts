@@ -8,6 +8,7 @@ import { READINESS_MUSCLE_GROUPS } from '../db/types';
 import { fetchReadinessCheckin } from '../handlers/readiness-fetch';
 import { upsertReadinessCheckin } from '../handlers/readiness-submit';
 import { requireRole } from '../middleware/auth';
+import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
 interface ReadinessRouterDeps {
@@ -107,7 +108,7 @@ export function studentReadinessRouter(deps: ReadinessRouterDeps): ExpressRouter
 
       // Authorization matrix mirrors GET /students/:id/sets: student self,
       // or coach with an accepted bind; everyone else 403.
-      const isSelf = req.user.id === params.data.id;
+      const isSelf = uuidEquals(req.user.id, params.data.id);
       if (!isSelf) {
         if (req.user.role !== 'coach') {
           res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });

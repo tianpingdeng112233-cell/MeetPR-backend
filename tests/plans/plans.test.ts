@@ -31,6 +31,7 @@ const coachId = '10000000-0000-4000-8000-000000000001';
 const otherCoachId = '10000000-0000-4000-8000-000000000002';
 const traineeId = '10000000-0000-4000-8000-000000000003';
 const otherStudentId = '10000000-0000-4000-8000-000000000004';
+const casedStudentId = 'aaaaaaaa-0000-4000-8000-0000000000aa';
 
 interface TestContext {
   app: ReturnType<typeof createApp>;
@@ -359,6 +360,45 @@ describe('coach planning CRUD', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.plans).toHaveLength(1);
+  });
+
+  it('allows uppercase UUID path for owning student plan list and still forbids other students', async () => {
+    const ctx = await makeContext();
+    const casedStudentToken = signToken(casedStudentId, 'coached_student');
+    await ctx.db
+      .insertInto('users')
+      .values({
+        id: casedStudentId,
+        phone: '+8613800001099',
+        password_hash: 'hash',
+        role: 'coached_student',
+      })
+      .execute();
+    const plan = await ctx.db
+      .insertInto('plans')
+      .values({
+        coach_id: coachId,
+        trainee_id: casedStudentId,
+        name: 'Published Case Regression',
+        start_date: '2026-05-04',
+        end_date: '2026-06-01',
+        plan_weeks: 4,
+        source: 'coach',
+        status: 'published',
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    const path = `/students/${casedStudentId.toUpperCase()}/plans`;
+    const owningStudent = await request(ctx.app).get(path).set(auth(casedStudentToken));
+    expect(owningStudent.status).toBe(200);
+    expect((owningStudent.body.plans as { id: string }[]).map((item) => item.id)).toEqual([
+      plan.id,
+    ]);
+
+    const otherStudent = await request(ctx.app).get(path).set(auth(ctx.otherStudentToken));
+    expect(otherStudent.status).toBe(403);
+    expect(otherStudent.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
   });
 
   it('creates, patches, and deletes plan days', async () => {
