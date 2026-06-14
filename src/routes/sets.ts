@@ -3,9 +3,10 @@ import type { Kysely } from 'kysely';
 import { z } from 'zod';
 
 import type { Database } from '../db/types';
-import { requireRole } from '../middleware/auth';
 import { fetchCoachSetLogs, fetchOwnSetLogs } from '../handlers/sets-fetch';
 import { canLogSet, upsertSetLog } from '../handlers/sets-log';
+import { requireRole } from '../middleware/auth';
+import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
 interface SetsRouterDeps {
@@ -118,7 +119,7 @@ export function studentSetsRouter(deps: SetsRouterDeps): ExpressRouter {
 
       const from = dateStart(query.data.from);
       const to = dateStart(query.data.to);
-      if (req.user.id === params.data.id) {
+      if (uuidEquals(req.user.id, params.data.id)) {
         const logs = await fetchOwnSetLogs(deps.db, req.user.id, from, to);
         res.status(200).json({ logs });
         return;

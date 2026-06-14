@@ -11,6 +11,7 @@ import {
   createFeedback,
 } from '../handlers/feedback-post';
 import { requireRole } from '../middleware/auth';
+import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
 interface FeedbackRouterDeps {
@@ -109,7 +110,7 @@ export function studentFeedbackRouter(deps: FeedbackRouterDeps): ExpressRouter {
         return;
       }
 
-      if (req.user.id === params.data.id) {
+      if (uuidEquals(req.user.id, params.data.id)) {
         const items = await fetchOwnFeedback(deps.db, req.user.id);
         res.status(200).json({ items });
         return;

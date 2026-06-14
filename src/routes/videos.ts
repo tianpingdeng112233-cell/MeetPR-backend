@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { hasAcceptedBond } from '../db/bonds';
 import type { Database } from '../db/types';
 import { timestamp } from '../handlers/serialization';
+import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
 const WALL_LIMIT = 100; // Newest-first cap; paging is a post-V0.1 concern.
@@ -43,7 +44,7 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
       }
       const studentId = params.data.id;
 
-      const isSelf = req.user.id === studentId;
+      const isSelf = uuidEquals(req.user.id, studentId);
       const isBondedCoach =
         !isSelf && req.user.role === 'coach' && (await hasAcceptedBond(db, req.user.id, studentId));
       if (!isSelf && !isBondedCoach) {

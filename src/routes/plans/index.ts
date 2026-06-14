@@ -15,6 +15,7 @@ import { hasActiveEvaluation } from '../../handlers/evaluations';
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
 import { notifyPlanPublished } from '../../services/notifications';
+import { uuidEquals } from '../../utils/uuid';
 import { visibleExerciseForCoach } from '../exercises';
 import { route, validationEnvelope } from '../http';
 import {
@@ -421,7 +422,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           .where('id', '=', params.data.id)
           .executeTakeFirst();
 
-        if (plan?.coach_id !== user.id) {
+        if (!plan || !uuidEquals(plan.coach_id, user.id)) {
           return { type: 'not-found' as const };
         }
         if (plan.status !== 'draft') {
@@ -964,7 +965,7 @@ export function studentPlansRouter(deps: PlansRouterDeps): ExpressRouter {
           dbQuery = dbQuery.where('status', 'in', query.data.status);
         }
       } else {
-        if (params.data.studentId !== user.id) {
+        if (!uuidEquals(params.data.studentId, user.id)) {
           res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
           return;
         }

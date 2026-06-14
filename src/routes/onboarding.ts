@@ -23,6 +23,7 @@ import {
   upsertOnboardingProfile,
 } from '../handlers/onboarding';
 import { requireRole } from '../middleware/auth';
+import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
 interface OnboardingRouterDeps {
@@ -204,7 +205,7 @@ export function studentOnboardingRouter(deps: OnboardingRouterDeps): ExpressRout
 
       // Authorization: self / bonded coach / coach with a live pending bind
       // request (receive-queue "view full profile", spec 005 D16).
-      const isSelf = req.user.id === params.data.id;
+      const isSelf = uuidEquals(req.user.id, params.data.id);
       if (!isSelf) {
         if (req.user.role !== 'coach') {
           res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });

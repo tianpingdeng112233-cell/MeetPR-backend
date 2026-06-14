@@ -15,6 +15,7 @@ import {
   fetchEvaluationForStudent,
 } from '../handlers/evaluations';
 import { requireRole } from '../middleware/auth';
+import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
 interface EvaluationsRouterDeps {
@@ -166,7 +167,7 @@ export function studentEvaluationsRouter(deps: EvaluationsRouterDeps): ExpressRo
         return;
       }
 
-      if (req.user.id === params.data.id) {
+      if (uuidEquals(req.user.id, params.data.id)) {
         const summary = await fetchEvaluationSummaryForStudent(deps.db, req.user.id);
         if (!summary) {
           res.status(404).json({ error: 'EVALUATION_SUMMARY_NOT_FOUND' });
