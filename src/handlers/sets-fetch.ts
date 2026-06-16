@@ -14,6 +14,7 @@ export interface SetLogResponse {
   reps: number;
   rpe: string | null;
   completed: boolean;
+  failed: boolean;
   logged_at: string;
 }
 
@@ -27,6 +28,7 @@ export function toSetLog(row: SetLogRow): SetLogResponse {
     reps: row.reps,
     rpe: row.rpe == null ? null : Number(row.rpe).toFixed(1),
     completed: row.completed,
+    failed: row.failed,
     logged_at: timestamp(row.logged_at),
   };
 }
@@ -70,6 +72,7 @@ export async function fetchCoachSetLogs(
       'sl.reps as reps',
       'sl.rpe as rpe',
       'sl.completed as completed',
+      'sl.failed as failed',
       'sl.logged_at as logged_at',
     ])
     .where('sl.student_id', '=', studentId)

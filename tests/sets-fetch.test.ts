@@ -17,6 +17,7 @@ describe('GET /students/:id/sets', () => {
         reps: 5,
         rpe: '8.0',
         completed: true,
+        failed: true,
         logged_at: new Date('2026-05-15T12:00:00.000Z'),
       })
       .execute();
@@ -32,6 +33,8 @@ describe('GET /students/:id/sets', () => {
         plan_exercise_id: plan.planExerciseId,
         weight_kg: '100.00',
         rpe: '8.0',
+        completed: true,
+        failed: true,
       }),
     ]);
   });
@@ -51,6 +54,7 @@ describe('GET /students/:id/sets', () => {
           reps: 5,
           rpe: null,
           completed: true,
+          failed: true,
           logged_at: new Date('2026-05-15T12:00:00.000Z'),
         },
         {
@@ -61,6 +65,7 @@ describe('GET /students/:id/sets', () => {
           reps: 3,
           rpe: null,
           completed: true,
+          failed: false,
           logged_at: new Date('2026-05-15T13:00:00.000Z'),
         },
       ])
@@ -73,6 +78,7 @@ describe('GET /students/:id/sets', () => {
     expect(res.status).toBe(200);
     expect(res.body.logs).toHaveLength(1);
     expect(res.body.logs[0].plan_exercise_id).toBe(coachPlan.planExerciseId);
+    expect(res.body.logs[0].failed).toBe(true);
   });
 
   it('returns an empty list for a non-owner coach and forbids other students', async () => {

@@ -16,12 +16,14 @@ describe('POST /sets/log', () => {
       rpe: '8.0',
       completed: true,
     });
+    const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
 
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ id: expect.any(String), logged_at: expect.any(String) });
+    expect(rows[0]?.failed).toBe(false);
   });
 
-  it('upserts by student, plan_exercise_id, and set_index', async () => {
+  it('upserts by student, plan_exercise_id, and set_index and overwrites failed', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
     const payload = {
@@ -30,7 +32,8 @@ describe('POST /sets/log', () => {
       weight_kg: '100.00',
       reps: 5,
       rpe: null,
-      completed: false,
+      completed: true,
+      failed: true,
     };
 
     const first = await request(ctx.app)
@@ -40,7 +43,7 @@ describe('POST /sets/log', () => {
     const second = await request(ctx.app)
       .post('/sets/log')
       .set(auth(ctx.traineeToken))
-      .send({ ...payload, weight_kg: '102.50', reps: 6, completed: true });
+      .send({ ...payload, weight_kg: '102.50', reps: 6, failed: false });
 
     const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
     expect(first.status).toBe(201);
@@ -49,6 +52,7 @@ describe('POST /sets/log', () => {
     expect(rows).toHaveLength(1);
     expect(Number(rows[0]?.weight_kg)).toBe(102.5);
     expect(rows[0]?.reps).toBe(6);
+    expect(rows[0]?.failed).toBe(false);
   });
 
   it('rejects coach role and unpublished or other-student plan exercises', async () => {
