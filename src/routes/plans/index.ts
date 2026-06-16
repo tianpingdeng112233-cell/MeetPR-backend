@@ -820,6 +820,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           intensity_mode: body.data.intensity_mode,
           target_value: normalizeTargetValue(body.data.target_value),
           set_type: body.data.set_type,
+          rest_seconds: body.data.rest_seconds ?? null,
         })
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -875,6 +876,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         patch.target_value = normalizeTargetValue(body.data.target_value);
       }
       if (body.data.set_type !== undefined) patch.set_type = body.data.set_type;
+      if (body.data.rest_seconds !== undefined) patch.rest_seconds = body.data.rest_seconds;
 
       const validation = mergedSetValidation(existing, patch);
       if (validation) {

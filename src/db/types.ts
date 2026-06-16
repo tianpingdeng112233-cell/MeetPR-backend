@@ -203,6 +203,7 @@ export interface PlanSetsTable {
   intensity_mode: IntensityMode;
   target_value: string;
   set_type: SetType;
+  rest_seconds: number | null;
   created_at: TimestampColumn;
 }
 
