@@ -36,10 +36,12 @@ const SetLogBodySchema = z
     reps: z.number().int().min(0).max(99),
     rpe: RpeSchema.nullable().optional(),
     completed: z.boolean(),
+    failed: z.boolean().optional(),
   })
   .strict()
   .transform((body) => ({
     ...body,
+    failed: body.failed ?? false,
     weight_kg: Number(body.weight_kg).toFixed(2),
     rpe: body.rpe == null ? null : Number(body.rpe).toFixed(1),
   }));

@@ -329,6 +329,7 @@ export interface SetLogsTable {
   reps: number;
   rpe: NullableColumn<string>;
   completed: Generated<boolean>;
+  failed: Generated<boolean>;
   logged_at: TimestampColumn;
 }
 

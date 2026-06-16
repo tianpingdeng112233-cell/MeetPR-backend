@@ -11,11 +11,16 @@ export interface SetLogInput {
   reps: number;
   rpe: string | null;
   completed: boolean;
+  failed: boolean;
 }
 
 export interface SetLogResult {
   id: string;
   logged_at: string;
+}
+
+function defaultFailed(value: boolean | undefined): boolean {
+  return value ?? false;
 }
 
 export async function canLogSet(
@@ -42,6 +47,8 @@ export async function upsertSetLog(
   studentId: string,
   input: SetLogInput,
 ): Promise<SetLogResult> {
+  const failed = defaultFailed(input.failed);
+
   const row = await db
     .insertInto('set_logs')
     .values({
@@ -52,6 +59,7 @@ export async function upsertSetLog(
       reps: input.reps,
       rpe: input.rpe,
       completed: input.completed,
+      failed,
     })
     .onConflict((oc) =>
       oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
@@ -59,6 +67,7 @@ export async function upsertSetLog(
         reps: (eb) => eb.ref('excluded.reps'),
         rpe: (eb) => eb.ref('excluded.rpe'),
         completed: (eb) => eb.ref('excluded.completed'),
+        failed: (eb) => eb.ref('excluded.failed'),
         logged_at: sql<Date>`now()`,
       }),
     )

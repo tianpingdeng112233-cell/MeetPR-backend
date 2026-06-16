@@ -209,6 +209,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       reps INT NOT NULL,
       rpe NUMERIC(3,1),
       completed BOOLEAN NOT NULL DEFAULT FALSE,
+      failed BOOLEAN NOT NULL DEFAULT FALSE,
       logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (student_id, plan_exercise_id, set_index)
     );
