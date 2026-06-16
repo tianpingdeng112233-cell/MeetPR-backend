@@ -168,6 +168,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       intensity_mode TEXT NOT NULL,
       target_value NUMERIC(6,2) NOT NULL,
       set_type TEXT NOT NULL,
+      rest_seconds INT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
@@ -417,6 +418,7 @@ export async function createPublishedPlan(
       intensity_mode: 'weight',
       target_value: '100.00',
       set_type: 'working',
+      rest_seconds: null,
     })
     .execute();
 

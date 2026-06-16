@@ -45,6 +45,7 @@ export interface PlanSetResponse {
   intensity_mode: PlanSetRow['intensity_mode'];
   target_value: string;
   set_type: PlanSetRow['set_type'];
+  rest_seconds: number | null;
   created_at: string;
 }
 
@@ -142,6 +143,7 @@ export function toPlanSet(row: PlanSetRow): PlanSetResponse {
     intensity_mode: row.intensity_mode,
     target_value: row.target_value,
     set_type: row.set_type,
+    rest_seconds: row.rest_seconds,
     created_at: timestamp(row.created_at),
   };
 }

@@ -182,6 +182,7 @@ const PlanSetBodySchema = z.object({
   intensity_mode: z.enum(INTENSITY_MODES),
   target_value: TargetValueSchema,
   set_type: z.enum(SET_TYPES),
+  rest_seconds: z.number().int().min(0).max(3600).nullable().optional(),
 });
 
 export const CreatePlanSetBodySchema = PlanSetBodySchema.superRefine(validateSetBody);

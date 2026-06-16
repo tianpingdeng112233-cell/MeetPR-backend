@@ -159,6 +159,7 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       intensity_mode TEXT NOT NULL,
       target_value TEXT NOT NULL,
       set_type TEXT NOT NULL,
+      rest_seconds INT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
@@ -248,18 +249,36 @@ async function addExercise(ctx: TestContext, dayId: string, exerciseId?: string)
     });
 }
 
-async function addSet(ctx: TestContext, planExerciseId: string, targetValue = '180.5') {
+async function addSet(
+  ctx: TestContext,
+  planExerciseId: string,
+  targetValue = '180.5',
+  restSeconds?: number | null,
+) {
+  const body: {
+    set_number: number;
+    target_reps: number;
+    target_reps_max: number | null;
+    intensity_mode: 'weight';
+    target_value: string;
+    set_type: 'working';
+    rest_seconds?: number | null;
+  } = {
+    set_number: 1,
+    target_reps: 5,
+    target_reps_max: null,
+    intensity_mode: 'weight',
+    target_value: targetValue,
+    set_type: 'working',
+  };
+  if (restSeconds !== undefined) {
+    body.rest_seconds = restSeconds;
+  }
+
   return request(ctx.app)
     .post(`/plans/exercises/${planExerciseId}/sets`)
     .set(auth(ctx.coachToken))
-    .send({
-      set_number: 1,
-      target_reps: 5,
-      target_reps_max: null,
-      intensity_mode: 'weight',
-      target_value: targetValue,
-      set_type: 'working',
-    });
+    .send(body);
 }
 
 async function createCompleteDraft(ctx: TestContext) {
@@ -449,18 +468,24 @@ describe('coach planning CRUD', () => {
   it('creates, patches, and deletes plan sets while preserving target_value as string', async () => {
     const ctx = await makeContext();
     const { exercise } = await createCompleteDraft(ctx);
-    const created = await addSet(ctx, responseId(exercise));
+    const created = await addSet(ctx, responseId(exercise), '180.5', 120);
 
     expect(created.status).toBe(201);
     expect(created.body.target_value).toBe('180.50');
+    expect(created.body.rest_seconds).toBe(120);
 
     const patched = await request(ctx.app)
       .patch(`/plans/sets/${responseId(created)}`)
       .set(auth(ctx.coachToken))
-      .send({ intensity_mode: 'rpe', target_value: '7.5' });
+      .send({ intensity_mode: 'rpe', target_value: '7.5', rest_seconds: 90 });
 
     expect(patched.status).toBe(200);
     expect(patched.body.target_value).toBe('7.50');
+    expect(patched.body.rest_seconds).toBe(90);
+
+    const omitted = await addSet(ctx, responseId(exercise), '120');
+    expect(omitted.status).toBe(201);
+    expect(omitted.body.rest_seconds).toBeNull();
 
     const deleted = await request(ctx.app)
       .delete(`/plans/sets/${responseId(created)}`)
@@ -518,7 +543,7 @@ describe('coach planning CRUD', () => {
   it('GET /plans/:id returns the nested wire shape ordered as arrays', async () => {
     const ctx = await makeContext();
     const { plan, day, exercise } = await createCompleteDraft(ctx);
-    await addSet(ctx, responseId(exercise), '120');
+    await addSet(ctx, responseId(exercise), '120', 150);
 
     const publish = await request(ctx.app)
       .post(`/plans/${responseId(plan)}/publish`)
@@ -535,6 +560,12 @@ describe('coach planning CRUD', () => {
     expect(response.body.days[0].exercises).toHaveLength(1);
     expect(response.body.days[0].exercises[0].sets).toHaveLength(2);
     expect(typeof response.body.days[0].exercises[0].sets[0].target_value).toBe('string');
+    expect(response.body.days[0].exercises[0].sets).toContainEqual(
+      expect.objectContaining({ target_value: '120.00', rest_seconds: 150 }),
+    );
+    expect(response.body.days[0].exercises[0].sets).toContainEqual(
+      expect.objectContaining({ rest_seconds: null }),
+    );
     expect(response.body.password_hash).toBeUndefined();
   });
 
