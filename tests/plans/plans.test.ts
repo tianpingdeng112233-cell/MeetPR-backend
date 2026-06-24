@@ -160,6 +160,7 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       target_value TEXT NOT NULL,
       set_type TEXT NOT NULL,
       rest_seconds INT,
+      coach_note TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
@@ -655,7 +656,7 @@ describe('coach planning CRUD', () => {
   });
 
   it.each([
-    ['plan_weeks', { plan_weeks: 2 }, ['plan_weeks']],
+    ['plan_weeks', { plan_weeks: 53 }, ['plan_weeks']],
     ['missing template source id', { source: 'template' }, ['source_template_id']],
     ['date order', { start_date: '2026-06-01', end_date: '2026-05-04' }, ['end_date']],
   ])('rejects invalid plan creation: %s', async (_caseName, override, path) => {
@@ -904,5 +905,111 @@ describe('coach planning CRUD', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('spec 043: relaxed plan weeks + coach note', () => {
+  function createPlanWeeks(ctx: TestContext, planWeeks: number, endDate: string) {
+    return request(ctx.app).post('/plans').set(auth(ctx.coachToken)).send({
+      trainee_id: traineeId,
+      name: 'Imported remaining block',
+      start_date: '2026-05-04',
+      end_date: endDate,
+      plan_weeks: planWeeks,
+      source: 'coach',
+    });
+  }
+
+  function addDayAt(ctx: TestContext, planId: string, weekNumber: number) {
+    return request(ctx.app).post(`/plans/${planId}/days`).set(auth(ctx.coachToken)).send({
+      day_of_week: 1,
+      week_number: weekNumber,
+      sort_order: 0,
+    });
+  }
+
+  it('accepts plan_weeks=2 on creation (relaxed from the {1,4} presets)', async () => {
+    const ctx = await makeContext();
+    const response = await createPlanWeeks(ctx, 2, '2026-05-17');
+
+    expect(response.status).toBe(201);
+    expect(response.body.plan_weeks).toBe(2);
+  });
+
+  it('still accepts the legacy plan_weeks=1 preset', async () => {
+    const ctx = await makeContext();
+    const response = await createPlanWeeks(ctx, 1, '2026-05-10');
+
+    expect(response.status).toBe(201);
+    expect(response.body.plan_weeks).toBe(1);
+  });
+
+  it('publishes a 2-week plan whose day sits in week 2 (week_number <= plan_weeks)', async () => {
+    const ctx = await makeContext();
+    const plan = await createPlanWeeks(ctx, 2, '2026-05-17');
+    const day = await addDayAt(ctx, responseId(plan), 2);
+    const exercise = await addExercise(ctx, responseId(day));
+    await addSet(ctx, responseId(exercise));
+
+    const publish = await request(ctx.app)
+      .post(`/plans/${responseId(plan)}/publish`)
+      .set(auth(ctx.coachToken));
+
+    expect(publish.status).toBe(200);
+    expect(publish.body.status).toBe('published');
+  });
+
+  it('rejects publishing when a day sits beyond plan_weeks (week_number > plan_weeks)', async () => {
+    const ctx = await makeContext();
+    const plan = await createPlanWeeks(ctx, 2, '2026-05-17');
+    const day = await addDayAt(ctx, responseId(plan), 3);
+    const exercise = await addExercise(ctx, responseId(day));
+    await addSet(ctx, responseId(exercise));
+
+    const publish = await request(ctx.app)
+      .post(`/plans/${responseId(plan)}/publish`)
+      .set(auth(ctx.coachToken));
+
+    expect(publish.status).toBe(422);
+    expect(publish.body).toEqual({ error: 'PLAN_DAYS_EXCEED_WEEKS' });
+  });
+
+  it('round-trips coach_note from create through the plan tree read', async () => {
+    const ctx = await makeContext();
+    const plan = await createPlanWeeks(ctx, 2, '2026-05-17');
+    const day = await addDayAt(ctx, responseId(plan), 1);
+    const exercise = await addExercise(ctx, responseId(day));
+
+    const createSet = await request(ctx.app)
+      .post(`/plans/exercises/${responseId(exercise)}/sets`)
+      .set(auth(ctx.coachToken))
+      .send({
+        set_number: 1,
+        target_reps: 5,
+        target_reps_max: null,
+        intensity_mode: 'weight',
+        target_value: '120',
+        set_type: 'working',
+        coach_note: '70%top',
+      });
+    expect(createSet.status).toBe(201);
+    expect(createSet.body.coach_note).toBe('70%top');
+
+    const tree = await request(ctx.app)
+      .get(`/plans/${responseId(plan)}`)
+      .set(auth(ctx.coachToken));
+    expect(tree.status).toBe(200);
+    expect(tree.body.days[0].exercises[0].sets[0].coach_note).toBe('70%top');
+  });
+
+  it('defaults coach_note to null when omitted', async () => {
+    const ctx = await makeContext();
+    const plan = await createPlanWeeks(ctx, 1, '2026-05-10');
+    const day = await addDayAt(ctx, responseId(plan), 1);
+    const exercise = await addExercise(ctx, responseId(day));
+    const set = await addSet(ctx, responseId(exercise));
+
+    expect(set.status).toBe(201);
+    expect(set.body.coach_note).toBeNull();
   });
 });

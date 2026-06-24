@@ -46,6 +46,7 @@ export interface PlanSetResponse {
   target_value: string;
   set_type: PlanSetRow['set_type'];
   rest_seconds: number | null;
+  coach_note: string | null;
   created_at: string;
 }
 
@@ -144,6 +145,7 @@ export function toPlanSet(row: PlanSetRow): PlanSetResponse {
     target_value: row.target_value,
     set_type: row.set_type,
     rest_seconds: row.rest_seconds,
+    coach_note: row.coach_note,
     created_at: timestamp(row.created_at),
   };
 }

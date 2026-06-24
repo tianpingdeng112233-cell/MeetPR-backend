@@ -204,6 +204,7 @@ export interface PlanSetsTable {
   target_value: string;
   set_type: SetType;
   rest_seconds: number | null;
+  coach_note: NullableColumn<string>;
   created_at: TimestampColumn;
 }
 
