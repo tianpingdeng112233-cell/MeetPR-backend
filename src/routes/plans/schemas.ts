@@ -11,11 +11,13 @@ import {
 const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
 const UuidSchema = z.string().uuid();
 const NameSchema = z.string().trim().min(1).max(120);
-const PlanWeeksSchema = z.union([z.literal(1), z.literal(4)]);
+// Relaxed from {1, 4} to any 1..52 weeks for imported multi-week plans (spec 043
+// §G). The DB CHECK (migration 0020) and SMALLINT column mirror this range.
+const PlanWeeksSchema = z.number().int().min(1).max(52);
 const SourceTemplateIdSchema = z.string().uuid().nullable().optional();
 const SortOrderSchema = z.number().int().min(0);
 const DayOfWeekSchema = z.number().int().min(1).max(7);
-const WeekNumberSchema = z.number().int().min(1).max(4);
+const WeekNumberSchema = z.number().int().min(1).max(52);
 const PositiveRepsSchema = z.number().int().min(1).max(50);
 
 const TargetValueSchema = z
@@ -183,6 +185,8 @@ const PlanSetBodySchema = z.object({
   target_value: TargetValueSchema,
   set_type: z.enum(SET_TYPES),
   rest_seconds: z.number().int().min(0).max(3600).nullable().optional(),
+  // Student-visible cue carried alongside the structured target (spec 043 §G).
+  coach_note: z.string().max(500).nullable().optional(),
 });
 
 export const CreatePlanSetBodySchema = PlanSetBodySchema.superRefine(validateSetBody);

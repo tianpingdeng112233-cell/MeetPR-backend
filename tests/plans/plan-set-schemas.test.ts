@@ -26,4 +26,19 @@ describe('plan set schemas', () => {
       CreatePlanSetBodySchema.safeParse({ ...baseSet, rest_seconds: restSeconds }).success,
     ).toBe(false);
   });
+
+  it('accepts omitted, string, and null coach_note values (spec 043)', () => {
+    expect(CreatePlanSetBodySchema.parse(baseSet).coach_note).toBeUndefined();
+    expect(CreatePlanSetBodySchema.parse({ ...baseSet, coach_note: '70%top' }).coach_note).toBe(
+      '70%top',
+    );
+    expect(CreatePlanSetBodySchema.parse({ ...baseSet, coach_note: null }).coach_note).toBeNull();
+    expect(PatchPlanSetBodySchema.parse({ coach_note: '节奏3-1-0' }).coach_note).toBe('节奏3-1-0');
+  });
+
+  it('rejects coach_note longer than 500 characters', () => {
+    expect(
+      CreatePlanSetBodySchema.safeParse({ ...baseSet, coach_note: 'x'.repeat(501) }).success,
+    ).toBe(false);
+  });
 });

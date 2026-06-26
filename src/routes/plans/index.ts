@@ -821,6 +821,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           target_value: normalizeTargetValue(body.data.target_value),
           set_type: body.data.set_type,
           rest_seconds: body.data.rest_seconds ?? null,
+          coach_note: body.data.coach_note ?? null,
         })
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -877,6 +878,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       }
       if (body.data.set_type !== undefined) patch.set_type = body.data.set_type;
       if (body.data.rest_seconds !== undefined) patch.rest_seconds = body.data.rest_seconds;
+      if (body.data.coach_note !== undefined) patch.coach_note = body.data.coach_note;
 
       const validation = mergedSetValidation(existing, patch);
       if (validation) {
