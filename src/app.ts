@@ -1,5 +1,6 @@
 import cors from 'cors';
 import express, { type Express } from 'express';
+import path from 'node:path';
 import helmet from 'helmet';
 import type { Kysely } from 'kysely';
 import pinoHttp from 'pino-http';
@@ -47,6 +48,17 @@ export function createApp(deps: AppDeps): Express {
     logger,
     oss: deps.oss,
     requireAuth: createRequireAuth(config),
+  });
+
+  // Serve the bundled plan-web frontend (self-hosted, same-origin) when present.
+  // API routes above win; static assets next; any other GET falls back to the SPA.
+  const webDir = path.resolve(process.cwd(), 'web');
+  app.use(express.static(webDir));
+  app.use((req, res, next) => {
+    if (req.method !== 'GET') return next();
+    res.sendFile(path.join(webDir, 'index.html'), (err) => {
+      if (err) next();
+    });
   });
 
   app.use(notFound);
