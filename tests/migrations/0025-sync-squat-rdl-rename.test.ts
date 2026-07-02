@@ -7,7 +7,7 @@ import {
   runMigration,
 } from '../helpers/migrations';
 
-const MIGRATION = 'db/migrations/0023-sync-squat-rdl-rename.sql';
+const MIGRATION = 'db/migrations/0025-sync-squat-rdl-rename.sql';
 
 // #1 — the 2 squat variations this migration adds (ids ca71-…0010/0011).
 const NEW_IDS = ['00000000-0000-0000-ca71-000000000010', '00000000-0000-0000-ca71-000000000011'];
@@ -94,7 +94,7 @@ function seedRenameRows(mem: ReturnType<typeof makeMigrationDb>) {
   }
 }
 
-describe('migration 0023 squat add + RDL rename', () => {
+describe('migration 0025 squat add + RDL rename', () => {
   it('inserts the two low-bar squat variations with the expected metadata', () => {
     const mem = makeMigrationDb();
     createBaseUsers(mem);

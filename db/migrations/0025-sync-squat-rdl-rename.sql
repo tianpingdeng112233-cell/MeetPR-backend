@@ -1,9 +1,10 @@
--- Migration 0023: mirror the iOS catalog data corrections (MeetPR PR #193) into
+-- Migration 0025: mirror the iOS catalog data corrections (MeetPR PR #193) into
 -- the backend exercises catalog, so /exercises and the web editor stay aligned.
 --   #1 Add 2 squat main-lift variations (ids ca71-…0010/0011), mirroring 低杠位深蹲.
 --   #3 Rename 9 deadlift exercises RDL/罗拉 → 罗马尼亚硬拉 (name only; ids and
 --      name_en unchanged so plan_exercises.exercise_id FKs stay valid).
--- Catalog follow-up to 0022; next after the 0022 head. Mirrors exercise-catalog-v2.json
+-- Renumbered 0023->0025 to sit after PR #30's 0023+0024 (avoids the 0023 collision).
+-- Mirrors exercise-catalog-v2.json
 -- for these ids (created_at uses the column default per the 0002.1 generator convention).
 -- Idempotent: ON CONFLICT (id) upsert + UPDATE-by-id are safe to re-run.
 -- Source: MeetPR/Modules/CoachKit/Sources/CoachKit/Resources/exercise-catalog-v2.json
