@@ -1,4 +1,4 @@
--- Migration 0023: add exercises present in iOS exercise-catalog-v2 but missing
+-- Migration 0024: add exercises present in iOS exercise-catalog-v2 but missing
 -- from the deployed catalog (post-0002.1 drift). Idempotent: ON CONFLICT DO NOTHING.
 -- Source: Modules/CoachKit/Sources/CoachKit/Resources/exercise-catalog-v2.json
 -- Count: 18 exercises (e.g. 低杠位深蹲, 臀推, 离心卧推).

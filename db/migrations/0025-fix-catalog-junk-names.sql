@@ -1,4 +1,4 @@
--- Migration 0024: clean junk exercises surfaced in the plan-web exercise search.
+-- Migration 0025: clean junk exercises surfaced in the plan-web exercise search.
 -- Mirrors iOS exercise-catalog-v2.json cleanup (meetpr#192). Idempotent.
 
 BEGIN;
