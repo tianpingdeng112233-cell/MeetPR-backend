@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**', '.claude/**', 'scripts/**'],
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', '.claude/**', 'scripts/**', 'web/**'],
   },
   eslint.configs.recommended,
   tseslint.configs.strictTypeChecked,
