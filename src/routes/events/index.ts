@@ -32,7 +32,11 @@ function nameOf(raw: unknown): unknown {
 
 export function eventsRouter(deps: EventsRouterDeps): ExpressRouter {
   const router = Router();
-  const limiter = createEventsRateLimit(deps.config);
+  // SPEC §3.7: /events and /events/feedback each mount their OWN limiter instance
+  // (separate per-anon_id buckets), so an ingest burst can't exhaust the feedback
+  // budget or vice versa. Both are fail-open, so neither ever 429s a user.
+  const ingestLimiter = createEventsRateLimit(deps.config);
+  const feedbackLimiter = createEventsRateLimit(deps.config);
 
   // Remote kill-switch + sample rate. optional-auth read; iOS reads once at
   // app_open. enabled=false stops the client from sending, no app update needed.
@@ -46,7 +50,7 @@ export function eventsRouter(deps: EventsRouterDeps): ExpressRouter {
 
   router.post(
     '/',
-    limiter,
+    ingestLimiter,
     route(async (req, res) => {
       const envelope = EventsBatchSchema.safeParse(req.body);
       if (!envelope.success) {
@@ -120,7 +124,7 @@ export function eventsRouter(deps: EventsRouterDeps): ExpressRouter {
 
   router.post(
     '/feedback',
-    limiter,
+    feedbackLimiter,
     route(async (req, res) => {
       const parsed = FeedbackSchema.safeParse(stripIdentity(req.body));
       if (!parsed.success) {
