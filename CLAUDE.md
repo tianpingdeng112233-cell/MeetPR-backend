@@ -45,6 +45,14 @@ MeetPR backend service. V1 scope: REST API for coach / student workflows, traini
 
 1. **No ORM.** Per ADR 004 §2. Kysely is permitted because it is a _SQL builder_ — it doesn't manage migrations, doesn't generate types from runtime schema, doesn't hide SQL semantics. If anyone proposes Prisma, Drizzle, TypeORM, MikroORM, or similar — point them at the ADR. The `Database` interface in `src/db/types.ts` is hand-augmented per migration.
 2. **Hand-managed migrations.** SQL files in `db/migrations/<NNN>-<name>.sql`. No tooling-managed migrations.
+   - **取号规则(开迁移 PR 前必做,已实际撞号)。** 下一个迁移号 = `max(A, B, C) + 1`,其中
+     - **A** = `origin/staging` 上 `db/migrations` 的最大号 —— `git ls-tree --name-only origin/staging db/migrations`
+     - **B** = 所有 open PR 已占用的号 —— `gh pr list --state open`,逐个看其 `db/migrations` 新增文件
+     - **C** = 已直接跑 prod RDS 但尚未合回 staging 的号(问一句 / 查部署记录)
+
+     现场核对 A/B/C,别凭记忆。被别的 PR 抢号时,rebase 时一并改:**迁移文件名** + **文件头 `-- Migration NNNN:` 注释** + **配套 `tests/migrations/NNNN-*.test.ts`**。
+     _痛点实例(2026-07):`staging` 已合 `0024`;open PR 里 #30 带 `0024`+`0025` 双撞、#34=`0025`、#35=`0026` —— 全是没现场核对 B 造成的。_
+
 3. **DATE-as-text.** All `DATE` columns must be returned as strings to avoid timezone drift. The pg type parser for OID 1082 is registered globally in `src/db/pool.ts`. Don't unregister it.
 4. **No Apple-specific code.** No Apple Sign-In, no APNs, no MPS bindings. V1 doesn't need it.
 5. **`dotenv` is dev-only.** Production reads env from the SAE runtime. The only place `dotenv` is loaded is `src/server.ts`, gated on `NODE_ENV !== 'production'`. Don't add it elsewhere.
