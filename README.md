@@ -57,6 +57,25 @@ The authoritative route list is **`src/routes/index.ts`** (`mountRoutes`) — re
 
 `POST /events` (+ `GET /events/config`) is **specced but not yet implemented** — see `specs/008-analytics-events/SPEC.md`. No route is mounted yet.
 
+## Deploy & Migrate runbook
+
+`staging` is the production service branch. Deploy and schema changes are two separate manual steps.
+
+**Deploy (code):**
+
+1. Merge/push to `staging`. GitHub Actions builds the image and pushes it to Aliyun ACR.
+2. **Manually** trigger a re-deploy in Aliyun SAE so it pulls the new image. (SAE does not auto-pull on ACR push.)
+
+**Migrate (schema):** the repo has **no migration runner** — SQL is applied by hand via `psql` against the Aliyun RDS instance (see CLAUDE.md Hard rule 2 for how to allocate the number).
+
+**Standard order when a change ships both code and a migration: migrate first, verify, then re-deploy.**
+
+1. Apply the new `db/migrations/<NNNN>-*.sql` to RDS via `psql`.
+2. Verify (`\d <table>`, indexes, a smoke query).
+3. Then trigger the SAE re-deploy so the new code meets the already-migrated schema.
+
+Doing it in this order means the new code never hits a schema that lacks its columns.
+
 ## Knowledge base
 
 The PRD, ADRs, and architecture decisions live in the Obsidian vault at:
