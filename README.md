@@ -32,22 +32,30 @@ pnpm dev
 | `pnpm test`         | Vitest (single run)     |
 | `pnpm test:watch`   | Vitest (watch)          |
 
-## Endpoints (V1 stubs)
+## Endpoints
 
-All return `501 not_implemented` for now. Protected routes return `401 unauthorized` when no valid Bearer token is provided.
+The authoritative route list is **`src/routes/index.ts`** (`mountRoutes`) — read it there, not here. Most routes are implemented and serving the TestFlight beta; protected routes return `401 unauthorized` without a valid Bearer token. Route groups:
 
-| Method | Path             | Auth     |
-| ------ | ---------------- | -------- |
-| GET    | /health          | —        |
-| POST   | /auth/register   | —        |
-| POST   | /auth/login      | —        |
-| POST   | /auth/refresh    | —        |
-| GET    | /me              | required |
-| GET    | /coach/dashboard | required |
-| GET    | /coach/students  | required |
-| POST   | /coach/plans     | required |
-| GET    | /student/plan    | required |
-| POST   | /student/sets    | required |
+| Prefix           | What                                                                              | Auth     |
+| ---------------- | --------------------------------------------------------------------------------- | -------- |
+| `GET /health`    | Liveness                                                                          | —        |
+| `/auth`          | register / login / refresh                                                        | —        |
+| `/plans`         | Coach plan CRUD                                                                   | required |
+| `/students/*`    | Student-scoped: plans, sets, readiness, feedback, evaluations, onboarding, videos | required |
+| `/bind-requests` | Student side of coach↔student binding                                             | required |
+| `/exercises`     | Exercise catalog                                                                  | required |
+| `/sets`          | Set logs                                                                          | required |
+| `/feedback`      | Feedback records                                                                  | required |
+| `/coach/*`       | Coach-scoped: feedback, invite-codes, bind-requests, evaluations, one-rm          | required |
+| `/uploads`       | OSS multipart upload (video attachments)                                          | required |
+
+**Remaining `501 not_implemented` stubs** (the only ones left; everything else is live):
+
+- `GET /me` (`src/routes/me.ts`)
+- `GET /coach/dashboard` (`src/routes/coach.ts`)
+- `POST /student/sets` (`src/routes/student.ts`)
+
+`POST /events` (+ `GET /events/config`) is **specced but not yet implemented** — see `specs/008-analytics-events/SPEC.md`. No route is mounted yet.
 
 ## Knowledge base
 
