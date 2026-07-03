@@ -62,8 +62,13 @@ export function createApp(deps: AppDeps): Express {
   const webDir = path.resolve(process.cwd(), 'web');
   app.use(express.static(webDir));
   app.use((req, res, next) => {
-    if (req.method !== 'GET' || req.accepts(['json', 'html']) !== 'html') return next();
-    res.sendFile(path.join(webDir, 'index.html'), (err) => {
+    if (req.method !== 'GET' || req.accepts(['json', 'html']) !== 'html') {
+      next();
+      return;
+    }
+    // err is Error | undefined at runtime (undefined on success) despite express's
+    // non-optional Errback type; annotate so the truthiness check is honest.
+    res.sendFile(path.join(webDir, 'index.html'), (err: Error | undefined) => {
       if (err) next();
     });
   });
