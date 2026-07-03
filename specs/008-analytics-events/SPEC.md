@@ -8,12 +8,14 @@
 
 ## 范围
 
-### 1. migration `0019-init-events.sql`
+### 1. migration `NNNN-init-events.sql`
 
-仓库**无 migration runner**（手 psql 应用，见 CLAUDE.md Hard rule 2）。文件落 `db/migrations/0019-init-events.sql`，BEGIN/COMMIT 包裹，镜像 0014/0015 文件头注释风格。**字面 SQL**：
+> ⚠️ **迁移号是占位符，起跑时现取。** 本 spec 起草时（2026-06-24）写作 `0019`/`0020`，但**那两号已被导入 wave 占用并合入 `staging`**（`0019-sync-plan-coverage-exercises.sql` / `0020-relax-plan-weeks.sql`）。实装起跑时按 **CLAUDE.md Hard rule 2** 现取两个连续号 —— 下文记为 `NNNN`（events 表迁移号）与 `NNNN+1`（紧随的 feedback 表迁移号）—— 并同步替换本 spec 全部 `NNNN`/`NNNN+1` 引用、迁移文件名、文件头 `-- Migration NNNN:` 注释与配套测试文件名。
+
+仓库**无 migration runner**（手 psql 应用，见 CLAUDE.md Hard rule 2）。文件落 `db/migrations/NNNN-init-events.sql`，BEGIN/COMMIT 包裹，镜像 0014/0015 文件头注释风格。**字面 SQL**：
 
 ```sql
--- Migration 0019: first-party analytics events (behavioral observation layer).
+-- Migration NNNN: first-party analytics events (behavioral observation layer).
 -- One wide table + JSONB props. event_id is a client-generated uuid, UNIQUE on
 -- the server so an at-least-once retry (lost 204 ack / killed flush) dedups to
 -- exactly-once storage via ON CONFLICT(event_id) DO NOTHING. user_id is
@@ -148,10 +150,10 @@ iOS 在 `app_open` 时读一次。`enabled=false` → 客户端整体停发（�
 
 `events` 流仍只收 enum-only `friction_feedback` 信号（"提示触发 + 用户参与"，见 §8）；**那句话**走这条单独端点 + 单独表，靠 `event_id` 与信号事件可 join。
 
-**migration `0020-init-analytics-feedback.sql`**（紧随 0019）：
+**migration `NNNN+1-init-analytics-feedback.sql`**（紧随 `NNNN`）：
 
 ```sql
--- Migration 0020: qualitative friction feedback (the ONE free-text path).
+-- Migration NNNN+1: qualitative friction feedback (the ONE free-text path).
 -- Physically separate from `events` (events stays free-text-free — true gate).
 -- `text` is the only free-text column in the analytics surface; capped, and this
 -- table carries a PIPL content-class declaration (User Content) that `events`
@@ -331,10 +333,10 @@ iOS 043 侧 Demo 构建**硬关** Analytics（no-op，数据不离设备）**或
 6. **rate-limit fail-open**：超专属 limiter → 204 + 0 新行，绝不 429。
 7. **隔离断言**：`/events/feedback` 写 `analytics_feedback`，**不**往 `events` 表写任何行（自由文本不进 events，真 gate）。
 
-**`tests/migrations/0019-events.test.ts` + `tests/migrations/0020-analytics-feedback.test.ts`（pg-mem）：**
+**`tests/migrations/NNNN-events.test.ts` + `tests/migrations/NNNN+1-analytics-feedback.test.ts`（pg-mem）：**
 
-- 0019：`event_id` UNIQUE 拒重复插入；`user_id` FK `ON DELETE SET NULL`（删 user 后该行 `user_id IS NULL`、行**仍在**，对比 0014 的 CASCADE）；`props` 默认 `'{}'`、`platform` 默认 `'ios'`、`schema_version` 默认 1；四索引存在。
-- 0020：`analytics_feedback` 建表；`event_id` UNIQUE；`user_id` FK `ON DELETE SET NULL`；`text` NOT NULL；两索引存在。
+- `NNNN`（events）：`event_id` UNIQUE 拒重复插入；`user_id` FK `ON DELETE SET NULL`（删 user 后该行 `user_id IS NULL`、行**仍在**，对比 0014 的 CASCADE）；`props` 默认 `'{}'`、`platform` 默认 `'ios'`、`schema_version` 默认 1；四索引存在。
+- `NNNN+1`（feedback）：`analytics_feedback` 建表；`event_id` UNIQUE；`user_id` FK `ON DELETE SET NULL`；`text` NOT NULL；两索引存在。
 - pg-mem 需注册 `gen_random_uuid` 已在 helpers；BIGSERIAL/jsonb 走既有 helper 模式。
 
 ### 11. config（新增 env，镜像现有 `RATE_LIMIT_*` 命名）
@@ -357,7 +359,7 @@ iOS 043 侧 Demo 构建**硬关** Analytics（no-op，数据不离设备）**或
 3. **event_id UNIQUE + ON CONFLICT DO NOTHING**（CRITICAL #2）：at-least-once 投递 → exactly-once 存储。
 4. **专属 limiter + fail-open + TRUST_PROXY**（CRITICAL #3）：keyed on anon_id，永不 429 用户；部署前确认生产 `TRUST_PROXY`。
 5. **部署顺序**（仓库无 migration runner，手 psql）：
-   1. `0019-init-events.sql` + `0020-init-analytics-feedback.sql` 合 staging → CI 出 image
+   1. `NNNN-init-events.sql` + `NNNN+1-init-analytics-feedback.sql` 合 staging → CI 出 image
    2. 手 psql **staging** RDS，`\d events` + 四索引 + `\d analytics_feedback` 验证
    3. 部署 staging SAE，跑扩展 e2e-smoke（emit → assert rows）
    4. 手 psql **生产**阿里云 RDS 应用同 migration（**先于** iOS 发带埋点构建）
@@ -380,9 +382,9 @@ iOS 043 侧 Demo 构建**硬关** Analytics（no-op，数据不离设备）**或
 
 ## 修订记录
 
-| 日期       | 版本 | 变更                                                                                                                                                                                                                                                                                                                                                   | 作者   |
-| ---------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| 2026-06-24 | 0.1  | 起草：events 表 + /events(optional-auth+专属limiter+await-insert+ON CONFLICT) + /events/config + 5 CRITICAL + ~18 事件 registry + 测试镜像                                                                                                                                                                                                             | Claude |
-| 2026-06-24 | 0.2  | David 决策质化反馈要存：加 §4b `analytics_feedback` 表（migration 0020）+ `POST /events/feedback`（唯一自由文本路径，与 events 物理隔离，带 User Content PIPL 声明）+ retention/删除/部署同步                                                                                                                                                          | Claude |
-| 2026-06-24 | 0.3  | review-loop 轮1 codex 8 BLOCKER+3 nit 全采纳：状态 Planned→Draft；全局 limiter `skip` /events；信封 anon_id 提顶层（limiter key）；errorHandler 透传 413；createOptionalAuth 不赋 undefined（exactOptional）；§8.1 enum 值集；删除顺序 + 仅 user_id；§4b feedback 测试 + 0020 migration test；BIGSERIAL→string；text 禁控制字符 refine；§11 config env | Claude |
-| 2026-06-24 | 0.4  | review-loop 轮2 codex 1 BLOCKER+2 nit 全采纳：`ANALYTICS_ENABLED` 改 `z.enum(['true','false']).transform`（`z.coerce.boolean` 关不掉 kill-switch）；feedback text 测试去掉"截断"（schema 只 reject）；step 3/4 钉死 strip→strict→server-set 顺序                                                                                                       | Claude |
+| 日期       | 版本 | 变更                                                                                                                                                                                                                                                                                                                                                       | 作者   |
+| ---------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 2026-06-24 | 0.1  | 起草：events 表 + /events(optional-auth+专属limiter+await-insert+ON CONFLICT) + /events/config + 5 CRITICAL + ~18 事件 registry + 测试镜像                                                                                                                                                                                                                 | Claude |
+| 2026-06-24 | 0.2  | David 决策质化反馈要存：加 §4b `analytics_feedback` 表（migration 0020 → 起跑重取号，见 §1）+ `POST /events/feedback`（唯一自由文本路径，与 events 物理隔离，带 User Content PIPL 声明）+ retention/删除/部署同步                                                                                                                                          | Claude |
+| 2026-06-24 | 0.3  | review-loop 轮1 codex 8 BLOCKER+3 nit 全采纳：状态 Planned→Draft；全局 limiter `skip` /events；信封 anon_id 提顶层（limiter key）；errorHandler 透传 413；createOptionalAuth 不赋 undefined（exactOptional）；§8.1 enum 值集；删除顺序 + 仅 user_id；§4b feedback 测试 + feedback migration test；BIGSERIAL→string；text 禁控制字符 refine；§11 config env | Claude |
+| 2026-06-24 | 0.4  | review-loop 轮2 codex 1 BLOCKER+2 nit 全采纳：`ANALYTICS_ENABLED` 改 `z.enum(['true','false']).transform`（`z.coerce.boolean` 关不掉 kill-switch）；feedback text 测试去掉"截断"（schema 只 reject）；step 3/4 钉死 strip→strict→server-set 顺序                                                                                                           | Claude |
