@@ -23,6 +23,8 @@ ENV NODE_ENV=production
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/package.json ./package.json
+# Bundled plan-web frontend (built with VITE_API_BASE='' → same-origin).
+COPY --chown=node:node web ./web
 USER node
 EXPOSE 3000
 CMD ["node", "dist/server.js"]

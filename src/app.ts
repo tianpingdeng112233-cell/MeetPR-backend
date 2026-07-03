@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import cors from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
@@ -47,6 +49,23 @@ export function createApp(deps: AppDeps): Express {
     logger,
     oss: deps.oss,
     requireAuth: createRequireAuth(config),
+  });
+
+  // Serve the bundled plan-web frontend (self-hosted, same-origin) when present.
+  // API routes above win; static assets next; a browser navigation to a client-side
+  // route falls back to the SPA. Content-negotiated so this shared API+SPA origin does
+  // not turn unmatched API GETs into HTML: only requests that explicitly prefer HTML
+  // (real browser navigations) get the SPA; API clients (Accept: application/json, or
+  // */* which resolves to the first listed type) fall through to notFound's JSON 404 —
+  // this backend also serves the iOS app, whose error handling expects JSON.
+  // web/ is absent in dev (no build) — sendFile errors then fall through to notFound.
+  const webDir = path.resolve(process.cwd(), 'web');
+  app.use(express.static(webDir));
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.accepts(['json', 'html']) !== 'html') return next();
+    res.sendFile(path.join(webDir, 'index.html'), (err) => {
+      if (err) next();
+    });
   });
 
   app.use(notFound);
