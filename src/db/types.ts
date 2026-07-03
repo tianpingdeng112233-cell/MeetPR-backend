@@ -118,6 +118,9 @@ export const ATTACHMENT_STATUSES = [
   'failed',
   'deleting',
 ] as const;
+// Analytics event platform. iOS-only for the beta; the column is text for
+// forward-compat, this const is the current closed set (SPEC 008 §6).
+export const EVENT_PLATFORMS = ['ios'] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
 export type LiftFamily = (typeof LIFT_FAMILIES)[number];
@@ -153,6 +156,7 @@ export type InjuryArea = (typeof INJURY_AREAS)[number];
 export type ReadinessMuscleGroup = (typeof READINESS_MUSCLE_GROUPS)[number];
 export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
 export type AttachmentStatus = (typeof ATTACHMENT_STATUSES)[number];
+export type EventPlatform = (typeof EVENT_PLATFORMS)[number];
 
 type NullableColumn<T> = ColumnType<T | null, T | null | undefined, T | null>;
 type TimestampColumn = ColumnType<Date, Date | undefined, Date>;
@@ -544,6 +548,48 @@ export interface NotificationOutboxTable {
   delivered_at: NullableColumn<Date>;
 }
 
+// name's authoritative enum lives in the route's zod discriminatedUnion; the
+// column is plain text for forward-compat (SPEC 008 §6).
+export interface EventsTable {
+  // BIGSERIAL — node-pg reads int8 as string (same convention as attachments
+  // size_bytes); timeline queries never select id.
+  id: Generated<string>;
+  event_id: string; // client uuid, UNIQUE
+  anon_id: string;
+  user_id: NullableColumn<string>; // server-derived, NULL pre-login, ON DELETE SET NULL
+  role: NullableColumn<string>;
+  session_id: string;
+  seq: number;
+  name: string;
+  // JSONB: insert a JSON string (node-pg would otherwise encode a JS object oddly);
+  // node-pg reads parsed JSON, pg-mem may return a string. Normalize at serialize.
+  props: ColumnType<Record<string, unknown> | string, string, string>;
+  schema_version: Generated<number>;
+  app_version: NullableColumn<string>;
+  build: NullableColumn<string>;
+  platform: Generated<EventPlatform>;
+  ts_client: TimestampColumn;
+  ts_server: TimestampColumn;
+}
+
+// The ONE free-text path (SPEC 008 §4b). Physically separate from events; text
+// is the only free-text column in the analytics surface.
+export interface AnalyticsFeedbackTable {
+  id: Generated<string>;
+  event_id: string; // = the friction_feedback signal event's id (join key), UNIQUE
+  anon_id: string;
+  user_id: NullableColumn<string>;
+  session_id: string;
+  flow: string;
+  from_screen: string;
+  trigger: string;
+  text: string;
+  app_version: NullableColumn<string>;
+  build: NullableColumn<string>;
+  ts_client: TimestampColumn;
+  ts_server: TimestampColumn;
+}
+
 export interface Database {
   users: UsersTable;
   exercises: ExercisesTable;
@@ -571,4 +617,6 @@ export interface Database {
   wave_templates: WaveTemplatesTable;
   athlete_capacity_profiles: AthleteCapacityProfilesTable;
   variation_logs: VariationLogsTable;
+  events: EventsTable;
+  analytics_feedback: AnalyticsFeedbackTable;
 }

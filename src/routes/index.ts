@@ -4,9 +4,11 @@ import type { Kysely } from 'kysely';
 import type { Config } from '../config';
 import type { Database } from '../db/types';
 import type { Logger } from '../logger';
+import { createOptionalAuth } from '../middleware/auth';
 import { authRouter } from './auth';
 import { coachBindRequestsRouter, studentBindRequestsRouter } from './bind-requests';
 import { coachRouter } from './coach';
+import { eventsRouter } from './events';
 import { coachEvaluationsRouter, studentEvaluationsRouter } from './evaluations';
 import { exercisesRouter } from './exercises';
 import { coachExerciseStatsRouter } from './exercise-stats';
@@ -59,6 +61,14 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use('/coach', deps.requireAuth, coachEvaluationsRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachOneRmRouter({ db: deps.db }));
   app.use('/student', deps.requireAuth, studentRouter());
+  // Analytics ingest (SPEC 008). optional-auth (NOT requireAuth): pre-login
+  // onboarding events must not 401. The whole /events surface is exempt from the
+  // global per-IP limiter and carries its own anon_id-keyed fail-open limiter.
+  app.use(
+    '/events',
+    createOptionalAuth(deps.config),
+    eventsRouter({ db: deps.db, logger: deps.logger, config: deps.config }),
+  );
   app.use(
     '/uploads',
     deps.requireAuth,

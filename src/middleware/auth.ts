@@ -87,6 +87,47 @@ export function createRequireAuth(
   };
 }
 
+/**
+ * Like createRequireAuth, but NEVER 401s. A valid Bearer token sets req.user;
+ * anything else (missing/blank/invalid token) leaves req.user unset and calls
+ * next(). This is what keeps the pre-login onboarding funnel alive: an anon
+ * `onboarding_step` event must not be rejected for lacking a token (SPEC §2).
+ *
+ * exactOptionalPropertyTypes gate: never assign `req.user = undefined` (type
+ * error). Unset it with `delete` so the type stays `{id, role} | absent`.
+ */
+export function createOptionalAuth(config: Pick<Config, 'JWT_ACCESS_SECRET'>): RequestHandler {
+  return (req, _res, next) => {
+    delete req.user;
+
+    const header = req.headers.authorization;
+    if (typeof header !== 'string' || !header.startsWith('Bearer ')) {
+      next();
+      return;
+    }
+
+    const token = header.slice('Bearer '.length).trim();
+    if (token.length === 0) {
+      next();
+      return;
+    }
+
+    let payload: unknown;
+    try {
+      payload = jwt.verify(token, config.JWT_ACCESS_SECRET);
+    } catch {
+      next();
+      return;
+    }
+
+    const parsed = AccessTokenPayloadSchema.safeParse(payload);
+    if (parsed.success) {
+      req.user = { id: parsed.data.sub, role: parsed.data.role };
+    }
+    next();
+  };
+}
+
 export function requireRole(...allowed: AccessTokenPayload['role'][]): RequestHandler {
   return (req, res, next) => {
     if (!req.user) {
