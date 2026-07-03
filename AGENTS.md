@@ -32,7 +32,7 @@ Before touching any file:
 ## Hard rules
 
 - ❌ Never `git commit --no-verify`
-- ❌ Never `git push --force` to `main`
+- ❌ Never `git push --force` to `staging` (the trunk; there is no `main`)
 - ❌ Never edit `~/Brain/wiki/` from this repo
 - ❌ Never commit `.env` (gitignored, but verify)
 - ❌ Never log secrets, JWTs, or passwords (pino has redact paths configured)

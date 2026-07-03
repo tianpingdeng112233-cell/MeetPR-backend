@@ -77,7 +77,7 @@ Live in `~/Brain/wiki/projects/MeetPR/decisions/`. ADRs are immutable once accep
 
 ## Git conventions
 
-- Branches: `staging` for in-progress, `main` for reviewed
+- **`staging` is trunk.** Feature branches fork off `staging`; PRs merge back into `staging`. There is no `main` — the remote has no `main` branch, and `staging` is the branch that builds and deploys (see the phase note above).
 - Commit subject: imperative mood, conventional prefix (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`)
 - One logical change per commit when possible
-- No force-push to `main`
+- No force-push to `staging`
