@@ -2,27 +2,26 @@
 
 This file is the primary onboarding doc for any Claude session working on this repo.
 
-> ✅ **UNFROZEN 2026-05-15 — V0.1 wave triggered**
+> **当前阶段 — TestFlight 内测运行期(2026-06-27 起)**
 >
-> iOS V0.1 wave 6 specs(024-029)已合 main(`~/Projects/apps/MeetPR/specs/`),其中 spec 026 / 027 / 029 显式需要 backend 实装。**Unfreeze trigger met**:
+> `staging` **即生产服务分支**:push `staging` 触发 GitHub Actions 构建并推 ACR 镜像,供阿里云 SAE 拉取部署(流程见 README「Deploy & Migrate runbook」)。没有独立的 `main` / 生产分支。
 >
-> - spec 026 `Backend 真接入` 触发 backend **003-student-actions** spec(`/coach/students` + set_logs + feedback + 3 张 missing tables migration + seed)
-> - spec 027 `Video upload` 触发 backend **004-video-upload** spec(`/upload/{initiate,sign-parts,complete,abort}` + `/students/:id/videos`(带短期 presigned URLs) + `/privacy/consent` + OSS bucket 4 项配置 + 0007 video_attachments migration)
+> **允许**(内测期):
 >
-> **V0 期 backend 历史**:`001-auth`(PR #4)+ `002-coach-planning-crud`(PR #5)已合 staging,但 `/coach/students` 仍是 501 stub(per spec 026 §来源 注),003 必须实装。
+> - 有 `specs/NNN-*/SPEC.md` 触发的实装 —— 含埋点 **008-analytics-events**(iOS 043-analytics 消费的 `POST /events` + `GET /events/config`)的落地
+> - Bugfix / 回归修复
+> - Catalog(`db/seed` + `exercises` 表)数据修正
+> - Security / dependency CVE 修复
 >
-> **V0.1+ 内测期允许**:
+> **不允许**:
 >
-> - 起 003-student-actions / 004-video-upload spec + impl PR
-> - 修补 001 / 002 stub endpoint(/coach/students 等)
-> - Security / dependency CVE fixes
-> - 阿里云 SAE 部署 + RDS 重申(per spec 026 §1.1 / §1.2)
+> - 无 spec 触发的投机 feature
+> - "clean up before V1" 式的投机 refactor
+> - V0.2+ 净增量范围(仍冻结;教练驾驶舱等,权威在 `~/Brain/wiki/projects/MeetPR/`)
 >
-> **仍不允许**:
+> **evaluation-workflow**(教练评估期:`0011`/`0012` 迁移 + `src/routes/evaluations.ts`)已建成但**封存休眠** —— 注入测试绑定带 `skip_evaluation: true` 关运行时;代码保留,defer ≠ delete,别删。
 >
-> - 投机性 backend feature(无对应 iOS spec 触发)
-> - Speculative refactor / "clean up before V1"
-> - V0.2+ 范围工作(evaluation-workflow / MPS 转码 / KMS / 多端 polling 等)— V0.1 内测稳定后再 unfreeze
+> **历史(已实装,合入 `staging`,服务内测)**:V0 = `001-auth` + `002-coach-planning-crud`;V0.1 = `003-student-actions` / `004-attachment-upload` / `005-bind-eval-profile` / `006-readiness` / `007-video-setlog-link`。逐项 SPEC 见 `specs/`。
 
 ## Project
 
