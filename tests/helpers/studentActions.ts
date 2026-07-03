@@ -23,6 +23,10 @@ export const config: Config = {
   LOG_LEVEL: 'silent',
   RATE_LIMIT_WINDOW_MS: 60_000,
   RATE_LIMIT_MAX: 10_000,
+  EVENTS_RATE_LIMIT_WINDOW_MS: 60_000,
+  EVENTS_RATE_LIMIT_MAX: 10_000,
+  ANALYTICS_ENABLED: true,
+  ANALYTICS_SAMPLE_RATE: 1,
   CORS_ORIGIN: '*',
   TRUST_PROXY: 0,
 };
@@ -334,6 +338,40 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       delivered_at TIMESTAMPTZ,
       UNIQUE (event_type, aggregate_id, recipient_id)
+    );
+
+    CREATE TABLE events (
+      id BIGSERIAL PRIMARY KEY,
+      event_id UUID NOT NULL UNIQUE,
+      anon_id UUID NOT NULL,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      role TEXT,
+      session_id UUID NOT NULL,
+      seq INT NOT NULL,
+      name TEXT NOT NULL,
+      props JSONB NOT NULL DEFAULT '{}',
+      schema_version SMALLINT NOT NULL DEFAULT 1,
+      app_version TEXT,
+      build TEXT,
+      platform TEXT NOT NULL DEFAULT 'ios',
+      ts_client TIMESTAMPTZ NOT NULL,
+      ts_server TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE analytics_feedback (
+      id BIGSERIAL PRIMARY KEY,
+      event_id UUID NOT NULL UNIQUE,
+      anon_id UUID NOT NULL,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      session_id UUID NOT NULL,
+      flow TEXT NOT NULL,
+      from_screen TEXT NOT NULL,
+      trigger TEXT NOT NULL,
+      text TEXT NOT NULL,
+      app_version TEXT,
+      build TEXT,
+      ts_client TIMESTAMPTZ NOT NULL,
+      ts_server TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
 }

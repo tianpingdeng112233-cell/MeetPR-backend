@@ -34,6 +34,18 @@ export const ConfigSchema = z
       .default('info'),
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
+    // Dedicated limiter for /events + /events/feedback (keyed on anon_id, fail-open).
+    // Wide by design: internal beta n<50, and fail-open never 429s a real user.
+    EVENTS_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+    EVENTS_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(600),
+    // Analytics kill-switch (GET /events/config). NOT z.coerce.boolean(): that runs
+    // JS Boolean(), so "false"/"0" both coerce to true and the switch never turns
+    // off. enum + explicit transform is the only correct off path (SPEC §11).
+    ANALYTICS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
+    ANALYTICS_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
     CORS_ORIGIN: z.string().default('*'),
     TRUST_PROXY: z.coerce.number().int().min(0).default(0),
     // Production is closed by default. A small invite/allowlist cohort may
