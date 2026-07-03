@@ -1,7 +1,10 @@
--- Migration 0024: add exercises present in iOS exercise-catalog-v2 but missing
+-- Migration 0027: add exercises present in iOS exercise-catalog-v2 but missing
 -- from the deployed catalog (post-0002.1 drift). Idempotent: ON CONFLICT DO NOTHING.
 -- Source: Modules/CoachKit/Sources/CoachKit/Resources/exercise-catalog-v2.json
 -- Count: 18 exercises (e.g. 低杠位深蹲, 臀推, 离心卧推).
+-- NOTE: this catalog content was applied directly to prod RDS on 2026-06-25, ahead of
+-- this repo record. Renumbered 0024 -> 0027 on 2026-07-03 (#33/#34 took 0024/0025).
+-- Idempotent, so re-running against any DB — including prod — is a safe no-op.
 
 BEGIN;
 

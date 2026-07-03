@@ -1,5 +1,7 @@
--- Migration 0025: clean junk exercises surfaced in the plan-web exercise search.
+-- Migration 0028: clean junk exercises surfaced in the plan-web exercise search.
 -- Mirrors iOS exercise-catalog-v2.json cleanup (meetpr#192). Idempotent.
+-- NOTE: applied directly to prod RDS on 2026-06-25, ahead of this repo record.
+-- Renumbered 0025 -> 0028 on 2026-07-03 (#33/#34 took 0024/0025). Re-running is a no-op.
 
 BEGIN;
 
