@@ -166,7 +166,8 @@ async function fetchUploadIds(db: DbExecutor, userId: string): Promise<string[]>
 }
 
 export type UpsertOnboardingResult =
-  { type: 'updated'; profile: OnboardingProfileResponse } | { type: 'one-rm-locked' };
+  | { type: 'updated'; profile: OnboardingProfileResponse }
+  | { type: 'one-rm-locked' };
 
 /**
  * Step-by-step re-entrant upsert. Only the submitted fields are written.
