@@ -2,6 +2,16 @@
 
 This file is the primary onboarding doc for any Claude session working on this repo.
 
+**身份卡（速查 · 坐标；规则正文见下方「当前阶段」与 Hard rules，本表不复写）**
+
+| 字段 | 值 |
+|---|---|
+| 路径 / trunk | `~/Projects/apps/MeetPR-backend`；默认分支 `staging`，**远端无 `main`**；feat 从 `staging` 切，PR base = `staging` |
+| 迁移取号 | 见下方 **Hard rule #2**（现场 `max(A,B,C)+1`）。2026-07-04 快照：`staging` 头 = `0032`，`0029/0030` 被 open PR #38 占用，下一可用 = `0033` —— 快照仅供比对，开工按 Hard rule 现场重算 |
+| 部署 | 阿里云 SAE `staging`（华东1·杭州）；网络拓扑（CLB / SNAT EIP）见记忆 `meetpr_aliyun_arrears`，**IP 不写死** |
+| 主 worktree | 多 worktree 共享，可能被 Codex 占用 → 动仓前先 `git worktree list`；被占则另开独立树，禁索引型破坏性 git（stash drop / branch -D / rebase checked-out 分支） |
+| 凭证 | 密码 / JWT secret 见 **Hard rule #7**（password manager 指针），永不落文件 |
+
 > **当前阶段 — TestFlight 内测运行期(2026-06-27 起)**
 >
 > `staging` **即生产服务分支**:push `staging` 触发 GitHub Actions 构建并推 ACR 镜像,供阿里云 SAE 拉取部署(流程见 README「Deploy & Migrate runbook」)。没有独立的 `main` / 生产分支。
