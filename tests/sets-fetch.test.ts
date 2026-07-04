@@ -78,10 +78,25 @@ describe('GET /students/:id/sets', () => {
     ]);
   });
 
-  it('lets an owning coach see only logs from that coach published plans', async () => {
+  it('lets an owning coach see only plan logs — never adhoc rows', async () => {
     const ctx = await makeContext();
     const coachPlan = await createPublishedPlan(ctx, ids.coach, ids.trainee);
     const otherCoachPlan = await createPublishedPlan(ctx, ids.otherCoach, ids.trainee);
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: null,
+        exercise_id: ids.exercise,
+        logged_date: '2026-05-15',
+        adhoc: true,
+        set_index: 0,
+        weight_kg: '120.00',
+        reps: 8,
+        completed: true,
+        logged_at: new Date('2026-05-15T11:00:00.000Z'),
+      })
+      .execute();
     await ctx.db
       .insertInto('set_logs')
       .values([
