@@ -172,7 +172,21 @@ describe('POST /uploads/:attachmentId/complete', () => {
     const statuses = [first.status, second.status].sort();
     expect(statuses).toEqual([200, 409]);
     const loser = first.status === 409 ? first : second;
-    expect(loser.body).toEqual({ error: 'UPLOAD_INVALID_STATE' });
+    // The 409 loser reaches its rejection via one of two legitimate, timing-dependent
+    // paths, so its body is not byte-stable:
+    //   - it also read `uploading`, then lost the atomic conditional UPDATE → the bare
+    //     envelope `{ error: 'UPLOAD_INVALID_STATE' }`;
+    //   - it read the row *after* the winner advanced it and hit the state-machine guard
+    //     → the envelope also reports the observed status, e.g. `completing` / `ready`.
+    // Spec 004 guarantees only `409 UPLOAD_INVALID_STATE` for the double-complete loser;
+    // `status` is an optional owner-facing detail (cf. uploads-abort's `status:
+    // 'completing'` assertion). Assert that stable core, and require any reported status
+    // to be an already-advanced state — never `uploading`, which would mean the claim
+    // guard let a live upload slip through to OSS.
+    expect(loser.body).toMatchObject({ error: 'UPLOAD_INVALID_STATE' });
+    if (loser.body.status !== undefined) {
+      expect(['completing', 'ready']).toContain(loser.body.status);
+    }
     // The atomic claim must keep the loser away from OSS entirely.
     expect(ctx.oss.calls.complete).toHaveLength(1);
 
