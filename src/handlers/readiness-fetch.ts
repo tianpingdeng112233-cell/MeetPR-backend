@@ -26,8 +26,7 @@ export function toReadinessCheckin(row: ReadinessCheckinRow): ReadinessCheckinRe
   return {
     id: row.id,
     student_id: row.student_id,
-    // checkin_date is NOT NULL; dateOnly only widens for the pg-mem Date case.
-    checkin_date: dateOnly(row.checkin_date) ?? '',
+    checkin_date: dateOnly(row.checkin_date),
     sleep_quality: row.sleep_quality,
     mood: row.mood,
     stress: row.stress,
