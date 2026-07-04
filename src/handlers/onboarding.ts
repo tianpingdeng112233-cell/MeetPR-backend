@@ -170,8 +170,9 @@ export type UpsertOnboardingResult =
 
 /**
  * Step-by-step re-entrant upsert. Only the submitted fields are written.
- * Once completed_at is set, the three 1RM fields are student-locked
- * (403 ONE_RM_LOCKED) — coach endpoint is the only writer (spec 005 E).
+ * Once completed_at is set, the three 1RM fields are locked for coached
+ * students (403 ONE_RM_LOCKED) — coach endpoint is the only writer
+ * (spec 005 E). Self-train students are exempt (spec 013).
  */
 export async function upsertOnboardingProfile(
   db: Kysely<Database>,
