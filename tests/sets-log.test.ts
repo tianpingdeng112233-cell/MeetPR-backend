@@ -79,4 +79,167 @@ describe('POST /sets/log', () => {
     expect(wrongStudent.status).toBe(400);
     expect(wrongStudent.body).toEqual({ error: 'SETS_PLAN_EXERCISE_NOT_PUBLISHED' });
   });
+
+  it('records a server-side Shanghai logged_date when a coached body omits it', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+
+    const res = await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+      plan_exercise_id: plan.planExerciseId,
+      set_index: 2,
+      weight_kg: '95.00',
+      reps: 5,
+      completed: true,
+    });
+    const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
+
+    expect(res.status).toBe(201);
+    expect(rows[0]?.logged_date).not.toBeNull();
+    expect(rows[0]?.exercise_id).toBe(ids.exercise);
+    expect(rows[0]?.adhoc).toBe(false);
+  });
+
+  it('updates logged_date on coached upsert when the client provides one', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    const payload = {
+      plan_exercise_id: plan.planExerciseId,
+      logged_date: '2026-07-01',
+      set_index: 1,
+      weight_kg: '100.00',
+      reps: 5,
+      completed: true,
+    };
+
+    await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send(payload);
+    const second = await request(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.traineeToken))
+      .send({ ...payload, logged_date: '2026-07-02' });
+
+    const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
+    expect(second.status).toBe(201);
+    expect(rows).toHaveLength(1);
+    expect(dateText(rows[0]?.logged_date)).toBe('2026-07-02');
+  });
+
+  it('keeps the log row alive when its plan is deleted', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+      plan_exercise_id: plan.planExerciseId,
+      set_index: 1,
+      weight_kg: '100.00',
+      reps: 5,
+      completed: true,
+    });
+
+    await ctx.db.deleteFrom('plans').where('id', '=', plan.planId).execute();
+
+    const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.plan_exercise_id).toBeNull();
+    expect(rows[0]?.exercise_id).toBe(ids.exercise);
+  });
 });
+
+describe('POST /sets/log (adhoc)', () => {
+  const adhocPayload = {
+    exercise_id: ids.exercise,
+    logged_date: '2026-07-04',
+    set_index: 0,
+    weight_kg: '140.00',
+    reps: 5,
+    rpe: '8.5',
+    completed: true,
+  };
+
+  it('logs an adhoc set for a self-train student and upserts idempotently', async () => {
+    const ctx = await makeContext();
+
+    const first = await request(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.selfTrainStudentToken))
+      .send(adhocPayload);
+    const second = await request(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.selfTrainStudentToken))
+      .send({ ...adhocPayload, weight_kg: '145.00', reps: 3 });
+
+    const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
+    expect(first.status).toBe(201);
+    expect(first.body).toEqual({ id: expect.any(String), logged_at: expect.any(String) });
+    expect(second.status).toBe(201);
+    expect(second.body.id).toBe(first.body.id);
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0]?.weight_kg)).toBe(145);
+    expect(rows[0]?.reps).toBe(3);
+    expect(rows[0]?.adhoc).toBe(true);
+    expect(rows[0]?.plan_exercise_id).toBeNull();
+    expect(dateText(rows[0]?.logged_date)).toBe('2026-07-04');
+  });
+
+  it('allows coached students to log adhoc sets as well', async () => {
+    const ctx = await makeContext();
+
+    const res = await request(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.traineeToken))
+      .send(adhocPayload);
+
+    expect(res.status).toBe(201);
+  });
+
+  it('rejects adhoc bodies that also carry plan_exercise_id', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+
+    const res = await request(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.selfTrainStudentToken))
+      .send({ ...adhocPayload, plan_exercise_id: plan.planExerciseId });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects adhoc bodies without logged_date', async () => {
+    const ctx = await makeContext();
+    const { logged_date: _omitted, ...withoutDate } = adhocPayload;
+
+    const res = await request(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.selfTrainStudentToken))
+      .send(withoutDate);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects adhoc logs for unknown exercises', async () => {
+    const ctx = await makeContext();
+
+    const res = await request(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.selfTrainStudentToken))
+      .send({ ...adhocPayload, exercise_id: '99999999-0000-4000-8000-000000000001' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'SETS_EXERCISE_NOT_FOUND' });
+  });
+
+  it('rejects coach role for adhoc logging', async () => {
+    const ctx = await makeContext();
+
+    const res = await request(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.coachToken))
+      .send(adhocPayload);
+
+    expect(res.status).toBe(403);
+  });
+});
+
+function dateText(value: unknown): string {
+  return value instanceof Date ? value.toISOString().slice(0, 10) : String(value);
+}

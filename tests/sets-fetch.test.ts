@@ -12,6 +12,8 @@ describe('GET /students/:id/sets', () => {
       .values({
         student_id: ids.trainee,
         plan_exercise_id: plan.planExerciseId,
+        exercise_id: ids.exercise,
+        logged_date: '2026-05-15',
         set_index: 1,
         weight_kg: '100.00',
         reps: 5,
@@ -31,10 +33,47 @@ describe('GET /students/:id/sets', () => {
       expect.objectContaining({
         student_id: ids.trainee,
         plan_exercise_id: plan.planExerciseId,
+        exercise_id: ids.exercise,
+        logged_date: '2026-05-15',
+        adhoc: false,
         weight_kg: '100.00',
         rpe: '8.0',
         completed: true,
         failed: true,
+      }),
+    ]);
+  });
+
+  it('returns adhoc rows with exercise identity for the owner', async () => {
+    const ctx = await makeContext();
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.selfTrainStudent,
+        plan_exercise_id: null,
+        exercise_id: ids.exercise,
+        logged_date: '2026-05-15',
+        adhoc: true,
+        set_index: 0,
+        weight_kg: '140.00',
+        reps: 5,
+        rpe: '8.5',
+        completed: true,
+        logged_at: new Date('2026-05-15T12:00:00.000Z'),
+      })
+      .execute();
+
+    const res = await request(ctx.app)
+      .get(`/students/${ids.selfTrainStudent}/sets?from=2026-05-15&to=2026-05-16`)
+      .set(auth(ctx.selfTrainStudentToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.logs).toEqual([
+      expect.objectContaining({
+        plan_exercise_id: null,
+        exercise_id: ids.exercise,
+        logged_date: '2026-05-15',
+        adhoc: true,
       }),
     ]);
   });
@@ -49,6 +88,8 @@ describe('GET /students/:id/sets', () => {
         {
           student_id: ids.trainee,
           plan_exercise_id: coachPlan.planExerciseId,
+          exercise_id: ids.exercise,
+          logged_date: '2026-05-15',
           set_index: 1,
           weight_kg: '100.00',
           reps: 5,
@@ -60,6 +101,8 @@ describe('GET /students/:id/sets', () => {
         {
           student_id: ids.trainee,
           plan_exercise_id: otherCoachPlan.planExerciseId,
+          exercise_id: ids.exercise,
+          logged_date: '2026-05-15',
           set_index: 1,
           weight_kg: '110.00',
           reps: 3,

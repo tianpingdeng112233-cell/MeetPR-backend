@@ -4,7 +4,12 @@ import { z } from 'zod';
 
 import type { Database } from '../db/types';
 import { fetchCoachSetLogs, fetchOwnSetLogs } from '../handlers/sets-fetch';
-import { canLogSet, upsertSetLog } from '../handlers/sets-log';
+import {
+  exerciseExists,
+  resolvePlanExercise,
+  upsertAdhocSetLog,
+  upsertSetLog,
+} from '../handlers/sets-log';
 import { requireRole } from '../middleware/auth';
 import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
@@ -25,26 +30,60 @@ const RpeSchema = z
   .pipe(z.string().regex(/^\d+(\.\d)?$/, 'RPE must have at most 1 decimal'))
   .refine((value) => Number(value) >= 0 && Number(value) <= 10, 'RPE must be between 0 and 10');
 
-const SetLogBodySchema = z
-  .object({
-    plan_exercise_id: UuidSchema,
-    set_index: z.number().int().min(0),
-    weight_kg: DecimalSchema.refine(
-      (value) => Number(value) >= 0 && Number(value) <= 9999.99,
-      'weight_kg must be between 0 and 9999.99',
-    ),
-    reps: z.number().int().min(0).max(99),
-    rpe: RpeSchema.nullable().optional(),
-    completed: z.boolean(),
-    failed: z.boolean().optional(),
-  })
-  .strict()
-  .transform((body) => ({
+const SetLogCommonFields = {
+  set_index: z.number().int().min(0),
+  weight_kg: DecimalSchema.refine(
+    (value) => Number(value) >= 0 && Number(value) <= 9999.99,
+    'weight_kg must be between 0 and 9999.99',
+  ),
+  reps: z.number().int().min(0).max(99),
+  rpe: RpeSchema.nullable().optional(),
+  completed: z.boolean(),
+  failed: z.boolean().optional(),
+};
+
+interface SetLogCommonShape {
+  weight_kg: string;
+  rpe?: string | null | undefined;
+  failed?: boolean | undefined;
+}
+
+function normalizeSetLogBody<T extends SetLogCommonShape>(body: T) {
+  return {
     ...body,
     failed: body.failed ?? false,
     weight_kg: Number(body.weight_kg).toFixed(2),
     rpe: body.rpe == null ? null : Number(body.rpe).toFixed(1),
-  }));
+  };
+}
+
+// Two mutually exclusive body shapes (spec 010): coached sets point at a plan
+// slot (logged_date optional for old-build compatibility); adhoc sets point
+// straight at an exercise and must carry the client-local logged_date.
+const CoachedSetLogBodySchema = z
+  .object({
+    plan_exercise_id: UuidSchema,
+    logged_date: DateSchema.optional(),
+    ...SetLogCommonFields,
+  })
+  .strict()
+  .transform(normalizeSetLogBody);
+
+const AdhocSetLogBodySchema = z
+  .object({
+    exercise_id: UuidSchema,
+    logged_date: DateSchema,
+    ...SetLogCommonFields,
+  })
+  .strict()
+  .transform(normalizeSetLogBody);
+
+const SetLogBodySchema = z.union([CoachedSetLogBodySchema, AdhocSetLogBodySchema]);
+
+/** Server-clock training day for old clients that do not send logged_date. */
+function shanghaiToday(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+}
 
 const StudentIdParamSchema = z.object({
   id: UuidSchema,
@@ -83,13 +122,48 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
         return;
       }
 
-      const allowed = await canLogSet(deps.db, body.data.plan_exercise_id, req.user.id);
-      if (!allowed) {
-        res.status(400).json({ error: 'SETS_PLAN_EXERCISE_NOT_PUBLISHED' });
+      if ('plan_exercise_id' in body.data) {
+        const resolved = await resolvePlanExercise(
+          deps.db,
+          body.data.plan_exercise_id,
+          req.user.id,
+        );
+        if (resolved === null) {
+          res.status(400).json({ error: 'SETS_PLAN_EXERCISE_NOT_PUBLISHED' });
+          return;
+        }
+
+        const result = await upsertSetLog(deps.db, req.user.id, {
+          plan_exercise_id: body.data.plan_exercise_id,
+          exercise_id: resolved.exerciseId,
+          logged_date: body.data.logged_date ?? shanghaiToday(),
+          set_index: body.data.set_index,
+          weight_kg: body.data.weight_kg,
+          reps: body.data.reps,
+          rpe: body.data.rpe,
+          completed: body.data.completed,
+          failed: body.data.failed,
+        });
+        res.status(201).json(result);
         return;
       }
 
-      const result = await upsertSetLog(deps.db, req.user.id, body.data);
+      const known = await exerciseExists(deps.db, body.data.exercise_id);
+      if (!known) {
+        res.status(400).json({ error: 'SETS_EXERCISE_NOT_FOUND' });
+        return;
+      }
+
+      const result = await upsertAdhocSetLog(deps.db, req.user.id, {
+        exercise_id: body.data.exercise_id,
+        logged_date: body.data.logged_date,
+        set_index: body.data.set_index,
+        weight_kg: body.data.weight_kg,
+        reps: body.data.reps,
+        rpe: body.data.rpe,
+        completed: body.data.completed,
+        failed: body.data.failed,
+      });
       res.status(201).json(result);
     }),
   );

@@ -325,13 +325,17 @@ export interface OnboardingUploadsTable {
 export interface SetLogsTable {
   id: Generated<string>;
   student_id: string;
-  plan_exercise_id: string;
+  plan_exercise_id: NullableColumn<string>;
+  exercise_id: string;
   set_index: number;
   weight_kg: string;
   reps: number;
   rpe: NullableColumn<string>;
   completed: Generated<boolean>;
   failed: Generated<boolean>;
+  adhoc: Generated<boolean>;
+  // DATE-as-text in prod (pool.ts OID 1082 parser); pg-mem hands back a Date.
+  logged_date: string;
   logged_at: TimestampColumn;
 }
 

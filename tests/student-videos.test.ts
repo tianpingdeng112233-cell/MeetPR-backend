@@ -11,6 +11,8 @@ async function seedSetLog(ctx: Awaited<ReturnType<typeof makeUploadsContext>>): 
     .values({
       student_id: ids.trainee,
       plan_exercise_id: fixture.planExerciseId,
+      exercise_id: ids.exercise,
+      logged_date: '2026-05-15',
       set_index: 0,
       weight_kg: '140.00',
       reps: 5,

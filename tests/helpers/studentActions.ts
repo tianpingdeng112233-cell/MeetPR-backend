@@ -201,19 +201,29 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
     CREATE UNIQUE INDEX bind_requests_unique_accepted
       ON bind_requests (student_id, coach_id) WHERE status = 'accepted';
 
+    -- Post-0031 shape (adhoc set logging): nullable SET NULL plan link,
+    -- direct exercise_id, client-local logged_date, adhoc flag + partial
+    -- unique index. Keep in sync with db/migrations/0031-adhoc-set-logs.sql.
     CREATE TABLE set_logs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      plan_exercise_id UUID NOT NULL REFERENCES plan_exercises(id) ON DELETE CASCADE,
+      plan_exercise_id UUID REFERENCES plan_exercises(id) ON DELETE SET NULL,
+      exercise_id UUID NOT NULL REFERENCES exercises(id),
       set_index INT NOT NULL,
       weight_kg NUMERIC(6,2) NOT NULL,
       reps INT NOT NULL,
       rpe NUMERIC(3,1),
       completed BOOLEAN NOT NULL DEFAULT FALSE,
       failed BOOLEAN NOT NULL DEFAULT FALSE,
+      adhoc BOOLEAN NOT NULL DEFAULT FALSE,
+      logged_date DATE NOT NULL,
       logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      UNIQUE (student_id, plan_exercise_id, set_index)
+      UNIQUE (student_id, plan_exercise_id, set_index),
+      CONSTRAINT set_logs_adhoc_no_plan_check CHECK (NOT adhoc OR plan_exercise_id IS NULL)
     );
+
+    CREATE UNIQUE INDEX set_logs_adhoc_unique_idx
+      ON set_logs (student_id, exercise_id, logged_date, set_index) WHERE adhoc;
 
     CREATE TABLE readiness_checkins (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
