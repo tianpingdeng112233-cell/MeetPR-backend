@@ -39,20 +39,37 @@ export function toSetLog(row: SetLogRow): SetLogResponse {
   };
 }
 
+export type SetLogScope = 'plan' | 'all';
+
 export async function fetchOwnSetLogs(
   db: Kysely<Database>,
   studentId: string,
-  from: Date,
-  to: Date,
+  from: string,
+  to: string,
+  scope: SetLogScope,
 ): Promise<SetLogResponse[]> {
-  const rows = await db
-    .selectFrom('set_logs')
-    .selectAll()
-    .where('student_id', '=', studentId)
-    .where('logged_at', '>=', from)
-    .where('logged_at', '<', to)
-    .orderBy('logged_at', 'desc')
-    .execute();
+  const base = db.selectFrom('set_logs').selectAll().where('student_id', '=', studentId);
+
+  // scope=plan reproduces the pre-0031 visible set byte-for-byte: plan-linked
+  // rows only, windowed on logged_at. Deployed builds decode plan_exercise_id
+  // as a non-optional UUID, so null rows (adhoc/orphaned) must stay out of
+  // their responses. scope=all is the training-day view for spec-045 clients:
+  // every row, windowed on the client-local logged_date so sets flushed from
+  // an offline queue land on the day they were performed.
+  const rows =
+    scope === 'plan'
+      ? await base
+          .where('plan_exercise_id', 'is not', null)
+          .where('logged_at', '>=', new Date(`${from}T00:00:00.000Z`))
+          .where('logged_at', '<', new Date(`${to}T00:00:00.000Z`))
+          .orderBy('logged_at', 'desc')
+          .execute()
+      : await base
+          .where('logged_date', '>=', from)
+          .where('logged_date', '<', to)
+          .orderBy('logged_date', 'desc')
+          .orderBy('logged_at', 'desc')
+          .execute();
 
   return rows.map(toSetLog);
 }

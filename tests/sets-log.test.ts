@@ -99,6 +99,34 @@ describe('POST /sets/log', () => {
     expect(rows[0]?.adhoc).toBe(false);
   });
 
+  it('preserves logged_date when an old-build coached upsert edits a historical set', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    const payload = {
+      plan_exercise_id: plan.planExerciseId,
+      logged_date: '2026-07-01',
+      set_index: 1,
+      weight_kg: '100.00',
+      reps: 5,
+      completed: true,
+    };
+
+    await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send(payload);
+    // Old builds send no logged_date; the server-side "today" must not drag
+    // the historical set to the current day on conflict.
+    const { logged_date: _omitted, ...oldBuildPayload } = payload;
+    const second = await request(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.traineeToken))
+      .send({ ...oldBuildPayload, weight_kg: '102.50' });
+
+    const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
+    expect(second.status).toBe(201);
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0]?.weight_kg)).toBe(102.5);
+    expect(dateText(rows[0]?.logged_date)).toBe('2026-07-01');
+  });
+
   it('updates logged_date on coached upsert when the client provides one', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);

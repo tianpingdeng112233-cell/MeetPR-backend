@@ -44,7 +44,7 @@ describe('GET /students/:id/sets', () => {
     ]);
   });
 
-  it('returns adhoc rows with exercise identity for the owner', async () => {
+  it('returns adhoc rows for the owner under scope=all, keyed by logged_date', async () => {
     const ctx = await makeContext();
     await ctx.db
       .insertInto('set_logs')
@@ -59,12 +59,14 @@ describe('GET /students/:id/sets', () => {
         reps: 5,
         rpe: '8.5',
         completed: true,
-        logged_at: new Date('2026-05-15T12:00:00.000Z'),
+        // Flushed from an offline queue weeks later: logged_at is far outside
+        // the window, logged_date is the day the sets were performed.
+        logged_at: new Date('2026-06-30T12:00:00.000Z'),
       })
       .execute();
 
     const res = await request(ctx.app)
-      .get(`/students/${ids.selfTrainStudent}/sets?from=2026-05-15&to=2026-05-16`)
+      .get(`/students/${ids.selfTrainStudent}/sets?from=2026-05-15&to=2026-05-16&scope=all`)
       .set(auth(ctx.selfTrainStudentToken));
 
     expect(res.status).toBe(200);
@@ -76,6 +78,65 @@ describe('GET /students/:id/sets', () => {
         adhoc: true,
       }),
     ]);
+  });
+
+  it('hides adhoc and orphaned rows from the default scope (old-build safety)', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    // Three separate inserts: pg-mem mis-evaluates CHECK constraints on
+    // multi-row VALUES that mix explicit values with column defaults.
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: plan.planExerciseId,
+        exercise_id: ids.exercise,
+        logged_date: '2026-05-15',
+        set_index: 1,
+        weight_kg: '100.00',
+        reps: 5,
+        completed: true,
+        logged_at: new Date('2026-05-15T12:00:00.000Z'),
+      })
+      .execute();
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: null,
+        exercise_id: ids.exercise,
+        logged_date: '2026-05-15',
+        adhoc: true,
+        set_index: 0,
+        weight_kg: '120.00',
+        reps: 8,
+        completed: true,
+        logged_at: new Date('2026-05-15T13:00:00.000Z'),
+      })
+      .execute();
+    // Orphaned plan row (plan deleted → SET NULL), adhoc stays false.
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: null,
+        exercise_id: ids.exercise,
+        logged_date: '2026-05-15',
+        set_index: 3,
+        weight_kg: '90.00',
+        reps: 10,
+        completed: true,
+        logged_at: new Date('2026-05-15T14:00:00.000Z'),
+      })
+      .execute();
+
+    const res = await request(ctx.app)
+      .get(`/students/${ids.trainee}/sets?from=2026-05-15&to=2026-05-16`)
+      .set(auth(ctx.traineeToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.logs).toHaveLength(1);
+    expect(res.body.logs[0].plan_exercise_id).toBe(plan.planExerciseId);
   });
 
   it('lets an owning coach see only plan logs — never adhoc rows', async () => {

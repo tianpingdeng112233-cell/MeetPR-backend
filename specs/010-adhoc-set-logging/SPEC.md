@@ -76,18 +76,27 @@ adhoc 形态(新):
 
 响应(两形态一致,201):`{ "id": "…", "logged_at": "…ISO…" }`(现状不变)。
 
-### 3. `GET /students/:id/sets` 响应加列
+### 3. `GET /students/:id/sets`:响应加列 + `scope` 参数
 
-`SetLogResponse` 新增 `exercise_id`(string)、`logged_date`(YYYY-MM-DD string,DATE-as-text 规则)、`adhoc`(boolean);`plan_exercise_id` 类型放宽为 `string | null`。纯加列,老客户端解码不受影响。`fetchCoachSetLogs` 查询语义不变(仍只返回计划链 join 得到的行;教练消费 adhoc/孤儿行归教练 wave)。
+`SetLogResponse` 新增 `exercise_id`(string)、`logged_date`(YYYY-MM-DD string,DATE-as-text 规则)、`adhoc`(boolean);`plan_exercise_id` 类型放宽为 `string | null`。
+
+**为什么必须有 `scope`(不能纯加列)**:已发布 iOS build 的 `SetLogDTO.planExerciseID` 是**非可选 UUID**——任何 `plan_exercise_id: null` 的行(adhoc 或计划删除后的孤儿)都会让老客户端整个 logs 数组解码失败、历史页变白。因此:
+
+- **`scope=plan`(缺省)**:逐字节复刻 0031 前的可见集——仅计划挂接行、按 `logged_at` 开窗。老客户端不发 scope → 永远拿不到 null 行,零感知。
+- **`scope=all`**(spec 045+ 新客户端):计划行 + adhoc + 孤儿行全量,**按 `logged_date` 开窗**(训练日语义)——离线队列晚补传的组落在"练的那天"而不是"上传那天"。排序 `logged_date DESC, logged_at DESC`。
+
+own fetch 双 scope;`fetchCoachSetLogs` 查询语义不变(inner join 天然只见计划行;教练消费 adhoc/孤儿行归教练 wave)。
+
+**coached 冲突时 `logged_date` 的更新规则**:仅当客户端 body 显式带 `logged_date` 才随冲突更新;老客户端(不带)编辑历史组时,服务端"今天"**不得**把历史组拖到当天。
 
 ## 兼容性矩阵
 
-| 客户端                                      | 新 backend 行为                                                                    |
-| ------------------------------------------- | ---------------------------------------------------------------------------------- |
-| 老 iOS build(coached,body 无 `logged_date`) | 服务端补日期,201 不变                                                              |
-| 老 iOS build(读 sets)                       | 响应多三个字段,Codable 忽略未知键,无感                                             |
-| 新 iOS(spec 045,adhoc)                      | 全新路径                                                                           |
-| plan-web reconcile 删重建天                 | 学员记录不再被连坐删除(SET NULL);计划完成度视图对旧槽位记录脱钩(已知取舍,见警示框) |
+| 客户端                                      | 新 backend 行为                                                                                               |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 老 iOS build(coached,body 无 `logged_date`) | 服务端补日期,201 不变;冲突编辑不改历史行的 `logged_date`                                                      |
+| 老 iOS build(读 sets,不带 scope)            | `scope=plan` 缺省 = 0031 前可见集逐字节复刻(null 行不出现,躲开非可选 UUID 解码炸弹);新增三字段被 Codable 忽略 |
+| 新 iOS(spec 045,adhoc + `scope=all`)        | 全新路径;按训练日(`logged_date`)开窗                                                                          |
+| plan-web reconcile 删重建天                 | 学员记录不再被连坐删除(SET NULL);计划完成度视图对旧槽位记录脱钩(已知取舍,见警示框)                            |
 
 ## 测试
 

@@ -93,6 +93,9 @@ const SetLogQuerySchema = z
   .object({
     from: DateSchema,
     to: DateSchema,
+    // plan (default) = pre-0031 behavior for deployed builds; all = adhoc +
+    // orphaned + plan rows on training-day (logged_date) windows (spec 010).
+    scope: z.enum(['plan', 'all']).default('plan'),
   })
   .strict()
   .refine((query) => query.to >= query.from, {
@@ -137,6 +140,7 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
           plan_exercise_id: body.data.plan_exercise_id,
           exercise_id: resolved.exerciseId,
           logged_date: body.data.logged_date ?? shanghaiToday(),
+          update_logged_date: body.data.logged_date !== undefined,
           set_index: body.data.set_index,
           weight_kg: body.data.weight_kg,
           reps: body.data.reps,
@@ -193,10 +197,14 @@ export function studentSetsRouter(deps: SetsRouterDeps): ExpressRouter {
         return;
       }
 
-      const from = dateStart(query.data.from);
-      const to = dateStart(query.data.to);
       if (uuidEquals(req.user.id, params.data.id)) {
-        const logs = await fetchOwnSetLogs(deps.db, req.user.id, from, to);
+        const logs = await fetchOwnSetLogs(
+          deps.db,
+          req.user.id,
+          query.data.from,
+          query.data.to,
+          query.data.scope,
+        );
         res.status(200).json({ logs });
         return;
       }
@@ -206,7 +214,13 @@ export function studentSetsRouter(deps: SetsRouterDeps): ExpressRouter {
         return;
       }
 
-      const logs = await fetchCoachSetLogs(deps.db, req.user.id, params.data.id, from, to);
+      const logs = await fetchCoachSetLogs(
+        deps.db,
+        req.user.id,
+        params.data.id,
+        dateStart(query.data.from),
+        dateStart(query.data.to),
+      );
       res.status(200).json({ logs });
     }),
   );

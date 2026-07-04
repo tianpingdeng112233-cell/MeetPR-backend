@@ -1,4 +1,4 @@
-import type { Kysely, Transaction } from 'kysely';
+import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 
 import type { Database } from '../db/types';
@@ -8,6 +8,12 @@ export interface SetLogInput {
   plan_exercise_id: string;
   exercise_id: string;
   logged_date: string;
+  /**
+   * True only when the client sent logged_date explicitly. Old builds omit it
+   * (the server fills today); their conflict updates must not drag a
+   * historical set's logged_date to the server's current day.
+   */
+  update_logged_date: boolean;
   set_index: number;
   weight_kg: string;
   reps: number;
@@ -93,15 +99,24 @@ export async function upsertSetLog(
       failed,
     })
     .onConflict((oc) =>
-      oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
-        weight_kg: (eb) => eb.ref('excluded.weight_kg'),
-        reps: (eb) => eb.ref('excluded.reps'),
-        rpe: (eb) => eb.ref('excluded.rpe'),
-        completed: (eb) => eb.ref('excluded.completed'),
-        failed: (eb) => eb.ref('excluded.failed'),
-        logged_date: (eb) => eb.ref('excluded.logged_date'),
-        logged_at: sql<Date>`now()`,
-      }),
+      input.update_logged_date
+        ? oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
+            weight_kg: (eb) => eb.ref('excluded.weight_kg'),
+            reps: (eb) => eb.ref('excluded.reps'),
+            rpe: (eb) => eb.ref('excluded.rpe'),
+            completed: (eb) => eb.ref('excluded.completed'),
+            failed: (eb) => eb.ref('excluded.failed'),
+            logged_date: (eb) => eb.ref('excluded.logged_date'),
+            logged_at: sql<Date>`now()`,
+          })
+        : oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
+            weight_kg: (eb) => eb.ref('excluded.weight_kg'),
+            reps: (eb) => eb.ref('excluded.reps'),
+            rpe: (eb) => eb.ref('excluded.rpe'),
+            completed: (eb) => eb.ref('excluded.completed'),
+            failed: (eb) => eb.ref('excluded.failed'),
+            logged_at: sql<Date>`now()`,
+          }),
     )
     .returning(['id', 'logged_at'])
     .executeTakeFirstOrThrow();
@@ -117,11 +132,11 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 async function updateAdhocSetLog(
-  trx: Transaction<Database>,
+  db: Kysely<Database>,
   studentId: string,
   input: AdhocSetLogInput,
 ): Promise<SetLogResult | null> {
-  const row = await trx
+  const row = await db
     .updateTable('set_logs')
     .set({
       weight_kg: input.weight_kg,
@@ -144,53 +159,52 @@ async function updateAdhocSetLog(
 
 /**
  * Idempotent upsert keyed on (student, exercise, logged_date, set_index)
- * for rows born outside any plan. Implemented as update-then-insert inside a
- * transaction instead of ON CONFLICT because the conflict target is a partial
- * unique index (WHERE adhoc), which pg-mem (test harness) cannot parse. The
- * partial index in db/migrations/0031 stays as the integrity backstop; a
- * concurrent duplicate insert loses the race, surfaces as 23505, and is
- * retried as an update.
+ * for rows born outside any plan. Update-then-insert as three independent
+ * statements — deliberately NOT one transaction: ON CONFLICT cannot target
+ * the partial unique index in the pg-mem harness, and catching a unique
+ * violation inside a Postgres transaction would leave it aborted for the
+ * retry. Each statement is atomic on its own; the partial index from
+ * db/migrations/0031 backstops the race, and a losing insert (23505) falls
+ * back to the update path.
  */
 export async function upsertAdhocSetLog(
   db: Kysely<Database>,
   studentId: string,
   input: AdhocSetLogInput,
 ): Promise<SetLogResult> {
-  return db.transaction().execute(async (trx) => {
-    const updated = await updateAdhocSetLog(trx, studentId, input);
-    if (updated !== null) {
-      return updated;
-    }
+  const updated = await updateAdhocSetLog(db, studentId, input);
+  if (updated !== null) {
+    return updated;
+  }
 
-    try {
-      const row = await trx
-        .insertInto('set_logs')
-        .values({
-          student_id: studentId,
-          plan_exercise_id: null,
-          exercise_id: input.exercise_id,
-          logged_date: input.logged_date,
-          adhoc: true,
-          set_index: input.set_index,
-          weight_kg: input.weight_kg,
-          reps: input.reps,
-          rpe: input.rpe,
-          completed: input.completed,
-          failed: input.failed,
-        })
-        .returning(['id', 'logged_at'])
-        .executeTakeFirstOrThrow();
+  try {
+    const row = await db
+      .insertInto('set_logs')
+      .values({
+        student_id: studentId,
+        plan_exercise_id: null,
+        exercise_id: input.exercise_id,
+        logged_date: input.logged_date,
+        adhoc: true,
+        set_index: input.set_index,
+        weight_kg: input.weight_kg,
+        reps: input.reps,
+        rpe: input.rpe,
+        completed: input.completed,
+        failed: input.failed,
+      })
+      .returning(['id', 'logged_at'])
+      .executeTakeFirstOrThrow();
 
-      return { id: row.id, logged_at: timestamp(row.logged_at) };
-    } catch (error: unknown) {
-      if (!isUniqueViolation(error)) {
-        throw error;
-      }
-      const raced = await updateAdhocSetLog(trx, studentId, input);
-      if (raced === null) {
-        throw error;
-      }
-      return raced;
+    return { id: row.id, logged_at: timestamp(row.logged_at) };
+  } catch (error: unknown) {
+    if (!isUniqueViolation(error)) {
+      throw error;
     }
-  });
+    const raced = await updateAdhocSetLog(db, studentId, input);
+    if (raced === null) {
+      throw error;
+    }
+    return raced;
+  }
 }
