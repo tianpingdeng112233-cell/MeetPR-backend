@@ -53,7 +53,7 @@ coached 形态(向后兼容,老 iOS build 不带 `logged_date` 照常工作):
 
 - `logged_date` 可选;缺省时服务端按 Asia/Shanghai 当日填。
 - 校验链不变:`resolvePlanExercise`(原 `canLogSet` 改造,额外返回 `exercise_id` 供插入)→ 查无 → 400 `SETS_PLAN_EXERCISE_NOT_PUBLISHED`。
-- upsert 冲突目标不变 `(student_id, plan_exercise_id, set_index)`;`doUpdateSet` 新增同步 `logged_date`。
+- upsert 冲突目标不变 `(student_id, plan_exercise_id, set_index)`;`logged_date` 仅在客户端显式提供时随冲突更新(规则详见 §3 末)。
 
 adhoc 形态(新):
 
