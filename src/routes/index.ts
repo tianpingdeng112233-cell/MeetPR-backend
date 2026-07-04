@@ -16,6 +16,7 @@ import { coachOneRmRouter, studentOnboardingRouter } from './onboarding';
 import { studentVideosRouter } from './videos';
 import { plansRouter, studentPlansRouter } from './plans';
 import { studentReadinessRouter } from './readiness';
+import { studentReviewsRouter } from './reviews';
 import { setsRouter, studentSetsRouter } from './sets';
 import { studentRouter } from './student';
 import { uploadsRouter } from './uploads';
@@ -39,6 +40,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use('/students', deps.requireAuth, studentPlansRouter({ db: deps.db, logger: deps.logger }));
   app.use('/students', deps.requireAuth, studentSetsRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentReadinessRouter({ db: deps.db }));
+  app.use('/students', deps.requireAuth, studentReviewsRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentFeedbackRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentEvaluationsRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentOnboardingRouter({ db: deps.db }));

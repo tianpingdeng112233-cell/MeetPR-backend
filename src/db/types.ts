@@ -339,6 +339,17 @@ export interface SetLogsTable {
   logged_at: TimestampColumn;
 }
 
+export interface SessionReviewsTable {
+  id: Generated<string>;
+  student_id: string;
+  // DATE-as-text (OID 1082 parser); pg-mem (tests) returns a Date — normalize at serialization.
+  review_date: ColumnType<string | Date, string, string>;
+  feeling: string;
+  session_rpe: NullableColumn<string>;
+  created_at: TimestampColumn;
+  updated_at: TimestampColumn;
+}
+
 export interface MuscleFatigueEntry {
   muscle_group: ReadinessMuscleGroup;
   severity: number;
@@ -398,6 +409,7 @@ export interface Database {
   student_profiles: StudentProfilesTable;
   bind_requests: BindRequestsTable;
   set_logs: SetLogsTable;
+  session_reviews: SessionReviewsTable;
   readiness_checkins: ReadinessCheckinsTable;
   feedback: FeedbackTable;
   invite_codes: InviteCodesTable;

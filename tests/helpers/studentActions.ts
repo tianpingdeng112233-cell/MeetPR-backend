@@ -225,6 +225,19 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
     CREATE UNIQUE INDEX set_logs_adhoc_unique_idx
       ON set_logs (student_id, exercise_id, logged_date, set_index) WHERE adhoc;
 
+    -- Post-0032 shape (session reviews, spec 012). Keep in sync with
+    -- db/migrations/0032-init-session-reviews.sql.
+    CREATE TABLE session_reviews (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      review_date DATE NOT NULL,
+      feeling TEXT NOT NULL CHECK (length(trim(feeling)) > 0),
+      session_rpe NUMERIC(3,1),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (student_id, review_date)
+    );
+
     CREATE TABLE readiness_checkins (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
