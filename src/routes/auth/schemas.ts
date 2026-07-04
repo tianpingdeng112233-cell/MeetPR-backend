@@ -26,6 +26,14 @@ export const RefreshBodySchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
 });
 
+/** PUT /me/password (spec 011): new password reuses the register rule. */
+export const ChangePasswordBodySchema = z
+  .object({
+    old_password: PasswordSchema,
+    new_password: PasswordSchema,
+  })
+  .strict();
+
 export const RefreshTokenPayloadSchema = z.object({
   sub: z.string().min(1),
   role: z.enum(USER_ROLES),

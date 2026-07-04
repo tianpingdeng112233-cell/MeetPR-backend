@@ -463,9 +463,14 @@ describe('auth endpoints', () => {
       } satisfies SignOptions,
     );
 
-    const response = await request(app).get('/me').set('Authorization', `Bearer ${accessToken}`);
+    // Empty body → 400 from the real route: proof the token cleared
+    // requireAuth (spec 011 replaced the old GET /me 501 stub).
+    const response = await request(app)
+      .put('/me/password')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({});
 
-    expect(response.status).toBe(501);
+    expect(response.status).toBe(400);
   });
 
   it('rejects an invalid access token in requireAuth middleware', async () => {
