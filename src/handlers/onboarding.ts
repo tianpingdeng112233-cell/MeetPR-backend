@@ -1,7 +1,7 @@
 import type { Insertable, Kysely, Selectable, Transaction, Updateable } from 'kysely';
 import { sql } from 'kysely';
 
-import type { Database, StudentOnboardingProfilesTable } from '../db/types';
+import type { Database, StudentOnboardingProfilesTable, UserRole } from '../db/types';
 import { dateOnly, decimal, timestamp } from './serialization';
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
@@ -62,6 +62,21 @@ const REQUIRED_FOR_COMPLETION = [
   'sleep_hours',
   'is_competing',
 ] as const satisfies readonly OnboardingField[];
+
+/**
+ * Solo students complete with the unit alone (spec 013): the 2-screen light
+ * onboarding makes weight and the three 1RMs skippable, so the coached
+ * 18-field wizard requirement would leave them permanently incomplete.
+ */
+const REQUIRED_FOR_COMPLETION_SELF_TRAIN = [
+  'unit_preference',
+] as const satisfies readonly OnboardingField[];
+
+function requiredForCompletion(role: UserRole): readonly OnboardingField[] {
+  return role === 'self_train_student'
+    ? REQUIRED_FOR_COMPLETION_SELF_TRAIN
+    : REQUIRED_FOR_COMPLETION;
+}
 
 export type OnboardingPatch = Partial<
   Pick<Updateable<StudentOnboardingProfilesTable>, OnboardingField>
@@ -156,18 +171,23 @@ export type UpsertOnboardingResult =
 
 /**
  * Step-by-step re-entrant upsert. Only the submitted fields are written.
- * Once completed_at is set, the three 1RM fields are student-locked
- * (403 ONE_RM_LOCKED) — coach endpoint is the only writer (spec 005 E).
+ * Once completed_at is set, the three 1RM fields are locked for coached
+ * students (403 ONE_RM_LOCKED) — coach endpoint is the only writer
+ * (spec 005 E). Self-train students are exempt (spec 013).
  */
 export async function upsertOnboardingProfile(
   db: Kysely<Database>,
   userId: string,
   patch: OnboardingPatch,
   uploadAttachmentIds: string[] | undefined,
+  role: UserRole,
 ): Promise<UpsertOnboardingResult> {
   return db.transaction().execute(async (trx): Promise<UpsertOnboardingResult> => {
+    // The post-completion 1RM lock protects the coached contract (the coach
+    // owns the baseline). Solo students have no coach — the lock's only
+    // legitimate writer doesn't exist — so they stay exempt (spec 013).
     const touchesOneRm = ONE_RM_FIELDS.some((field) => field in patch);
-    if (touchesOneRm) {
+    if (touchesOneRm && role !== 'self_train_student') {
       // Row lock so a concurrent /complete can't slip completed_at in
       // between this check and the upsert (Codex review P2; no-op in pg-mem,
       // enforced on real PG).
@@ -229,6 +249,7 @@ export type CompleteOnboardingResult =
 export async function completeOnboardingProfile(
   db: Kysely<Database>,
   userId: string,
+  role: UserRole,
 ): Promise<CompleteOnboardingResult> {
   return db.transaction().execute(async (trx): Promise<CompleteOnboardingResult> => {
     // Locked read: serializes against the 1RM-touching upsert's FOR UPDATE so
@@ -240,14 +261,15 @@ export async function completeOnboardingProfile(
       .forUpdate()
       .executeTakeFirst();
 
+    const required = requiredForCompletion(role);
     if (!row) {
       return {
         type: 'incomplete',
-        missingFields: [...REQUIRED_FOR_COMPLETION],
+        missingFields: [...required],
       };
     }
 
-    const missing: string[] = REQUIRED_FOR_COMPLETION.filter((field) => row[field] === null);
+    const missing: string[] = required.filter((field) => row[field] === null);
     // competition_date is conditionally required (is_competing = true).
     if (row.is_competing === true && row.competition_date === null) {
       missing.push('competition_date');

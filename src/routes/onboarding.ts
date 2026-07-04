@@ -158,6 +158,7 @@ export function studentOnboardingRouter(deps: OnboardingRouterDeps): ExpressRout
         req.user.id,
         fields as OnboardingPatch,
         upload_attachment_ids,
+        req.user.role,
       );
       if (result.type === 'one-rm-locked') {
         res.status(403).json({ error: 'ONE_RM_LOCKED' });
@@ -177,7 +178,7 @@ export function studentOnboardingRouter(deps: OnboardingRouterDeps): ExpressRout
         return;
       }
 
-      const result = await completeOnboardingProfile(deps.db, req.user.id);
+      const result = await completeOnboardingProfile(deps.db, req.user.id, req.user.role);
       if (result.type === 'incomplete') {
         res
           .status(422)

@@ -275,4 +275,29 @@ describe('student onboarding profile', () => {
     expect(response.status).toBe(200);
     expect(response.body.unit_preference).toBe('lb');
   });
+
+  it('self_train: unit-only completion, 1RM editable after completion (spec 013)', async () => {
+    const ctx = await makeContext();
+
+    // Empty profile → the solo-required set is just the unit.
+    const tooEarly = await request(ctx.app)
+      .post('/students/me/onboarding/complete')
+      .set(auth(ctx.selfTrainStudentToken));
+    expect(tooEarly.status).toBe(422);
+    expect(tooEarly.body.missing_fields).toEqual(['unit_preference']);
+
+    await putOnboarding(ctx, ctx.selfTrainStudentToken, { unit_preference: 'kg' });
+    const completed = await request(ctx.app)
+      .post('/students/me/onboarding/complete')
+      .set(auth(ctx.selfTrainStudentToken));
+    expect(completed.status).toBe(200);
+    expect(completed.body.completed_at).not.toBeNull();
+
+    // 后补基线: solo has no coach — the coached 1RM lock must not apply.
+    const backfill = await putOnboarding(ctx, ctx.selfTrainStudentToken, {
+      squat_1rm_kg: '140',
+    });
+    expect(backfill.status).toBe(200);
+    expect(backfill.body.squat_1rm_kg).toBe('140.00');
+  });
 });
