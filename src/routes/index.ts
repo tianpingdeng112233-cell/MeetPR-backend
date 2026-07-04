@@ -49,7 +49,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use('/exercises', deps.requireAuth, exercisesRouter({ db: deps.db }));
   app.use('/sets', deps.requireAuth, setsRouter({ db: deps.db }));
   app.use('/feedback', deps.requireAuth, feedbackRouter({ db: deps.db }));
-  app.use('/me', deps.requireAuth, meRouter());
+  app.use('/me', deps.requireAuth, meRouter({ db: deps.db, logger: deps.logger }));
   app.use('/coach', deps.requireAuth, coachRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachFeedbackRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachInviteCodesRouter({ db: deps.db }));

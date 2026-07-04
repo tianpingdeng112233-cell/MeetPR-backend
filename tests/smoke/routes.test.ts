@@ -70,10 +70,13 @@ describe('endpoint stubs — /me (protected)', () => {
     expect(res.body).toEqual({ error: 'AUTH_INVALID_TOKEN' });
   });
 
-  it('with valid token → 501', async () => {
+  it('with valid token → real route (spec 011: 400 on empty password body)', async () => {
     const app = createApp(makeDeps());
-    const res = await request(app).get('/me').set('Authorization', `Bearer ${signValidToken()}`);
-    expect(res.status).toBe(501);
+    const res = await request(app)
+      .put('/me/password')
+      .set('Authorization', `Bearer ${signValidToken()}`)
+      .send({});
+    expect(res.status).toBe(400);
   });
 
   it('with malformed Authorization header → 401', async () => {
