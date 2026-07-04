@@ -32,22 +32,49 @@ pnpm dev
 | `pnpm test`         | Vitest (single run)     |
 | `pnpm test:watch`   | Vitest (watch)          |
 
-## Endpoints (V1 stubs)
+## Endpoints
 
-All return `501 not_implemented` for now. Protected routes return `401 unauthorized` when no valid Bearer token is provided.
+The authoritative route list is **`src/routes/index.ts`** (`mountRoutes`) — read it there, not here. Most routes are implemented and serving the TestFlight beta; protected routes return `401 unauthorized` without a valid Bearer token. Route groups:
 
-| Method | Path             | Auth     |
-| ------ | ---------------- | -------- |
-| GET    | /health          | —        |
-| POST   | /auth/register   | —        |
-| POST   | /auth/login      | —        |
-| POST   | /auth/refresh    | —        |
-| GET    | /me              | required |
-| GET    | /coach/dashboard | required |
-| GET    | /coach/students  | required |
-| POST   | /coach/plans     | required |
-| GET    | /student/plan    | required |
-| POST   | /student/sets    | required |
+| Prefix           | What                                                                              | Auth     |
+| ---------------- | --------------------------------------------------------------------------------- | -------- |
+| `GET /health`    | Liveness                                                                          | —        |
+| `/auth`          | register / login / refresh                                                        | —        |
+| `/plans`         | Coach plan CRUD                                                                   | required |
+| `/students/*`    | Student-scoped: plans, sets, readiness, feedback, evaluations, onboarding, videos | required |
+| `/bind-requests` | Student side of coach↔student binding                                             | required |
+| `/exercises`     | Exercise catalog                                                                  | required |
+| `/sets`          | Set logs                                                                          | required |
+| `/feedback`      | Feedback records                                                                  | required |
+| `/coach/*`       | Coach-scoped: feedback, invite-codes, bind-requests, evaluations, one-rm          | required |
+| `/uploads`       | OSS multipart upload (video attachments)                                          | required |
+
+**Remaining `501 not_implemented` stubs** (the only ones left; everything else is live):
+
+- `GET /me` (`src/routes/me.ts`)
+- `GET /coach/dashboard` (`src/routes/coach.ts`)
+- `POST /student/sets` (`src/routes/student.ts`)
+
+`POST /events` (+ `GET /events/config`) is **specced but not yet implemented** — see `specs/008-analytics-events/SPEC.md`. No route is mounted yet.
+
+## Deploy & Migrate runbook
+
+`staging` is the production service branch. Deploy and schema changes are two separate manual steps.
+
+**Deploy (code):**
+
+1. Merge/push to `staging`. GitHub Actions builds the image and pushes it to Aliyun ACR.
+2. **Manually** trigger a re-deploy in Aliyun SAE so it pulls the new image. (SAE does not auto-pull on ACR push.)
+
+**Migrate (schema):** the repo has **no migration runner** — SQL is applied by hand via `psql` against the Aliyun RDS instance (see CLAUDE.md Hard rule 2 for how to allocate the number).
+
+**Standard order when a change ships both code and a migration: migrate first, verify, then re-deploy.**
+
+1. Apply the new `db/migrations/<NNNN>-*.sql` to RDS via `psql`.
+2. Verify (`\d <table>`, indexes, a smoke query).
+3. Then trigger the SAE re-deploy so the new code meets the already-migrated schema.
+
+Doing it in this order means the new code never hits a schema that lacks its columns.
 
 ## Knowledge base
 

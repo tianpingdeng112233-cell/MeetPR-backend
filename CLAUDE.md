@@ -2,27 +2,36 @@
 
 This file is the primary onboarding doc for any Claude session working on this repo.
 
-> ✅ **UNFROZEN 2026-05-15 — V0.1 wave triggered**
+**身份卡（速查 · 坐标；规则正文见下方「当前阶段」与 Hard rules，本表不复写）**
+
+| 字段 | 值 |
+|---|---|
+| 路径 / trunk | `~/Projects/apps/MeetPR-backend`；默认分支 `staging`，**远端无 `main`**；feat 从 `staging` 切，PR base = `staging` |
+| 迁移取号 | 见下方 **Hard rule #2**（现场 `max(A,B,C)+1`）。2026-07-04 快照：`staging` 头 = `0032`，`0029/0030` 被 open PR #38 占用，下一可用 = `0033` —— 快照仅供比对，开工按 Hard rule 现场重算 |
+| 部署 | 阿里云 SAE `staging`（华东1·杭州）；网络拓扑（CLB / SNAT EIP）见记忆 `meetpr_aliyun_arrears`，**IP 不写死** |
+| 主 worktree | 多 worktree 共享，可能被 Codex 占用 → 动仓前先 `git worktree list`；被占则另开独立树，禁索引型破坏性 git（stash drop / branch -D / rebase checked-out 分支） |
+| 凭证 | 密码 / JWT secret 见 **Hard rule #7**（password manager 指针），永不落文件 |
+
+> **当前阶段 — TestFlight 内测运行期(2026-06-27 起)**
 >
-> iOS V0.1 wave 6 specs(024-029)已合 main(`~/Projects/apps/MeetPR/specs/`),其中 spec 026 / 027 / 029 显式需要 backend 实装。**Unfreeze trigger met**:
+> `staging` **即生产服务分支**:push `staging` 触发 GitHub Actions 构建并推 ACR 镜像,供阿里云 SAE 拉取部署(流程见 README「Deploy & Migrate runbook」)。没有独立的 `main` / 生产分支。
 >
-> - spec 026 `Backend 真接入` 触发 backend **003-student-actions** spec(`/coach/students` + set_logs + feedback + 3 张 missing tables migration + seed)
-> - spec 027 `Video upload` 触发 backend **004-video-upload** spec(`/upload/{initiate,sign-parts,complete,abort}` + `/students/:id/videos`(带短期 presigned URLs) + `/privacy/consent` + OSS bucket 4 项配置 + 0007 video_attachments migration)
+> **允许**(内测期):
 >
-> **V0 期 backend 历史**:`001-auth`(PR #4)+ `002-coach-planning-crud`(PR #5)已合 staging,但 `/coach/students` 仍是 501 stub(per spec 026 §来源 注),003 必须实装。
+> - 有 `specs/NNN-*/SPEC.md` 触发的实装 —— 含埋点 **008-analytics-events**(iOS 043-analytics 消费的 `POST /events` + `GET /events/config`)的落地
+> - Bugfix / 回归修复
+> - Catalog(`db/seed` + `exercises` 表)数据修正
+> - Security / dependency CVE 修复
 >
-> **V0.1+ 内测期允许**:
+> **不允许**:
 >
-> - 起 003-student-actions / 004-video-upload spec + impl PR
-> - 修补 001 / 002 stub endpoint(/coach/students 等)
-> - Security / dependency CVE fixes
-> - 阿里云 SAE 部署 + RDS 重申(per spec 026 §1.1 / §1.2)
+> - 无 spec 触发的投机 feature
+> - "clean up before V1" 式的投机 refactor
+> - V0.2+ 净增量范围(仍冻结;教练驾驶舱等,权威在 `~/Brain/wiki/projects/MeetPR/`)
 >
-> **仍不允许**:
+> **evaluation-workflow**(教练评估期:`0011`/`0012` 迁移 + `src/routes/evaluations.ts`)已建成但**封存休眠** —— 注入测试绑定带 `skip_evaluation: true` 关运行时;代码保留,defer ≠ delete,别删。
 >
-> - 投机性 backend feature(无对应 iOS spec 触发)
-> - Speculative refactor / "clean up before V1"
-> - V0.2+ 范围工作(evaluation-workflow / MPS 转码 / KMS / 多端 polling 等)— V0.1 内测稳定后再 unfreeze
+> **历史(已实装,合入 `staging`,服务内测)**:V0 = `001-auth` + `002-coach-planning-crud`;V0.1 = `003-student-actions` / `004-attachment-upload` / `005-bind-eval-profile` / `006-readiness` / `007-video-setlog-link`。逐项 SPEC 见 `specs/`。
 
 ## Project
 
@@ -46,6 +55,14 @@ MeetPR backend service. V1 scope: REST API for coach / student workflows, traini
 
 1. **No ORM.** Per ADR 004 §2. Kysely is permitted because it is a _SQL builder_ — it doesn't manage migrations, doesn't generate types from runtime schema, doesn't hide SQL semantics. If anyone proposes Prisma, Drizzle, TypeORM, MikroORM, or similar — point them at the ADR. The `Database` interface in `src/db/types.ts` is hand-augmented per migration.
 2. **Hand-managed migrations.** SQL files in `db/migrations/<NNN>-<name>.sql`. No tooling-managed migrations.
+   - **取号规则(开迁移 PR 前必做,已实际撞号)。** 下一个迁移号 = `max(A, B, C) + 1`,其中
+     - **A** = `origin/staging` 上 `db/migrations` 的最大号 —— `git ls-tree --name-only origin/staging db/migrations`
+     - **B** = 所有 open PR 已占用的号 —— `gh pr list --state open`,逐个看其 `db/migrations` 新增文件
+     - **C** = 已直接跑 prod RDS 但尚未合回 staging 的号(问一句 / 查部署记录)
+
+     现场核对 A/B/C,别凭记忆。被别的 PR 抢号时,rebase 时一并改:**迁移文件名** + **文件头 `-- Migration NNNN:` 注释** + **配套 `tests/migrations/NNNN-*.test.ts`**。
+     _痛点实例(2026-07):`staging` 已合 `0024`;open PR 里 #30 带 `0024`+`0025` 双撞、#34=`0025`、#35=`0026` —— 全是没现场核对 B 造成的。_
+
 3. **DATE-as-text.** All `DATE` columns must be returned as strings to avoid timezone drift. The pg type parser for OID 1082 is registered globally in `src/db/pool.ts`. Don't unregister it.
 4. **No Apple-specific code.** No Apple Sign-In, no APNs, no MPS bindings. V1 doesn't need it.
 5. **`dotenv` is dev-only.** Production reads env from the SAE runtime. The only place `dotenv` is loaded is `src/server.ts`, gated on `NODE_ENV !== 'production'`. Don't add it elsewhere.
@@ -70,7 +87,7 @@ Live in `~/Brain/wiki/projects/MeetPR/decisions/`. ADRs are immutable once accep
 
 ## Git conventions
 
-- Branches: `staging` for in-progress, `main` for reviewed
+- **`staging` is trunk.** Feature branches fork off `staging`; PRs merge back into `staging`. There is no `main` — the remote has no `main` branch, and `staging` is the branch that builds and deploys (see the phase note above).
 - Commit subject: imperative mood, conventional prefix (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`)
 - One logical change per commit when possible
-- No force-push to `main`
+- No force-push to `staging`
