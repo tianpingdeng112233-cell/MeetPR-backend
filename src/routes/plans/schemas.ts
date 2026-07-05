@@ -14,6 +14,7 @@ const NameSchema = z.string().trim().min(1).max(120);
 // Relaxed from {1, 4} to any 1..52 weeks for imported multi-week plans (spec 043
 // §G). The DB CHECK (migration 0020) and SMALLINT column mirror this range.
 const PlanWeeksSchema = z.number().int().min(1).max(52);
+const OneRmKgSchema = z.number().positive().max(999.99);
 const SourceTemplateIdSchema = z.string().uuid().nullable().optional();
 const SortOrderSchema = z.number().int().min(0);
 const DayOfWeekSchema = z.number().int().min(1).max(7);
@@ -92,6 +93,8 @@ export const CreatePlanBodySchema = z
     source_template_id: SourceTemplateIdSchema,
     // Defaults to 'regular'; immutable after creation (spec 005 D9).
     kind: z.enum(PLAN_KINDS).optional(),
+    // Raw true 1RM input only; the server computes and stores training_max.
+    one_rm_kg: OneRmKgSchema.optional(),
   })
   .strict()
   .superRefine((data, ctx) => {
@@ -115,6 +118,8 @@ export const PatchPlanBodySchema = z
     plan_weeks: PlanWeeksSchema.optional(),
     status: z.enum(PATCHABLE_PLAN_STATUSES).optional(),
     source_template_id: SourceTemplateIdSchema,
+    // Raw true 1RM input only; direct training_max writes stay rejected by strict().
+    one_rm_kg: OneRmKgSchema.optional(),
   })
   .strict()
   .superRefine(validateDateOrder);

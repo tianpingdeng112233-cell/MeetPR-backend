@@ -15,6 +15,7 @@ import { hasActiveEvaluation } from '../../handlers/evaluations';
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
 import { notifyPlanPublished } from '../../services/notifications';
+import { calculateTrainingMaxKg, formatTrainingMaxKg } from '../../services/trainingMax';
 import { uuidEquals } from '../../utils/uuid';
 import { visibleExerciseForCoach } from '../exercises';
 import { route, validationEnvelope } from '../http';
@@ -52,6 +53,10 @@ interface PlansRouterDeps {
 type DbExecutor = Kysely<Database> | Transaction<Database>;
 type PlanRow = Selectable<PlansTable>;
 type PlanSetRow = Selectable<PlanSetsTable>;
+type PlanSetValidationShape = Pick<
+  PlanSetRow,
+  'target_reps' | 'target_reps_max' | 'intensity_mode' | 'target_value'
+>;
 
 interface PublishCounts {
   day_count: number;
@@ -198,7 +203,18 @@ function normalizeTargetValue(value: string): string {
   return Number(value).toFixed(2);
 }
 
-function mergedSetValidation(existing: PlanSetRow, patch: Partial<PlanSetRow>) {
+function trainingMaxWrite(oneRmKg: number | undefined): Record<string, unknown> {
+  if (oneRmKg === undefined) return {};
+  return {
+    training_max: formatTrainingMaxKg(calculateTrainingMaxKg(oneRmKg)),
+    tm_set_at: sql<Date>`now()`,
+  };
+}
+
+function mergedSetValidation(
+  existing: PlanSetValidationShape,
+  patch: Partial<PlanSetValidationShape>,
+) {
   const merged = { ...existing, ...patch };
   if (merged.target_reps_max !== null && merged.target_reps_max < merged.target_reps) {
     return validationIssue(
@@ -264,6 +280,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           source: body.data.source,
           source_template_id: body.data.source_template_id ?? null,
           kind: body.data.kind ?? 'regular',
+          ...trainingMaxWrite(body.data.one_rm_kg),
         })
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -387,6 +404,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       if (body.data.source_template_id !== undefined) {
         patch.source_template_id = body.data.source_template_id;
       }
+      Object.assign(patch, trainingMaxWrite(body.data.one_rm_kg));
 
       const updated = await deps.db
         .updateTable('plans')
