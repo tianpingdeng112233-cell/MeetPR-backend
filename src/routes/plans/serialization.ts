@@ -14,6 +14,16 @@ function timestamp(value: TimestampValue): string {
   return value instanceof Date ? value.toISOString() : value;
 }
 
+function nullableTimestamp(value: Date | string | null | undefined): string | null {
+  if (value == null) return null;
+  return timestamp(value);
+}
+
+function nullableDecimal(value: string | number | null | undefined): string | null {
+  if (value == null) return null;
+  return Number(value).toFixed(2);
+}
+
 export type PlanRow = Selectable<PlansTable>;
 export type PlanDayRow = Selectable<PlanDaysTable>;
 export type PlanExerciseRow = Selectable<PlanExercisesTable>;
@@ -32,6 +42,10 @@ export interface PlanResponse {
   source_template_id: string | null;
   status: PlanRow['status'];
   kind: PlanRow['kind'];
+  block_type: PlanRow['block_type'];
+  mesocycle_phase: PlanRow['mesocycle_phase'];
+  training_max: string | null;
+  tm_set_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -100,6 +114,10 @@ export function toPlan(row: PlanRow): PlanResponse {
     source_template_id: row.source_template_id,
     status: row.status,
     kind: row.kind,
+    block_type: row.block_type ?? null,
+    mesocycle_phase: row.mesocycle_phase ?? null,
+    training_max: nullableDecimal(row.training_max),
+    tm_set_at: nullableTimestamp(row.tm_set_at),
     created_at: timestamp(row.created_at),
     updated_at: timestamp(row.updated_at),
   };

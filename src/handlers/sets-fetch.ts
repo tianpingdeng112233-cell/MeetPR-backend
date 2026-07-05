@@ -4,6 +4,22 @@ import type { Database, SetLogsTable } from '../db/types';
 import { dateOnly, timestamp } from './serialization';
 
 type SetLogRow = Selectable<SetLogsTable>;
+type SerializableSetLogRow = Pick<
+  SetLogRow,
+  | 'id'
+  | 'student_id'
+  | 'plan_exercise_id'
+  | 'exercise_id'
+  | 'set_index'
+  | 'weight_kg'
+  | 'reps'
+  | 'rpe'
+  | 'completed'
+  | 'failed'
+  | 'adhoc'
+  | 'logged_date'
+  | 'logged_at'
+>;
 
 export interface SetLogResponse {
   id: string;
@@ -21,7 +37,7 @@ export interface SetLogResponse {
   logged_at: string;
 }
 
-export function toSetLog(row: SetLogRow): SetLogResponse {
+export function toSetLog(row: SerializableSetLogRow): SetLogResponse {
   return {
     id: row.id,
     student_id: row.student_id,

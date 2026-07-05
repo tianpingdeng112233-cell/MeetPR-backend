@@ -117,6 +117,10 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       source_template_id UUID,
       status TEXT NOT NULL DEFAULT 'draft',
       kind TEXT NOT NULL DEFAULT 'regular',
+      block_type TEXT,
+      mesocycle_phase TEXT,
+      training_max NUMERIC,
+      tm_set_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -306,7 +310,43 @@ describe('coach planning CRUD', () => {
       source: 'coach',
       source_template_id: null,
       status: 'draft',
+      block_type: null,
+      mesocycle_phase: null,
+      training_max: null,
+      tm_set_at: null,
     });
+  });
+
+  it('computes training_max from raw 1RM and rejects forged client TM', async () => {
+    const ctx = await makeContext();
+    const created = await request(ctx.app).post('/plans').set(auth(ctx.coachToken)).send({
+      trainee_id: traineeId,
+      name: 'TM Block',
+      start_date: '2026-05-04',
+      end_date: '2026-06-01',
+      plan_weeks: 4,
+      source: 'coach',
+      one_rm_kg: 102.5,
+    });
+
+    expect(created.status).toBe(201);
+    expect(created.body.training_max).toBe('92.50');
+    expect(created.body.tm_set_at).toEqual(expect.any(String));
+
+    const forged = await request(ctx.app)
+      .patch(`/plans/${responseId(created)}`)
+      .set(auth(ctx.coachToken))
+      .send({ training_max: 1 });
+    expect(forged.status).toBe(400);
+    expect(forged.body.error).toBe('VALIDATION_ERROR');
+
+    const recalculated = await request(ctx.app)
+      .patch(`/plans/${responseId(created)}`)
+      .set(auth(ctx.coachToken))
+      .send({ one_rm_kg: 100 });
+    expect(recalculated.status).toBe(200);
+    expect(recalculated.body.training_max).toBe('90.00');
+    expect(recalculated.body.tm_set_at).toEqual(expect.any(String));
   });
 
   it('GET /plans/:id returns a coach-owned draft with empty children', async () => {

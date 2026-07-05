@@ -69,9 +69,20 @@ export const EVALUATION_COMPLETION_TYPES = [
 export const UNIT_PREFERENCES = ['kg', 'lb'] as const;
 export const GENDERS = ['male', 'female', 'other'] as const;
 export const SQUAT_STANCES = ['high_bar', 'low_bar'] as const;
-export const DEADLIFT_STYLES = ['conventional', 'sumo'] as const;
+export const DEADLIFT_STYLES = ['conventional', 'sumo', 'both'] as const;
 export const BENCH_GRIPS = ['narrow', 'standard', 'wide'] as const;
 export const GYM_TIERS = ['home_with_rack', 'commercial', 'professional'] as const;
+export const METHOD_ANCHORS = ['linear_load', 'tm_pct', 'e1rm_rpe', 'double_progression'] as const;
+export const DEV_STAGES = ['novice', 'intermediate', 'advanced'] as const;
+export const BLOCK_TYPES = ['hypertrophy', 'strength', 'peaking', 'active_rest'] as const;
+export const MESOCYCLE_PHASES = [
+  'accumulation',
+  'intensification',
+  'realization',
+  'deload',
+] as const;
+export const E1RM_CONFIDENCES = ['normal', 'low'] as const;
+export const EFFORT_METHODS = ['max', 'dynamic', 'repetition'] as const;
 export const TRAINING_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 export const INJURY_AREAS = [
   'shoulder',
@@ -127,6 +138,12 @@ export type SquatStance = (typeof SQUAT_STANCES)[number];
 export type DeadliftStyle = (typeof DEADLIFT_STYLES)[number];
 export type BenchGrip = (typeof BENCH_GRIPS)[number];
 export type GymTier = (typeof GYM_TIERS)[number];
+export type MethodAnchor = (typeof METHOD_ANCHORS)[number];
+export type DevStage = (typeof DEV_STAGES)[number];
+export type BlockType = (typeof BLOCK_TYPES)[number];
+export type MesocyclePhase = (typeof MESOCYCLE_PHASES)[number];
+export type E1rmConfidence = (typeof E1RM_CONFIDENCES)[number];
+export type EffortMethod = (typeof EFFORT_METHODS)[number];
 export type TrainingDay = (typeof TRAINING_DAYS)[number];
 export type InjuryArea = (typeof INJURY_AREAS)[number];
 export type ReadinessMuscleGroup = (typeof READINESS_MUSCLE_GROUPS)[number];
@@ -135,6 +152,13 @@ export type AttachmentStatus = (typeof ATTACHMENT_STATUSES)[number];
 
 type NullableColumn<T> = ColumnType<T | null, T | null | undefined, T | null>;
 type TimestampColumn = ColumnType<Date, Date | undefined, Date>;
+type NumericColumn = ColumnType<string, string | number | undefined, string | number>;
+type NullableNumericColumn = ColumnType<
+  string | null,
+  string | number | null | undefined,
+  string | number | null
+>;
+type NullableJsonColumn<T> = ColumnType<T | null, T | string | null | undefined, T | string | null>;
 
 export interface UsersTable {
   id: Generated<string>;
@@ -159,6 +183,22 @@ export interface ExercisesTable {
   movement_pattern: Generated<MovementPattern[]>;
   created_by_coach_id: NullableColumn<string>;
   created_at: TimestampColumn;
+  base_exercise_id: NullableColumn<string>;
+  stance: NullableColumn<string>;
+  grip: NullableColumn<string>;
+  bar_position: NullableColumn<string>;
+  pause: NullableColumn<boolean>;
+  tempo: NullableColumn<string>;
+  sticking_point_target: NullableColumn<string>;
+  variation_key: NullableColumn<string>;
+  pause_duration: NullableNumericColumn;
+  deficit_height: NullableNumericColumn;
+  block_height: NullableNumericColumn;
+  rom_modifier: NullableColumn<string>;
+  exercise_tier: NullableColumn<string>;
+  fatigue_tier: NullableColumn<string>;
+  overload_modality: NullableColumn<string>;
+  required_equipment: NullableColumn<string[]>;
 }
 
 export interface PlansTable {
@@ -173,6 +213,10 @@ export interface PlansTable {
   source_template_id: NullableColumn<string>;
   status: Generated<PlanStatus>;
   kind: Generated<PlanKind>;
+  block_type: NullableColumn<BlockType>;
+  mesocycle_phase: NullableColumn<MesocyclePhase>;
+  training_max: NullableNumericColumn;
+  tm_set_at: NullableColumn<Date>;
   created_at: TimestampColumn;
   updated_at: TimestampColumn;
 }
@@ -205,6 +249,22 @@ export interface PlanSetsTable {
   set_type: SetType;
   rest_seconds: number | null;
   coach_note: NullableColumn<string>;
+  method_anchor: NullableColumn<MethodAnchor>;
+  effort_method: NullableColumn<EffortMethod>;
+  rpe_low: NullableColumn<number>;
+  rpe_high: NullableColumn<number>;
+  fatigue_pct_target: NullableNumericColumn;
+  accommodating_tension: NullableColumn<boolean>;
+  linear_increment: NullableNumericColumn;
+  amrap_cap: NullableColumn<number>;
+  backoff_pct: NullableNumericColumn;
+  rir_target: NullableColumn<number>;
+  rep_standard: NullableColumn<number>;
+  set_scheme_hint: NullableJsonColumn<unknown>;
+  volume_is_cap: NullableColumn<boolean>;
+  pct_of_tm: NullableNumericColumn;
+  intra_set_rest: NullableColumn<number>;
+  load_mode: NullableColumn<string>;
   created_at: TimestampColumn;
 }
 
@@ -334,6 +394,10 @@ export interface SetLogsTable {
   completed: Generated<boolean>;
   failed: Generated<boolean>;
   adhoc: Generated<boolean>;
+  actual_rir: NullableColumn<number>;
+  accommodating_tension: NullableColumn<boolean>;
+  e1rm_confidence: NullableColumn<E1rmConfidence>;
+  mean_velocity: NullableNumericColumn;
   // DATE-as-text in prod (pool.ts OID 1082 parser); pg-mem hands back a Date.
   logged_date: string;
   logged_at: TimestampColumn;
@@ -366,8 +430,50 @@ export interface ReadinessCheckinsTable {
   // JSONB: insert as a JSON string (node-pg would otherwise encode a JS array as a
   // Postgres array literal); node-pg returns parsed JSON, pg-mem may return a string.
   muscle_fatigue: ColumnType<MuscleFatigueEntry[] | string, string, string>;
+  motivation: NullableColumn<number>;
+  energy: NullableColumn<number>;
   submitted_at: TimestampColumn;
   updated_at: TimestampColumn;
+}
+
+export interface AthleteLiftStateTable {
+  student_id: string;
+  lift_family: LiftFamily;
+  dev_stage: NullableColumn<DevStage>;
+  method_anchor: NullableColumn<MethodAnchor>;
+  seed_perf: NullableJsonColumn<unknown>;
+  sticking_point_target: NullableColumn<string>;
+  deadlift_stance: ColumnType<
+    DeadliftStyle | null,
+    DeadliftStyle | null | undefined,
+    DeadliftStyle | null
+  >;
+}
+
+export interface WaveTemplatesTable {
+  wave_name: string;
+  phase: MesocyclePhase;
+  set_count: number;
+  reps: number;
+  pct_of_tm: NumericColumn;
+  amrap_cap: NullableColumn<number>;
+  rep_standard: NullableColumn<number>;
+}
+
+export interface AthleteCapacityProfilesTable {
+  student_id: string;
+  lift_family: LiftFamily;
+  mev: NullableColumn<number>;
+  mav: NullableColumn<number>;
+  mrv: NullableColumn<number>;
+  phase_scale: NullableJsonColumn<unknown>;
+}
+
+export interface VariationLogsTable {
+  student_id: string;
+  variation_key: string;
+  last_used_week: NullableColumn<string>;
+  best_e1rm: NullableNumericColumn;
 }
 
 export interface FeedbackTable {
@@ -419,4 +525,8 @@ export interface Database {
   student_onboarding_profiles: StudentOnboardingProfilesTable;
   onboarding_uploads: OnboardingUploadsTable;
   attachments: AttachmentsTable;
+  athlete_lift_state: AthleteLiftStateTable;
+  wave_templates: WaveTemplatesTable;
+  athlete_capacity_profiles: AthleteCapacityProfilesTable;
+  variation_logs: VariationLogsTable;
 }
