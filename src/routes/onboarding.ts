@@ -82,6 +82,7 @@ const OnboardingBodySchema = z
       .min(2)
       .max(6)
       .refine(uniqueItems, 'training_days must be unique')
+      .nullable()
       .optional(),
     gym_tier: z.enum(GYM_TIERS).optional(),
     equipment_overrides: z

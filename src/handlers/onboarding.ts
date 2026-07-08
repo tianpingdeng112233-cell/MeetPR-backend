@@ -54,7 +54,6 @@ const REQUIRED_FOR_COMPLETION = [
   'squat_1rm_kg',
   'bench_1rm_kg',
   'deadlift_1rm_kg',
-  'training_days',
   'gym_tier',
   'daily_life_intensity',
   'life_stress',
