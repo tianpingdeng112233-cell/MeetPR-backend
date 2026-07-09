@@ -329,6 +329,35 @@ describe('auth endpoints', () => {
     );
   });
 
+  it('closes production registration by default and never permits coach self-registration', async () => {
+    const productionConfig: Config = {
+      ...authConfig,
+      NODE_ENV: 'production',
+      CORS_ORIGIN: 'https://plan.example.test',
+      TRUST_PROXY: 1,
+      PUBLIC_BASE_URL: 'https://api.example.test',
+    };
+    const closed = makeApp(undefined, productionConfig);
+    const closedResponse = await request(closed.app)
+      .post('/auth/register')
+      .set('X-Forwarded-Proto', 'https')
+      .send({ phone: '+8613800000001', password: 'hunter2hunter2', role: 'coached_student' });
+    expect(closedResponse.status).toBe(403);
+    expect(closedResponse.body).toEqual({ error: 'AUTH_REGISTRATION_DISABLED' });
+
+    const allowlisted = makeApp(undefined, {
+      ...productionConfig,
+      REGISTRATION_ENABLED: true,
+      REGISTRATION_ALLOWLIST: '+8613800000001',
+    });
+    const coachResponse = await request(allowlisted.app)
+      .post('/auth/register')
+      .set('X-Forwarded-Proto', 'https')
+      .send({ phone: '+8613800000001', password: 'hunter2hunter2', role: 'coach' });
+    expect(coachResponse.status).toBe(403);
+    expect(coachResponse.body).toEqual({ error: 'AUTH_REGISTRATION_NOT_ALLOWED' });
+  });
+
   it('logs in with a valid phone and password', async () => {
     const { app, db } = await registerUser();
     const beforeJti = db.getByPhone('+8613800000001')?.refresh_token_jti;

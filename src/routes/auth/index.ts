@@ -12,7 +12,14 @@ import type { Kysely, Selectable } from 'kysely';
 import { sql } from 'kysely';
 import type { ZodError } from 'zod';
 
-import { allowLegacyTokens, jwtAudience, jwtIssuer, type Config } from '../../config';
+import {
+  allowLegacyTokens,
+  isRegistrationEnabled,
+  jwtAudience,
+  jwtIssuer,
+  registrationAllowlist,
+  type Config,
+} from '../../config';
 import type { Database, UsersTable, UserRole } from '../../db/types';
 import type { Logger } from '../../logger';
 import {
@@ -34,6 +41,9 @@ type AuthConfig = Pick<
   | 'JWT_AUDIENCE'
   | 'JWT_ISSUER'
   | 'AUTH_ALLOW_LEGACY_TOKENS'
+  | 'NODE_ENV'
+  | 'REGISTRATION_ENABLED'
+  | 'REGISTRATION_ALLOWLIST'
 >;
 
 interface AuthRouterDeps {
@@ -95,6 +105,23 @@ function signTokenPair(config: AuthConfig, userId: string, role: UserRole, jti: 
   };
 }
 
+function registrationRejection(
+  config: AuthConfig,
+  input: { phone: string; role: UserRole },
+): 'AUTH_REGISTRATION_DISABLED' | 'AUTH_REGISTRATION_NOT_ALLOWED' | null {
+  if (!isRegistrationEnabled(config)) return 'AUTH_REGISTRATION_DISABLED';
+
+  // Coach identities are provisioned by an operator. Even when a small
+  // production cohort is allowlisted, a client cannot create a coach account.
+  if (config.NODE_ENV === 'production' && input.role === 'coach') {
+    return 'AUTH_REGISTRATION_NOT_ALLOWED';
+  }
+  if (config.NODE_ENV === 'production' && !registrationAllowlist(config).has(input.phone)) {
+    return 'AUTH_REGISTRATION_NOT_ALLOWED';
+  }
+  return null;
+}
+
 function validationEnvelope(error: ZodError) {
   return {
     error: 'VALIDATION_ERROR',
@@ -129,6 +156,12 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
       const body = RegisterBodySchema.safeParse(req.body);
       if (!body.success) {
         res.status(400).json(validationEnvelope(body.error));
+        return;
+      }
+
+      const registrationError = registrationRejection(deps.config, body.data);
+      if (registrationError !== null) {
+        res.status(403).json({ error: registrationError });
         return;
       }
 
