@@ -19,6 +19,7 @@ describe('config', () => {
     expect(config.JWT_REFRESH_TTL).toBe('30d');
     expect(config.RATE_LIMIT_MAX).toBe(100);
     expect(config.LOG_LEVEL).toBe('info');
+    expect(config.DATABASE_SSL).toBeUndefined();
   });
 
   it('throws when DATABASE_URL is missing', () => {
@@ -38,6 +39,16 @@ describe('config', () => {
     const config = loadConfig({ ...validEnv, PORT: '4000', RATE_LIMIT_MAX: '50' });
     expect(config.PORT).toBe(4000);
     expect(config.RATE_LIMIT_MAX).toBe(50);
+  });
+
+  it('parses database SSL modes', () => {
+    expect(loadConfig({ ...validEnv, DATABASE_SSL: 'disable' }).DATABASE_SSL).toBe('disable');
+    expect(loadConfig({ ...validEnv, DATABASE_SSL: 'require' }).DATABASE_SSL).toBe('require');
+    expect(loadConfig({ ...validEnv, DATABASE_SSL: 'verify' }).DATABASE_SSL).toBe('verify');
+  });
+
+  it('throws for invalid database SSL mode', () => {
+    expect(() => loadConfig({ ...validEnv, DATABASE_SSL: 'true' })).toThrow();
   });
 
   it('exposes the schema as a named export', () => {

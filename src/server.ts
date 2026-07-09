@@ -14,7 +14,7 @@ import { maybeCreateOssService } from './services/oss';
 function main(): void {
   const config = loadConfig();
   const logger = createLogger(config);
-  const pool = createPool(config.DATABASE_URL);
+  const pool = createPool(config.DATABASE_URL, {}, config.DATABASE_SSL, config.NODE_ENV);
   const db = createDb(pool);
   const oss = maybeCreateOssService(config);
   if (!oss) {
