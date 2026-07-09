@@ -205,23 +205,29 @@ export async function cancelBindRequest(
   return db.transaction().execute(async (trx) => {
     await expireStaleBindRequests(trx, { studentId });
 
-    const row = await trx
+    // The conditional transition is the concurrency gate: an accept/reject
+    // that wins after the read cannot be overwritten into "cancelled".
+    // responded_at stays null: cancellation is not a coach response.
+    const cancelled = await trx
+      .updateTable('bind_requests')
+      .set({ status: 'cancelled' })
+      .where('id', '=', bindRequestId)
+      .where('student_id', '=', studentId)
+      .where('status', '=', 'pending')
+      .where('expired_at', '>', sql<Date>`now()`)
+      .returning(['id'])
+      .executeTakeFirst();
+
+    if (cancelled) return 'cancelled';
+
+    const current = await trx
       .selectFrom('bind_requests')
-      .select(['id', 'status'])
+      .select(['id'])
       .where('id', '=', bindRequestId)
       .where('student_id', '=', studentId)
       .executeTakeFirst();
+    if (!current) return 'not-found';
 
-    if (!row) return 'not-found';
-    if (row.status !== 'pending') return 'not-pending';
-
-    // responded_at stays null: cancellation is not a coach response.
-    await trx
-      .updateTable('bind_requests')
-      .set({ status: 'cancelled' })
-      .where('id', '=', row.id)
-      .execute();
-
-    return 'cancelled';
+    return 'not-pending';
   });
 }
