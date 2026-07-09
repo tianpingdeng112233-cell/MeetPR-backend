@@ -135,6 +135,68 @@ describe('POST /plans/:id/imported-history', () => {
     expect(dateText(rows[0]?.logged_date)).toBe('2026-07-06');
   });
 
+  it('projects day_of_week positionally from a non-Monday start_date (start + dow - 1)', async () => {
+    // Locks the positional (not ISO-weekday) semantics: with an ISO-weekday
+    // anchor and a Wednesday start, day_of_week=3 would collapse onto the
+    // start date (offset 0). Positional semantics put it two days later.
+    // Fake only Date so every projected date sits strictly before "today".
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-20T08:00:00.000Z'));
+
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    // 2026-07-08 is a Wednesday (2026-07-06 is a Monday).
+    await ctx.db
+      .updateTable('plans')
+      .set({ start_date: '2026-07-08', end_date: '2026-07-21' })
+      .where('id', '=', plan.planId)
+      .execute();
+
+    const day = await ctx.db
+      .insertInto('plan_days')
+      .values({ plan_id: plan.planId, day_of_week: 3, week_number: 1, sort_order: 1 })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const exercise = await ctx.db
+      .insertInto('plan_exercises')
+      .values({
+        plan_day_id: day.id,
+        exercise_id: ids.exercise,
+        is_main_lift: true,
+        sort_order: 0,
+        notes: null,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    await ctx.db
+      .insertInto('plan_sets')
+      .values({
+        plan_exercise_id: exercise.id,
+        set_number: 1,
+        target_reps: 5,
+        target_reps_max: null,
+        intensity_mode: 'weight',
+        target_value: '100.00',
+        set_type: 'working',
+        rest_seconds: null,
+      })
+      .execute();
+
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.planId}/imported-history`)
+      .set(auth(ctx.coachToken))
+      .send({ confirm: true });
+    expect(response.status).toBe(200);
+
+    const wednesdayRow = await ctx.db
+      .selectFrom('set_logs')
+      .selectAll()
+      .where('plan_exercise_id', '=', exercise.id)
+      .executeTakeFirstOrThrow();
+    // start (2026-07-08) + (dow 3 - 1) = 2026-07-10, NOT the start date itself.
+    expect(dateText(wednesdayRow.logged_date)).toBe('2026-07-10');
+  });
+
   it('maps RPE targets to zero weight and the prescribed RPE', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
