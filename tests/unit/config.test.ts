@@ -34,6 +34,39 @@ describe('config', () => {
     expect(() => loadConfig({ ...validEnv, JWT_REFRESH_SECRET: 'short' })).toThrow();
   });
 
+  it('rejects equal access and refresh secrets', () => {
+    const secret = 'a'.repeat(48);
+    expect(() =>
+      loadConfig({ ...validEnv, JWT_ACCESS_SECRET: secret, JWT_REFRESH_SECRET: secret }),
+    ).toThrow();
+  });
+
+  it('fails closed for an incomplete production TLS/CORS setup', () => {
+    expect(() => loadConfig({ ...validEnv, NODE_ENV: 'production' })).toThrow();
+
+    const config = loadConfig({
+      ...validEnv,
+      NODE_ENV: 'production',
+      CORS_ORIGIN: 'https://plan.example.test',
+      PUBLIC_BASE_URL: 'https://api.example.test',
+      TRUST_PROXY: '1',
+    });
+    expect(config.NODE_ENV).toBe('production');
+  });
+
+  it('requires an allowlist if production self-registration is enabled', () => {
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        NODE_ENV: 'production',
+        CORS_ORIGIN: 'https://plan.example.test',
+        PUBLIC_BASE_URL: 'https://api.example.test',
+        TRUST_PROXY: '1',
+        REGISTRATION_ENABLED: 'true',
+      }),
+    ).toThrow();
+  });
+
   it('coerces numeric strings to numbers', () => {
     const config = loadConfig({ ...validEnv, PORT: '4000', RATE_LIMIT_MAX: '50' });
     expect(config.PORT).toBe(4000);

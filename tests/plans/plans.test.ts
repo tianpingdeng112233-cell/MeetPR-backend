@@ -43,9 +43,11 @@ interface TestContext {
 }
 
 function signToken(userId: string, role: UserRole): string {
-  return jwt.sign({ sub: userId, role }, config.JWT_ACCESS_SECRET, {
+  return jwt.sign({ sub: userId, role, typ: 'access' }, config.JWT_ACCESS_SECRET, {
     algorithm: 'HS256',
     expiresIn: '15m',
+    issuer: 'meetpr-api',
+    audience: 'meetpr-client',
   });
 }
 
@@ -133,6 +135,32 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       completion_type TEXT
     );
 
+    CREATE TABLE bind_requests (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      responded_at TIMESTAMPTZ,
+      expired_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      skip_evaluation BOOLEAN NOT NULL DEFAULT FALSE,
+      rejection_silent BOOLEAN NOT NULL DEFAULT TRUE
+    );
+
+    CREATE TABLE notification_outbox (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      event_type TEXT NOT NULL,
+      aggregate_id UUID NOT NULL,
+      recipient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      payload JSONB NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempt_count INT NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      delivered_at TIMESTAMPTZ,
+      UNIQUE (event_type, aggregate_id, recipient_id)
+    );
+
     CREATE TABLE plan_days (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       plan_id UUID NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
@@ -162,6 +190,21 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       rest_seconds INT,
       coach_note TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE set_logs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      plan_exercise_id UUID NOT NULL REFERENCES plan_exercises(id) ON DELETE RESTRICT,
+      set_index INT NOT NULL,
+      weight_kg NUMERIC(6,2) NOT NULL,
+      reps INT NOT NULL,
+      rpe NUMERIC(3,1),
+      completed BOOLEAN NOT NULL DEFAULT FALSE,
+      failed BOOLEAN NOT NULL DEFAULT FALSE,
+      assumed BOOLEAN NOT NULL DEFAULT FALSE,
+      logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (student_id, plan_exercise_id, set_index)
     );
   `);
 
@@ -197,6 +240,16 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
         role: 'coached_student',
       },
     ])
+    .execute();
+
+  await db
+    .insertInto('bind_requests')
+    .values({
+      student_id: traineeId,
+      coach_id: coachId,
+      status: 'accepted',
+      expired_at: new Date('2030-01-01T00:00:00.000Z'),
+    })
     .execute();
 
   return {
@@ -309,6 +362,21 @@ describe('coach planning CRUD', () => {
     });
   });
 
+  it('rejects plan creation for a student without an accepted bind', async () => {
+    const ctx = await makeContext();
+    const response = await request(ctx.app).post('/plans').set(auth(ctx.coachToken)).send({
+      trainee_id: otherStudentId,
+      name: 'Unbound plan',
+      start_date: '2026-05-04',
+      end_date: '2026-06-01',
+      plan_weeks: 4,
+      source: 'coach',
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: 'BIND_NOT_ACCEPTED' });
+  });
+
   it('GET /plans/:id returns a coach-owned draft with empty children', async () => {
     const ctx = await makeContext();
     const plan = await createPlan(ctx);
@@ -368,6 +436,70 @@ describe('coach planning CRUD', () => {
     expect(joinedLogs).toContain('plan_published_notification_stub');
     expect(joinedLogs).not.toContain(ctx.coachToken);
     expect(joinedLogs).not.toContain('"name":"Squat / Bench Block 1"');
+    const outbox = await ctx.db.selectFrom('notification_outbox').selectAll().execute();
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]).toMatchObject({
+      event_type: 'plan_published',
+      recipient_id: traineeId,
+      status: 'pending',
+    });
+  });
+
+  it('rejects tree mutation after a plan is published', async () => {
+    const ctx = await makeContext();
+    const { plan } = await createCompleteDraft(ctx);
+    const planId = responseId(plan);
+    const publish = await request(ctx.app)
+      .post(`/plans/${planId}/publish`)
+      .set(auth(ctx.coachToken));
+    expect(publish.status).toBe(200);
+
+    const createDay = await request(ctx.app)
+      .post(`/plans/${planId}/days`)
+      .set(auth(ctx.coachToken))
+      .send({ day_of_week: 2, week_number: 1, sort_order: 1 });
+
+    expect(createDay.status).toBe(409);
+    expect(createDay.body).toEqual({ error: 'PLAN_TREE_IMMUTABLE', status: 'published' });
+  });
+
+  it('keeps completed plans readable as student history while still blocking tree writes', async () => {
+    const ctx = await makeContext();
+    const { plan } = await createCompleteDraft(ctx);
+    const planId = responseId(plan);
+    await request(ctx.app).post(`/plans/${planId}/publish`).set(auth(ctx.coachToken));
+    const completed = await request(ctx.app)
+      .patch(`/plans/${planId}`)
+      .set(auth(ctx.coachToken))
+      .send({ status: 'completed' });
+    expect(completed.status).toBe(200);
+
+    const history = await request(ctx.app).get(`/plans/${planId}`).set(auth(ctx.traineeToken));
+    expect(history.status).toBe(200);
+    expect(history.body.status).toBe('completed');
+
+    const listed = await request(ctx.app)
+      .get(`/students/${traineeId}/plans`)
+      .set(auth(ctx.traineeToken));
+    expect((listed.body.plans as { id: string }[]).map((item) => item.id)).toContain(planId);
+  });
+
+  it('rechecks the accepted bind when publishing a previously-valid draft', async () => {
+    const ctx = await makeContext();
+    const { plan } = await createCompleteDraft(ctx);
+    await ctx.db
+      .updateTable('bind_requests')
+      .set({ status: 'cancelled' })
+      .where('student_id', '=', traineeId)
+      .where('coach_id', '=', coachId)
+      .execute();
+
+    const publish = await request(ctx.app)
+      .post(`/plans/${responseId(plan)}/publish`)
+      .set(auth(ctx.coachToken));
+
+    expect(publish.status).toBe(403);
+    expect(publish.body).toEqual({ error: 'BIND_NOT_ACCEPTED' });
   });
 
   it('GET /students/:studentId/plans lists coach plans ordered newest first', async () => {
@@ -659,6 +791,7 @@ describe('coach planning CRUD', () => {
     ['plan_weeks', { plan_weeks: 53 }, ['plan_weeks']],
     ['missing template source id', { source: 'template' }, ['source_template_id']],
     ['date order', { start_date: '2026-06-01', end_date: '2026-05-04' }, ['end_date']],
+    ['non-existent calendar date', { start_date: '2026-02-30' }, ['start_date']],
   ])('rejects invalid plan creation: %s', async (_caseName, override, path) => {
     const ctx = await makeContext();
     const response = await request(ctx.app)

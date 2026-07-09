@@ -7,8 +7,12 @@ import {
   PLAN_KINDS,
   SET_TYPES,
 } from '../../db/types';
+import { isIsoCalendarDate, isoCalendarDateSchemaMessage } from '../../utils/date';
 
-const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
+const DateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD')
+  .refine(isIsoCalendarDate, isoCalendarDateSchemaMessage());
 const UuidSchema = z.string().uuid();
 const NameSchema = z.string().trim().min(1).max(120);
 // Relaxed from {1, 4} to any 1..52 weeks for imported multi-week plans (spec 043
@@ -193,6 +197,9 @@ export const CreatePlanSetBodySchema = PlanSetBodySchema.superRefine(validateSet
 
 export const PatchPlanSetBodySchema = PlanSetBodySchema.partial().superRefine(validateSetBody);
 
+/** Explicit confirmation prevents a normal plan load from inventing history. */
+export const ImportedHistoryBodySchema = z.object({ confirm: z.literal(true) }).strict();
+
 const PlanStatusQuerySchema = z.enum(['draft', 'published', 'completed', 'paused']);
 
 function splitCsvParam(value: unknown): string[] | undefined {
@@ -244,3 +251,4 @@ export type CreatePlanExerciseBody = z.infer<typeof CreatePlanExerciseBodySchema
 export type PatchPlanExerciseBody = z.infer<typeof PatchPlanExerciseBodySchema>;
 export type CreatePlanSetBody = z.infer<typeof CreatePlanSetBodySchema>;
 export type PatchPlanSetBody = z.infer<typeof PatchPlanSetBodySchema>;
+export type ImportedHistoryBody = z.infer<typeof ImportedHistoryBodySchema>;

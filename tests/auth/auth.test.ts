@@ -211,9 +211,9 @@ class InMemoryAuthDb {
   }
 }
 
-function makeApp(logger = pino({ level: 'silent' })) {
+function makeApp(logger = pino({ level: 'silent' }), config: Config = authConfig) {
   const db = new InMemoryAuthDb();
-  const app = createApp({ config: authConfig, logger, db: db.asKysely() });
+  const app = createApp({ config, logger, db: db.asKysely() });
   return { app, db };
 }
 
@@ -329,6 +329,35 @@ describe('auth endpoints', () => {
     );
   });
 
+  it('closes production registration by default and never permits coach self-registration', async () => {
+    const productionConfig: Config = {
+      ...authConfig,
+      NODE_ENV: 'production',
+      CORS_ORIGIN: 'https://plan.example.test',
+      TRUST_PROXY: 1,
+      PUBLIC_BASE_URL: 'https://api.example.test',
+    };
+    const closed = makeApp(undefined, productionConfig);
+    const closedResponse = await request(closed.app)
+      .post('/auth/register')
+      .set('X-Forwarded-Proto', 'https')
+      .send({ phone: '+8613800000001', password: 'hunter2hunter2', role: 'coached_student' });
+    expect(closedResponse.status).toBe(403);
+    expect(closedResponse.body).toEqual({ error: 'AUTH_REGISTRATION_DISABLED' });
+
+    const allowlisted = makeApp(undefined, {
+      ...productionConfig,
+      REGISTRATION_ENABLED: true,
+      REGISTRATION_ALLOWLIST: '+8613800000001',
+    });
+    const coachResponse = await request(allowlisted.app)
+      .post('/auth/register')
+      .set('X-Forwarded-Proto', 'https')
+      .send({ phone: '+8613800000001', password: 'hunter2hunter2', role: 'coach' });
+    expect(coachResponse.status).toBe(403);
+    expect(coachResponse.body).toEqual({ error: 'AUTH_REGISTRATION_NOT_ALLOWED' });
+  });
+
   it('logs in with a valid phone and password', async () => {
     const { app, db } = await registerUser();
     const beforeJti = db.getByPhone('+8613800000001')?.refresh_token_jti;
@@ -405,9 +434,14 @@ describe('auth endpoints', () => {
     const { app, db } = await registerUser();
     const user = db.getByPhone('+8613800000001');
     const expiredToken = jwt.sign(
-      { sub: user?.id, role: 'coach', jti: user?.refresh_token_jti },
+      { sub: user?.id, role: 'coach', jti: user?.refresh_token_jti, typ: 'refresh' },
       authConfig.JWT_REFRESH_SECRET,
-      { algorithm: 'HS256', expiresIn: -1 } satisfies SignOptions,
+      {
+        algorithm: 'HS256',
+        expiresIn: -1,
+        issuer: 'meetpr-api',
+        audience: 'meetpr-client',
+      } satisfies SignOptions,
     );
 
     const response = await request(app).post('/auth/refresh').send({
@@ -455,17 +489,40 @@ describe('auth endpoints', () => {
   it('allows a valid access token through requireAuth middleware', async () => {
     const { app } = makeApp();
     const accessToken = jwt.sign(
-      { sub: 'user_test_1', role: 'coach' },
+      { sub: 'user_test_1', role: 'coach', typ: 'access' },
       authConfig.JWT_ACCESS_SECRET,
       {
         algorithm: 'HS256',
         expiresIn: '15m',
+        issuer: 'meetpr-api',
+        audience: 'meetpr-client',
       } satisfies SignOptions,
     );
 
     const response = await request(app).get('/me').set('Authorization', `Bearer ${accessToken}`);
 
     expect(response.status).toBe(501);
+  });
+
+  it('rejects a refresh-shaped token at an access-protected route even if it is signed by the access key', async () => {
+    const { app } = makeApp();
+    const refreshShapedToken = jwt.sign(
+      { sub: 'user_test_1', role: 'coach', jti: randomUUID(), typ: 'refresh' },
+      authConfig.JWT_ACCESS_SECRET,
+      {
+        algorithm: 'HS256',
+        expiresIn: '15m',
+        issuer: 'meetpr-api',
+        audience: 'meetpr-client',
+      } satisfies SignOptions,
+    );
+
+    const response = await request(app)
+      .get('/me')
+      .set('Authorization', `Bearer ${refreshShapedToken}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'AUTH_INVALID_TOKEN' });
   });
 
   it('rejects an invalid access token in requireAuth middleware', async () => {

@@ -29,7 +29,14 @@ export function createApp(deps: AppDeps): Express {
 
   app.set('trust proxy', config.TRUST_PROXY);
 
-  app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      // Public production traffic is HTTPS-only. HSTS is intentionally only
+      // emitted there so localhost and HTTP test clients remain usable.
+      ...(config.NODE_ENV === 'production' ? {} : { strictTransportSecurity: false }),
+    }),
+  );
   app.use(
     cors({
       origin:
@@ -37,6 +44,18 @@ export function createApp(deps: AppDeps): Express {
     }),
   );
   app.use(express.json({ limit: '1mb' }));
+  if (config.NODE_ENV === 'production') {
+    app.use((req, res, next) => {
+      // TLS terminates at the trusted reverse proxy. /health is kept available
+      // for the load balancer's internal HTTP health check; it exposes no user
+      // data or credentials. Every public API route fails closed otherwise.
+      if (req.path === '/health' || req.secure) {
+        next();
+        return;
+      }
+      res.status(426).json({ error: 'HTTPS_REQUIRED' });
+    });
+  }
   app.use(requestId);
   app.use(pinoHttp({ logger }));
   app.use(createGlobalRateLimit(config));

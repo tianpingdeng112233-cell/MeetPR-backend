@@ -47,9 +47,11 @@ export interface TestContext {
 }
 
 export function signToken(userId: string, role: UserRole): string {
-  return jwt.sign({ sub: userId, role }, config.JWT_ACCESS_SECRET, {
+  return jwt.sign({ sub: userId, role, typ: 'access' }, config.JWT_ACCESS_SECRET, {
     algorithm: 'HS256',
     expiresIn: '15m',
+    issuer: 'meetpr-api',
+    audience: 'meetpr-client',
   });
 }
 
@@ -278,6 +280,20 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       attachment_id UUID NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (user_id, attachment_id)
+    );
+
+    CREATE TABLE notification_outbox (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      event_type TEXT NOT NULL,
+      aggregate_id UUID NOT NULL,
+      recipient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      payload JSONB NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempt_count INT NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      delivered_at TIMESTAMPTZ,
+      UNIQUE (event_type, aggregate_id, recipient_id)
     );
   `);
 }

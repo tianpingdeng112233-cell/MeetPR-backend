@@ -26,11 +26,18 @@ export const RefreshBodySchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
 });
 
-export const RefreshTokenPayloadSchema = z.object({
-  sub: z.string().min(1),
-  role: z.enum(USER_ROLES),
-  jti: z.string().uuid(),
-});
+export const RefreshTokenPayloadSchema = z
+  .object({
+    sub: z.string().min(1),
+    role: z.enum(USER_ROLES),
+    jti: z.string().uuid(),
+    typ: z.literal('refresh'),
+    aud: z.string().min(1),
+    iss: z.string().min(1),
+    iat: z.number().int(),
+    exp: z.number().int(),
+  })
+  .strict();
 
 export type RegisterBody = z.infer<typeof RegisterBodySchema>;
 export type LoginBody = z.infer<typeof LoginBodySchema>;
