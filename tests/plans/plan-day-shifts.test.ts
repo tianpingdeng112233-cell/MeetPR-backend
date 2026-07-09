@@ -64,10 +64,6 @@ function addUtcDays(value: Date, days: number): Date {
   return result;
 }
 
-function isoDayOfWeek(value: Date): number {
-  return ((value.getUTCDay() + 6) % 7) + 1;
-}
-
 async function makeContext(): Promise<TestContext> {
   const mem = newDb();
   mem.public.registerFunction({
@@ -207,20 +203,24 @@ async function seedPlanDay(
     })
     .returningAll()
     .executeTakeFirstOrThrow();
-  const date = addUtcDays(new Date(`${ctx.today}T00:00:00.000Z`), options.dayOffset ?? 0);
+  // Positional semantics: day_of_week is the ordinal position from start_date (1 = start).
   const day = await ctx.db
     .insertInto('plan_days')
-    .values({ plan_id: plan.id, day_of_week: isoDayOfWeek(date), week_number: 1, sort_order: 0 })
+    .values({
+      plan_id: plan.id,
+      day_of_week: (options.dayOffset ?? 0) + 1,
+      week_number: 1,
+      sort_order: 0,
+    })
     .returningAll()
     .executeTakeFirstOrThrow();
   return { plan, day };
 }
 
 async function addDay(ctx: TestContext, planId: string, dayOffset: number) {
-  const date = addUtcDays(new Date(`${ctx.today}T00:00:00.000Z`), dayOffset);
   return ctx.db
     .insertInto('plan_days')
-    .values({ plan_id: planId, day_of_week: isoDayOfWeek(date), week_number: 1, sort_order: 0 })
+    .values({ plan_id: planId, day_of_week: dayOffset + 1, week_number: 1, sort_order: 0 })
     .returningAll()
     .executeTakeFirstOrThrow();
 }
