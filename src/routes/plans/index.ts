@@ -234,11 +234,7 @@ function utcDateOnly(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
-function plannedDayDate(
-  startDate: string | Date,
-  weekNumber: number,
-  dayOfWeek: number,
-): string {
+function plannedDayDate(startDate: string | Date, weekNumber: number, dayOfWeek: number): string {
   const start = utcDate(startDate);
   const startDayOfWeek = ((start.getUTCDay() + 6) % 7) + 1;
   const dayOffset = (dayOfWeek - startDayOfWeek + 7) % 7;

@@ -198,7 +198,9 @@ describe('POST /sets/log', () => {
       completed: true,
     });
 
-    await expect(ctx.db.deleteFrom('plans').where('id', '=', plan.planId).execute()).rejects.toThrow();
+    await expect(
+      ctx.db.deleteFrom('plans').where('id', '=', plan.planId).execute(),
+    ).rejects.toThrow();
 
     const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
     expect(rows).toHaveLength(1);
