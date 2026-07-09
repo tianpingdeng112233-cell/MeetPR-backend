@@ -187,6 +187,15 @@ export interface PlanDaysTable {
   sort_order: Generated<number>;
 }
 
+export interface PlanDayShiftsTable {
+  id: Generated<string>;
+  plan_day_id: string;
+  student_id: string;
+  // DATE-as-text in production; pg-mem returns a Date in integration tests.
+  shifted_to_date: ColumnType<string | Date, string, string>;
+  created_at: TimestampColumn;
+}
+
 export interface PlanExercisesTable {
   id: Generated<string>;
   plan_day_id: string;
@@ -416,6 +425,7 @@ export interface Database {
   exercises: ExercisesTable;
   plans: PlansTable;
   plan_days: PlanDaysTable;
+  plan_day_shifts: PlanDayShiftsTable;
   plan_exercises: PlanExercisesTable;
   plan_sets: PlanSetsTable;
   coach_profiles: CoachProfilesTable;
