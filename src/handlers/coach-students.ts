@@ -74,3 +74,33 @@ export async function listCoachStudents(
     };
   });
 }
+
+/** Rename a student only when the caller currently has an accepted bond.
+ * Returning null for both missing and unbound students avoids leaking roster
+ * membership through this write endpoint. */
+export async function renameCoachStudent(
+  db: Kysely<Database>,
+  coachId: string,
+  studentId: string,
+  displayName: string,
+): Promise<CoachStudentSummary | null> {
+  const bond = await db
+    .selectFrom('bind_requests')
+    .select('id')
+    .where('coach_id', '=', coachId)
+    .where('student_id', '=', studentId)
+    .where('status', '=', 'accepted')
+    .executeTakeFirst();
+  if (!bond) return null;
+
+  const updated = await db
+    .updateTable('student_profiles')
+    .set({ display_name: displayName, updated_at: new Date() })
+    .where('user_id', '=', studentId)
+    .returning('user_id')
+    .executeTakeFirst();
+  if (!updated) return null;
+
+  const students = await listCoachStudents(db, coachId);
+  return students.find((student) => student.id === studentId) ?? null;
+}
