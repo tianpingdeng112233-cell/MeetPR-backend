@@ -31,7 +31,15 @@ export function createApp(deps: AppDeps): Express {
 
   app.set('trust proxy', config.TRUST_PROXY);
 
-  app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      // HSTS is only emitted once FORCE_HTTPS is on (the HTTPS go-live switch),
+      // so localhost and HTTP test clients — and a pre-TLS production build —
+      // remain usable.
+      ...(config.FORCE_HTTPS ? {} : { strictTransportSecurity: false }),
+    }),
+  );
   app.use(
     cors({
       origin:
@@ -39,6 +47,19 @@ export function createApp(deps: AppDeps): Express {
     }),
   );
   app.use(express.json({ limit: '1mb' }));
+  if (config.FORCE_HTTPS) {
+    app.use((req, res, next) => {
+      // TLS terminates at the trusted reverse proxy. /health is kept available
+      // for the load balancer's internal HTTP health check; it exposes no user
+      // data or credentials. Every public API route fails closed otherwise.
+      // Gated on FORCE_HTTPS so this only activates at HTTPS go-live.
+      if (req.path === '/health' || req.secure) {
+        next();
+        return;
+      }
+      res.status(426).json({ error: 'HTTPS_REQUIRED' });
+    });
+  }
   app.use(requestId);
   app.use(pinoHttp({ logger }));
   app.use(createGlobalRateLimit(config));
