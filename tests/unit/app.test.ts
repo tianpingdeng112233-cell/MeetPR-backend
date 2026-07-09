@@ -56,4 +56,39 @@ describe('app', () => {
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: 'not_found', path: '/no-such-path' });
   });
+
+  it('fails closed for direct HTTP once FORCE_HTTPS is on while accepting trusted HTTPS proxy traffic', async () => {
+    const deps = makeDeps();
+    deps.config = {
+      ...deps.config,
+      NODE_ENV: 'production',
+      FORCE_HTTPS: true,
+      CORS_ORIGIN: 'https://plan.example.test',
+      PUBLIC_BASE_URL: 'https://api.example.test',
+      TRUST_PROXY: 1,
+    };
+    const app = createApp(deps);
+
+    const directHttp = await request(app).post('/auth/login').send({});
+    expect(directHttp.status).toBe(426);
+    expect(directHttp.body).toEqual({ error: 'HTTPS_REQUIRED' });
+
+    const proxiedHttps = await request(app)
+      .post('/auth/login')
+      .set('X-Forwarded-Proto', 'https')
+      .send({});
+    expect(proxiedHttps.status).toBe(400);
+    expect(proxiedHttps.body.error).toBe('VALIDATION_ERROR');
+  });
+
+  it('serves HTTP normally in production while FORCE_HTTPS is off (pre-TLS go-live)', async () => {
+    const deps = makeDeps();
+    deps.config = { ...deps.config, NODE_ENV: 'production' };
+    const app = createApp(deps);
+
+    const directHttp = await request(app).post('/auth/login').send({});
+    expect(directHttp.status).not.toBe(426);
+    expect(directHttp.status).toBe(400);
+    expect(directHttp.body.error).toBe('VALIDATION_ERROR');
+  });
 });

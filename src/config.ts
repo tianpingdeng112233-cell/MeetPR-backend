@@ -5,6 +5,13 @@ const BooleanEnvSchema = z
   .transform((value) => value === 'true')
   .optional();
 
+const HttpsUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => new URL(value).protocol === 'https:', {
+    message: 'must use https',
+  });
+
 export const ConfigSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -29,6 +36,14 @@ export const ConfigSchema = z
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
     CORS_ORIGIN: z.string().default('*'),
     TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+    // Go-live blocker, off by default. Enable only once the business license,
+    // ICP filing, and domain TLS are ready. When true, the app enforces HTTPS
+    // (426 + HSTS) and the checks below reject an incomplete TLS/CORS setup.
+    FORCE_HTTPS: BooleanEnvSchema,
+    // Public TLS is terminated outside this process. This value documents the
+    // canonical external endpoint and makes an incomplete production setup fail
+    // at boot instead of silently serving credentials over a raw IP/HTTP URL.
+    PUBLIC_BASE_URL: HttpsUrlSchema.optional(),
     // OSS credentials are optional: local dev runs without them and /uploads/* responds 503.
     OSS_ACCESS_KEY_ID: z.string().min(1).optional(),
     OSS_ACCESS_KEY_SECRET: z.string().min(1).optional(),
@@ -43,6 +58,48 @@ export const ConfigSchema = z
         path: ['JWT_REFRESH_SECRET'],
         message: 'JWT_REFRESH_SECRET must differ from JWT_ACCESS_SECRET',
       });
+    }
+
+    if (config.NODE_ENV !== 'production') return;
+
+    // HTTPS is a go-live blocker, not an immediate deploy gate: these checks
+    // only run once FORCE_HTTPS is switched on, so a pre-TLS production build
+    // still boots.
+    if (config.FORCE_HTTPS === true) {
+      if (config.CORS_ORIGIN === '*' || config.CORS_ORIGIN.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['CORS_ORIGIN'],
+          message: 'CORS_ORIGIN must be an explicit HTTPS origin in production',
+        });
+      } else {
+        for (const origin of config.CORS_ORIGIN.split(',').map((value) => value.trim())) {
+          const parsed = HttpsUrlSchema.safeParse(origin);
+          if (!parsed.success) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['CORS_ORIGIN'],
+              message: 'every production CORS origin must use https',
+            });
+            break;
+          }
+        }
+      }
+
+      if (config.PUBLIC_BASE_URL === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PUBLIC_BASE_URL'],
+          message: 'PUBLIC_BASE_URL must be an HTTPS URL in production',
+        });
+      }
+      if (config.TRUST_PROXY < 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['TRUST_PROXY'],
+          message: 'TRUST_PROXY must be at least 1 in production TLS deployments',
+        });
+      }
     }
   });
 
