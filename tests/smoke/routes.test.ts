@@ -34,8 +34,11 @@ function makeDeps() {
 type Role = 'coach' | 'coached_student' | 'self_train_student';
 
 function signValidToken(role: Role = 'coach'): string {
-  return jwt.sign({ sub: 'user_test_1', role }, baseConfig.JWT_ACCESS_SECRET, {
+  return jwt.sign({ sub: 'user_test_1', role, typ: 'access' }, baseConfig.JWT_ACCESS_SECRET, {
+    algorithm: 'HS256',
     expiresIn: '15m',
+    issuer: 'meetpr-api',
+    audience: 'meetpr-client',
   });
 }
 
