@@ -2,6 +2,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely, Selectable, Transaction, Updateable } from 'kysely';
 import { sql } from 'kysely';
 
+import { hasAcceptedBond } from '../../db/bonds';
 import { planIdForDay, planIdForExercise, planIdForSet } from '../../db/planOwnership';
 import type {
   Database,
@@ -27,6 +28,7 @@ import {
   CreatePlanSetBodySchema,
   DayIdParamSchema,
   IdParamSchema,
+  ImportedHistoryBodySchema,
   PatchPlanBodySchema,
   PatchPlanDayBodySchema,
   PatchPlanExerciseBodySchema,
@@ -39,6 +41,7 @@ import {
   type PlanExerciseResponse,
   type PlanSetResponse,
   type PlanWithChildrenResponse,
+  toImportedHistory,
   toPlan,
   toPlanDay,
   toPlanExercise,
@@ -64,6 +67,22 @@ interface PublishCounts {
   set_count: number;
   empty_day_count: number;
   empty_exercise_count: number;
+}
+
+interface ImportedHistorySetRow {
+  plan_exercise_id: string;
+  exercise_id: string;
+  week_number: number;
+  day_of_week: number;
+  set_number: number;
+  target_reps: number;
+  intensity_mode: PlanSetRow['intensity_mode'];
+  target_value: string;
+}
+
+interface ImportedHistoryCandidate {
+  set: ImportedHistorySetRow;
+  plannedDate: string;
 }
 
 function validationIssue(path: string[], message: string) {
@@ -201,6 +220,128 @@ function isPublishIncomplete(counts: PublishCounts): boolean {
 
 function normalizeTargetValue(value: string): string {
   return Number(value).toFixed(2);
+}
+
+function utcDate(value: string | Date): Date {
+  if (value instanceof Date) {
+    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+  }
+  const [yearText, monthText, dayText] = value.split('-');
+  return new Date(Date.UTC(Number(yearText), Number(monthText) - 1, Number(dayText)));
+}
+
+function utcDateOnly(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function plannedDayDate(
+  startDate: string | Date,
+  weekNumber: number,
+  dayOfWeek: number,
+): string {
+  const start = utcDate(startDate);
+  const startDayOfWeek = ((start.getUTCDay() + 6) % 7) + 1;
+  const dayOffset = (dayOfWeek - startDayOfWeek + 7) % 7;
+  start.setUTCDate(start.getUTCDate() + (weekNumber - 1) * 7 + dayOffset);
+  return utcDateOnly(start);
+}
+
+async function createImportedHistory(
+  db: Kysely<Database>,
+  plan: PlanRow,
+): Promise<{ created: number; existing: number }> {
+  const rows = await db
+    .selectFrom('plan_days as pd')
+    .innerJoin('plan_exercises as pe', 'pe.plan_day_id', 'pd.id')
+    .innerJoin('plan_sets as ps', 'ps.plan_exercise_id', 'pe.id')
+    .select([
+      'pe.id as plan_exercise_id',
+      'pe.exercise_id as exercise_id',
+      'pd.week_number as week_number',
+      'pd.day_of_week as day_of_week',
+      'ps.set_number as set_number',
+      'ps.target_reps as target_reps',
+      'ps.intensity_mode as intensity_mode',
+      'ps.target_value as target_value',
+    ])
+    .where('pd.plan_id', '=', plan.id)
+    .orderBy('pd.week_number', 'asc')
+    .orderBy('pd.day_of_week', 'asc')
+    .orderBy('pe.sort_order', 'asc')
+    .orderBy('ps.set_number', 'asc')
+    .execute();
+
+  const today = utcDateOnly(new Date());
+  const setsByExercise = new Map<string, ImportedHistoryCandidate[]>();
+  for (const row of rows) {
+    const plannedDate = plannedDayDate(plan.start_date, row.week_number, row.day_of_week);
+    if (plannedDate >= today) continue;
+    const sets = setsByExercise.get(row.plan_exercise_id) ?? [];
+    sets.push({ set: row, plannedDate });
+    setsByExercise.set(row.plan_exercise_id, sets);
+  }
+
+  const values = [...setsByExercise.values()].flatMap((sets) =>
+    sets.map(({ set, plannedDate }, setIndex) => ({
+      student_id: plan.trainee_id,
+      plan_exercise_id: set.plan_exercise_id,
+      exercise_id: set.exercise_id,
+      logged_date: plannedDate,
+      set_index: setIndex,
+      weight_kg: set.intensity_mode === 'rpe' ? '0.00' : normalizeTargetValue(set.target_value),
+      reps: set.target_reps,
+      rpe: set.intensity_mode === 'rpe' ? Number(set.target_value).toFixed(1) : null,
+      completed: true,
+      failed: false,
+      assumed: true,
+      logged_at: new Date(`${plannedDate}T12:00:00.000Z`),
+    })),
+  );
+
+  if (values.length === 0) return { created: 0, existing: 0 };
+
+  const existingRows = await db
+    .selectFrom('set_logs')
+    .select(['plan_exercise_id', 'set_index'])
+    .where('student_id', '=', plan.trainee_id)
+    .where('plan_exercise_id', 'in', [...setsByExercise.keys()])
+    .execute();
+  const existingKeys = new Set(
+    existingRows.map((row) => `${String(row.plan_exercise_id)}:${String(row.set_index)}`),
+  );
+  const missingValues = values.filter(
+    (value) => !existingKeys.has(`${value.plan_exercise_id}:${String(value.set_index)}`),
+  );
+
+  let created = 0;
+  if (missingValues.length > 0) {
+    const inserted = await db
+      .insertInto('set_logs')
+      .values(missingValues)
+      .onConflict((oc) => oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doNothing())
+      .returning(['id'])
+      .execute();
+    created = inserted.length;
+  }
+
+  return { created, existing: values.length - created };
+}
+
+// An explicit historical import may happen while a Plan Web draft is still
+// open (plan-web marks assumed history before publish). Once any set log
+// exists under the tree, the tree is locked: changing exercise identity, set
+// ordering, or day layout would reinterpret retained history. plan-web
+// handles this exact error code with「历史已锁定 · 请新建草稿后调整」.
+async function planHistoryLocked(db: Kysely<Database>, planId: string): Promise<boolean> {
+  const logged = await db
+    .selectFrom('set_logs as sl')
+    .innerJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
+    .innerJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
+    .select('sl.id')
+    .where('pd.plan_id', '=', planId)
+    .limit(1)
+    .executeTakeFirst();
+  return logged !== undefined;
 }
 
 function trainingMaxWrite(oneRmKg: number | undefined): Record<string, unknown> {
@@ -371,6 +512,26 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
+      // Imported history is intentionally allowed on an un-published draft so
+      // a coach can reconcile an old plan. Once its set logs exist, the
+      // draft's calendar/metadata locks too: shifting the horizon would
+      // reinterpret what dates the retained history was performed on. Status
+      // transitions stay open — publishing the imported plan must still work.
+      const hasTreeMetadataMutation =
+        body.data.name !== undefined ||
+        body.data.start_date !== undefined ||
+        body.data.end_date !== undefined ||
+        body.data.plan_weeks !== undefined ||
+        body.data.source_template_id !== undefined;
+      if (
+        existing.status === 'draft' &&
+        hasTreeMetadataMutation &&
+        (await planHistoryLocked(deps.db, existing.id))
+      ) {
+        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+        return;
+      }
+
       const mergedStartDate = body.data.start_date ?? existing.start_date;
       const mergedEndDate = body.data.end_date ?? existing.end_date;
       if (mergedEndDate < mergedStartDate) {
@@ -414,6 +575,61 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         .executeTakeFirstOrThrow();
 
       res.status(200).json(toPlan(updated));
+    }),
+  );
+
+  router.post(
+    '/:id/imported-history',
+    route(async (req, res) => {
+      const user = ensureUser(req);
+      if (!user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      const params = IdParamSchema.safeParse(req.params);
+      const body = ImportedHistoryBodySchema.safeParse(req.body);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+      if (!body.success) {
+        res.status(400).json(validationEnvelope(body.error));
+        return;
+      }
+
+      const plan =
+        user.role === 'coach'
+          ? await selectOwnedPlan(deps.db, params.data.id, user.id)
+          : await deps.db
+              .selectFrom('plans')
+              .selectAll()
+              .where('id', '=', params.data.id)
+              .where('trainee_id', '=', user.id)
+              .executeTakeFirst();
+      if (!plan) {
+        res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+        return;
+      }
+
+      if (user.role === 'coach' && !(await hasAcceptedBond(deps.db, user.id, plan.trainee_id))) {
+        res.status(403).json({ error: 'BIND_NOT_ACCEPTED' });
+        return;
+      }
+
+      const result = await deps.db
+        .transaction()
+        .execute(async (trx) => createImportedHistory(trx, plan));
+      deps.logger.info(
+        {
+          planId: plan.id,
+          studentId: plan.trainee_id,
+          created: result.created,
+          existing: result.existing,
+        },
+        'imported_history_confirmed',
+      );
+      res.status(200).json(toImportedHistory(plan.id, result.created, result.existing));
     }),
   );
 
@@ -572,6 +788,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         res.status(404).json({ error: 'PLAN_NOT_FOUND' });
         return;
       }
+      if (await planHistoryLocked(deps.db, plan.id)) {
+        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+        return;
+      }
 
       const day = await deps.db
         .insertInto('plan_days')
@@ -612,6 +832,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         res.status(404).json({ error: 'PLAN_DAY_NOT_FOUND' });
         return;
       }
+      if (await planHistoryLocked(deps.db, planId)) {
+        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+        return;
+      }
 
       const day = await deps.db
         .updateTable('plan_days')
@@ -648,6 +872,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         res.status(404).json({ error: 'PLAN_DAY_NOT_FOUND' });
         return;
       }
+      if (await planHistoryLocked(deps.db, planId)) {
+        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+        return;
+      }
 
       await deps.db.deleteFrom('plan_days').where('id', '=', params.data.dayId).execute();
       deps.logger.info(
@@ -681,6 +909,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       const planId = await planIdForDay(deps.db, params.data.dayId, user.id);
       if (!planId) {
         res.status(404).json({ error: 'PLAN_DAY_NOT_FOUND' });
+        return;
+      }
+      if (await planHistoryLocked(deps.db, planId)) {
+        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
         return;
       }
 
@@ -739,6 +971,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         res.status(404).json({ error: 'PLAN_EXERCISE_NOT_FOUND' });
         return;
       }
+      if (await planHistoryLocked(deps.db, planId)) {
+        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+        return;
+      }
       if (body.data.exercise_id) {
         const exerciseVisible = await visibleExerciseForCoach(
           deps.db,
@@ -792,6 +1028,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         res.status(404).json({ error: 'PLAN_EXERCISE_NOT_FOUND' });
         return;
       }
+      if (await planHistoryLocked(deps.db, planId)) {
+        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+        return;
+      }
 
       await deps.db.deleteFrom('plan_exercises').where('id', '=', params.data.exerciseId).execute();
       deps.logger.info(
@@ -825,6 +1065,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       const planId = await planIdForExercise(deps.db, params.data.exerciseId, user.id);
       if (!planId) {
         res.status(404).json({ error: 'PLAN_EXERCISE_NOT_FOUND' });
+        return;
+      }
+      if (await planHistoryLocked(deps.db, planId)) {
+        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
         return;
       }
 
@@ -875,6 +1119,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       const planId = await planIdForSet(deps.db, params.data.setId, user.id);
       if (!planId) {
         res.status(404).json({ error: 'PLAN_SET_NOT_FOUND' });
+        return;
+      }
+      if (await planHistoryLocked(deps.db, planId)) {
+        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
         return;
       }
 
@@ -937,6 +1185,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       const planId = await planIdForSet(deps.db, params.data.setId, user.id);
       if (!planId) {
         res.status(404).json({ error: 'PLAN_SET_NOT_FOUND' });
+        return;
+      }
+      if (await planHistoryLocked(deps.db, planId)) {
+        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
         return;
       }
 

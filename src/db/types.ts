@@ -393,6 +393,7 @@ export interface SetLogsTable {
   rpe: NullableColumn<string>;
   completed: Generated<boolean>;
   failed: Generated<boolean>;
+  assumed: Generated<boolean>;
   adhoc: Generated<boolean>;
   actual_rir: NullableColumn<number>;
   accommodating_tension: NullableColumn<boolean>;

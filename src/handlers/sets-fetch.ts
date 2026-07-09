@@ -16,6 +16,7 @@ type SerializableSetLogRow = Pick<
   | 'rpe'
   | 'completed'
   | 'failed'
+  | 'assumed'
   | 'adhoc'
   | 'logged_date'
   | 'logged_at'
@@ -32,6 +33,7 @@ export interface SetLogResponse {
   rpe: string | null;
   completed: boolean;
   failed: boolean;
+  assumed: boolean;
   adhoc: boolean;
   logged_date: string;
   logged_at: string;
@@ -49,6 +51,7 @@ export function toSetLog(row: SerializableSetLogRow): SetLogResponse {
     rpe: row.rpe == null ? null : Number(row.rpe).toFixed(1),
     completed: row.completed,
     failed: row.failed,
+    assumed: row.assumed,
     adhoc: row.adhoc,
     logged_date: dateOnly(row.logged_date),
     logged_at: timestamp(row.logged_at),
@@ -113,6 +116,7 @@ export async function fetchCoachSetLogs(
       'sl.rpe as rpe',
       'sl.completed as completed',
       'sl.failed as failed',
+      'sl.assumed as assumed',
       'sl.adhoc as adhoc',
       'sl.logged_date as logged_date',
       'sl.logged_at as logged_at',

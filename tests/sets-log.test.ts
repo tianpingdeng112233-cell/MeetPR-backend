@@ -55,6 +55,42 @@ describe('POST /sets/log', () => {
     expect(rows[0]?.failed).toBe(false);
   });
 
+  it('turns an assumed import into a real log on identity conflict', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: plan.planExerciseId,
+        exercise_id: ids.exercise,
+        logged_date: '2026-05-05',
+        set_index: 0,
+        weight_kg: '100.00',
+        reps: 5,
+        rpe: null,
+        completed: true,
+        failed: false,
+        assumed: true,
+      })
+      .execute();
+
+    const response = await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+      plan_exercise_id: plan.planExerciseId,
+      set_index: 0,
+      weight_kg: '105.00',
+      reps: 6,
+      rpe: '8.0',
+      completed: true,
+    });
+
+    const row = await ctx.db.selectFrom('set_logs').selectAll().executeTakeFirstOrThrow();
+    expect(response.status).toBe(201);
+    expect(row.assumed).toBe(false);
+    expect(Number(row.weight_kg)).toBe(105);
+    expect(row.reps).toBe(6);
+  });
+
   it('rejects coach role and unpublished or other-student plan exercises', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx, ids.coach, ids.otherStudent);
@@ -151,7 +187,7 @@ describe('POST /sets/log', () => {
     expect(dateText(rows[0]?.logged_date)).toBe('2026-07-02');
   });
 
-  it('keeps the log row alive when its plan is deleted', async () => {
+  it('rejects plan deletion once a linked history row exists', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
     await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
@@ -162,11 +198,11 @@ describe('POST /sets/log', () => {
       completed: true,
     });
 
-    await ctx.db.deleteFrom('plans').where('id', '=', plan.planId).execute();
+    await expect(ctx.db.deleteFrom('plans').where('id', '=', plan.planId).execute()).rejects.toThrow();
 
     const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.plan_exercise_id).toBeNull();
+    expect(rows[0]?.plan_exercise_id).toBe(plan.planExerciseId);
     expect(rows[0]?.exercise_id).toBe(ids.exercise);
   });
 });

@@ -97,6 +97,7 @@ export async function upsertSetLog(
       rpe: input.rpe,
       completed: input.completed,
       failed,
+      assumed: false,
     })
     .onConflict((oc) =>
       input.update_logged_date
@@ -106,6 +107,7 @@ export async function upsertSetLog(
             rpe: (eb) => eb.ref('excluded.rpe'),
             completed: (eb) => eb.ref('excluded.completed'),
             failed: (eb) => eb.ref('excluded.failed'),
+            assumed: false,
             logged_date: (eb) => eb.ref('excluded.logged_date'),
             logged_at: sql<Date>`now()`,
           })
@@ -115,6 +117,7 @@ export async function upsertSetLog(
             rpe: (eb) => eb.ref('excluded.rpe'),
             completed: (eb) => eb.ref('excluded.completed'),
             failed: (eb) => eb.ref('excluded.failed'),
+            assumed: false,
             logged_at: sql<Date>`now()`,
           }),
     )
@@ -144,6 +147,7 @@ async function updateAdhocSetLog(
       rpe: input.rpe,
       completed: input.completed,
       failed: input.failed,
+      assumed: false,
       logged_at: sql<Date>`now()`,
     })
     .where('student_id', '=', studentId)
@@ -192,6 +196,7 @@ export async function upsertAdhocSetLog(
         rpe: input.rpe,
         completed: input.completed,
         failed: input.failed,
+        assumed: false,
       })
       .returning(['id', 'logged_at'])
       .executeTakeFirstOrThrow();

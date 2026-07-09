@@ -20,6 +20,7 @@ describe('GET /students/:id/sets', () => {
         rpe: '8.0',
         completed: true,
         failed: true,
+        assumed: true,
         logged_at: new Date('2026-05-15T12:00:00.000Z'),
       })
       .execute();
@@ -40,6 +41,7 @@ describe('GET /students/:id/sets', () => {
         rpe: '8.0',
         completed: true,
         failed: true,
+        assumed: true,
       }),
     ]);
   });
@@ -76,6 +78,7 @@ describe('GET /students/:id/sets', () => {
         exercise_id: ids.exercise,
         logged_date: '2026-05-15',
         adhoc: true,
+        assumed: false,
       }),
     ]);
   });

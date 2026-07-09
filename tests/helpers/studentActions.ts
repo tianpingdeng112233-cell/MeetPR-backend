@@ -201,13 +201,14 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
     CREATE UNIQUE INDEX bind_requests_unique_accepted
       ON bind_requests (student_id, coach_id) WHERE status = 'accepted';
 
-    -- Post-0031 shape (adhoc set logging): nullable SET NULL plan link,
+    -- Post-0034 shape: nullable plan link for adhoc rows, RESTRICT for linked
+    -- history, and an assumed marker for imported planned sets.
     -- direct exercise_id, client-local logged_date, adhoc flag + partial
     -- unique index. Keep in sync with db/migrations/0031-adhoc-set-logs.sql.
     CREATE TABLE set_logs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      plan_exercise_id UUID REFERENCES plan_exercises(id) ON DELETE SET NULL,
+      plan_exercise_id UUID REFERENCES plan_exercises(id) ON DELETE RESTRICT,
       exercise_id UUID NOT NULL REFERENCES exercises(id),
       set_index INT NOT NULL,
       weight_kg NUMERIC(6,2) NOT NULL,
@@ -215,6 +216,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       rpe NUMERIC(3,1),
       completed BOOLEAN NOT NULL DEFAULT FALSE,
       failed BOOLEAN NOT NULL DEFAULT FALSE,
+      assumed BOOLEAN NOT NULL DEFAULT FALSE,
       adhoc BOOLEAN NOT NULL DEFAULT FALSE,
       logged_date DATE NOT NULL,
       logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),

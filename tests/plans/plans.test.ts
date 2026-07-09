@@ -167,6 +167,27 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       coach_note TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    -- Post-0034 shape: the tree-lock guard (PLAN_HISTORY_IMMUTABLE) and the
+    -- imported-history endpoint both read/write set_logs from the plans
+    -- router. Keep in sync with tests/helpers/studentActions.ts.
+    CREATE TABLE set_logs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      plan_exercise_id UUID REFERENCES plan_exercises(id) ON DELETE RESTRICT,
+      exercise_id UUID NOT NULL REFERENCES exercises(id),
+      set_index INT NOT NULL,
+      weight_kg NUMERIC(6,2) NOT NULL,
+      reps INT NOT NULL,
+      rpe NUMERIC(3,1),
+      completed BOOLEAN NOT NULL DEFAULT FALSE,
+      failed BOOLEAN NOT NULL DEFAULT FALSE,
+      assumed BOOLEAN NOT NULL DEFAULT FALSE,
+      adhoc BOOLEAN NOT NULL DEFAULT FALSE,
+      logged_date DATE NOT NULL,
+      logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (student_id, plan_exercise_id, set_index)
+    );
   `);
 
   const { Pool } = mem.adapters.createPg();
