@@ -87,6 +87,13 @@ export interface PlanWithChildrenResponse extends PlanResponse {
   days: PlanDayResponse[];
 }
 
+export interface ImportedHistoryResponse {
+  plan_id: string;
+  created_set_logs: number;
+  existing_set_logs: number;
+  assumed: true;
+}
+
 export interface ExerciseResponse {
   id: string;
   name: string;
@@ -165,6 +172,19 @@ export function toPlanSet(row: PlanSetRow): PlanSetResponse {
     rest_seconds: row.rest_seconds,
     coach_note: row.coach_note,
     created_at: timestamp(row.created_at),
+  };
+}
+
+export function toImportedHistory(
+  planId: string,
+  createdSetLogs: number,
+  existingSetLogs: number,
+): ImportedHistoryResponse {
+  return {
+    plan_id: planId,
+    created_set_logs: createdSetLogs,
+    existing_set_logs: existingSetLogs,
+    assumed: true,
   };
 }
 

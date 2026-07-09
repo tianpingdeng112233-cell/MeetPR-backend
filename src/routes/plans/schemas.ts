@@ -198,6 +198,9 @@ export const CreatePlanSetBodySchema = PlanSetBodySchema.superRefine(validateSet
 
 export const PatchPlanSetBodySchema = PlanSetBodySchema.partial().superRefine(validateSetBody);
 
+/** Explicit confirmation prevents a normal plan load from inventing history. */
+export const ImportedHistoryBodySchema = z.object({ confirm: z.literal(true) }).strict();
+
 const PlanStatusQuerySchema = z.enum(['draft', 'published', 'completed', 'paused']);
 
 function splitCsvParam(value: unknown): string[] | undefined {
@@ -249,3 +252,4 @@ export type CreatePlanExerciseBody = z.infer<typeof CreatePlanExerciseBodySchema
 export type PatchPlanExerciseBody = z.infer<typeof PatchPlanExerciseBodySchema>;
 export type CreatePlanSetBody = z.infer<typeof CreatePlanSetBodySchema>;
 export type PatchPlanSetBody = z.infer<typeof PatchPlanSetBodySchema>;
+export type ImportedHistoryBody = z.infer<typeof ImportedHistoryBodySchema>;
