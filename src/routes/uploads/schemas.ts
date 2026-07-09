@@ -4,7 +4,9 @@ import { ATTACHMENT_KINDS, type AttachmentKind } from '../../db/types';
 
 const MB = 1024 * 1024;
 /** OSS multipart hard limit. */
-export const MAX_PART_COUNT = 10_000;
+export const MAX_PART_COUNT = 200;
+/** Prevent a one-byte declaration from fanning out into hundreds of signatures. */
+export const MIN_PART_SIZE_BYTES = 1024 * 1024;
 
 interface KindLimit {
   maxSizeBytes: number;
@@ -56,6 +58,13 @@ export const InitiateBodySchema = z
         message: 'set_log_id is only valid for kind=set_video',
       });
     }
+    if (data.part_count > Math.ceil(data.size_bytes / MIN_PART_SIZE_BYTES)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['part_count'],
+        message: 'part_count is too high for the declared size',
+      });
+    }
   });
 
 export type InitiateBody = z.infer<typeof InitiateBodySchema>;
@@ -74,7 +83,20 @@ export const CompleteBodySchema = z
       .min(1)
       .max(MAX_PART_COUNT),
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    const seen = new Set<number>();
+    for (const [index, part] of data.parts.entries()) {
+      if (seen.has(part.part_number)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['parts', index, 'part_number'],
+          message: 'part_number must be unique',
+        });
+      }
+      seen.add(part.part_number);
+    }
+  });
 
 export type CompleteBody = z.infer<typeof CompleteBodySchema>;
 

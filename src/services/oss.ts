@@ -27,11 +27,20 @@ export interface OssService {
     expiresSeconds: number,
   ): Promise<PresignedPartUrl[]>;
   /** CompleteMultipartUpload — throws on etag mismatch / unknown upload. */
-  completeMultipartUpload(key: string, uploadId: string, parts: CompletedPart[]): Promise<void>;
+  completeMultipartUpload(
+    key: string,
+    uploadId: string,
+    parts: CompletedPart[],
+    expectedSizeBytes: number,
+  ): Promise<void>;
   /** AbortMultipartUpload — swallows NoSuchUpload so abort stays idempotent. */
   abortMultipartUpload(key: string, uploadId: string): Promise<void>;
   /** Presigned GET URL (local HMAC signing, no OSS round-trip). */
   signGetUrl(key: string, expiresSeconds: number): Promise<string>;
+  /** Verify the completed object before it is exposed as ready. */
+  headObject(key: string): Promise<{ sizeBytes: number } | null>;
+  /** Best-effort compensation after a completed object fails verification. */
+  deleteObject(key: string): Promise<void>;
 }
 
 export interface OssServiceOptions {
@@ -81,7 +90,7 @@ export function createOssService(options: OssServiceOptions): OssService {
       return Promise.resolve(urls);
     },
 
-    async completeMultipartUpload(key, uploadId, parts) {
+    async completeMultipartUpload(key, uploadId, parts, _expectedSizeBytes) {
       await client.completeMultipartUpload(
         key,
         uploadId,
@@ -100,6 +109,30 @@ export function createOssService(options: OssServiceOptions): OssService {
 
     signGetUrl(key, expiresSeconds) {
       return Promise.resolve(client.signatureUrl(key, { method: 'GET', expires: expiresSeconds }));
+    },
+
+    async headObject(key) {
+      try {
+        const result = await client.head(key);
+        const headers = result.res.headers as Record<string, string | string[] | undefined>;
+        const contentLength = headers['content-length'];
+        const parsed = Number(Array.isArray(contentLength) ? contentLength[0] : contentLength);
+        return Number.isSafeInteger(parsed) && parsed >= 0 ? { sizeBytes: parsed } : null;
+      } catch (err) {
+        const record = err as { code?: unknown; status?: unknown };
+        if (record.code === 'NoSuchKey' || record.status === 404) return null;
+        throw err;
+      }
+    },
+
+    async deleteObject(key) {
+      try {
+        await client.delete(key);
+      } catch (err) {
+        const record = err as { code?: unknown; status?: unknown };
+        if (record.code === 'NoSuchKey' || record.status === 404) return;
+        throw err;
+      }
     },
   };
 }
