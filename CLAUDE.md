@@ -51,6 +51,7 @@ MeetPR backend service. V1 scope: REST API for coach / student workflows, traini
 5. **`dotenv` is dev-only.** Production reads env from the SAE runtime. The only place `dotenv` is loaded is `src/server.ts`, gated on `NODE_ENV !== 'production'`. Don't add it elsewhere.
 6. **Never bypass hooks.** No `git commit --no-verify`. Fix the lint/format issue.
 7. **Secrets are pointers.** The real DATABASE_URL password and JWT secrets live in the password manager. `.env.example` only contains placeholders. See `~/Brain/wiki/projects/MeetPR/secrets-pointer.md`.
+8. **Backward compatibility with live clients.** Every change must keep the currently-shipped iOS/plan-web clients working: additive-only migrations, new behavior behind env gates defaulting to legacy-safe (e.g. `FORCE_HTTPS=false`, `AUTH_ALLOW_LEGACY_TOKENS=true`), no breaking changes to existing response shapes. This is what lets the backend deploy independently, any time, without coordinating an app release. Breaking a live client requires an explicit David sign-off and a client-first migration plan.
 
 ## Code standards
 
