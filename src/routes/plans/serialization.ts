@@ -2,11 +2,13 @@ import type { Selectable } from 'kysely';
 
 import type {
   ExercisesTable,
+  PlanDayShiftsTable,
   PlanDaysTable,
   PlanExercisesTable,
   PlansTable,
   PlanSetsTable,
 } from '../../db/types';
+import { normalizeDateOnly } from '../../utils/date';
 
 type TimestampValue = Date | string;
 
@@ -16,6 +18,7 @@ function timestamp(value: TimestampValue): string {
 
 export type PlanRow = Selectable<PlansTable>;
 export type PlanDayRow = Selectable<PlanDaysTable>;
+export type PlanDayShiftRow = Selectable<PlanDayShiftsTable>;
 export type PlanExerciseRow = Selectable<PlanExercisesTable>;
 export type PlanSetRow = Selectable<PlanSetsTable>;
 export type ExerciseRow = Selectable<ExercisesTable>;
@@ -66,7 +69,15 @@ export interface PlanDayResponse {
   day_of_week: number;
   week_number: number;
   sort_order: number;
+  shifted_to_date: string | null;
   exercises: PlanExerciseResponse[];
+}
+
+export interface PlanDayShiftResponse {
+  id: string;
+  plan_day_id: string;
+  shifted_to_date: string;
+  created_at: string;
 }
 
 export interface PlanWithChildrenResponse extends PlanResponse {
@@ -108,6 +119,7 @@ export function toPlan(row: PlanRow): PlanResponse {
 export function toPlanDay(
   row: PlanDayRow,
   exercises: PlanExerciseResponse[] = [],
+  shiftedToDate: string | Date | null = null,
 ): PlanDayResponse {
   return {
     id: row.id,
@@ -115,7 +127,17 @@ export function toPlanDay(
     day_of_week: row.day_of_week,
     week_number: row.week_number,
     sort_order: row.sort_order,
+    shifted_to_date: shiftedToDate === null ? null : normalizeDateOnly(shiftedToDate),
     exercises,
+  };
+}
+
+export function toPlanDayShift(row: PlanDayShiftRow): PlanDayShiftResponse {
+  return {
+    id: row.id,
+    plan_day_id: row.plan_day_id,
+    shifted_to_date: normalizeDateOnly(row.shifted_to_date),
+    created_at: timestamp(row.created_at),
   };
 }
 
