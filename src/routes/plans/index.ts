@@ -236,9 +236,10 @@ function utcDateOnly(value: Date): string {
 
 function plannedDayDate(startDate: string | Date, weekNumber: number, dayOfWeek: number): string {
   const start = utcDate(startDate);
-  const startDayOfWeek = ((start.getUTCDay() + 6) % 7) + 1;
-  const dayOffset = (dayOfWeek - startDayOfWeek + 7) % 7;
-  start.setUTCDate(start.getUTCDate() + (weekNumber - 1) * 7 + dayOffset);
+  // Positional day-date semantics (canonical per David 2026-07-10): day_of_week is the
+  // day's ordinal position within its plan week (1 = start_date itself), matching
+  // plan-web import/rendering and the iOS projection. It is NOT an ISO weekday.
+  start.setUTCDate(start.getUTCDate() + (weekNumber - 1) * 7 + (dayOfWeek - 1));
   return utcDateOnly(start);
 }
 
