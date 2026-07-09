@@ -82,3 +82,60 @@ describe('GET /coach/students', () => {
     expect(after.body.students[0].evaluation).toBeNull();
   });
 });
+
+describe('PATCH /coach/students/:id', () => {
+  it('lets an accepted coach rename a student and trims the name', async () => {
+    const ctx = await makeContext();
+
+    const renamed = await request(ctx.app)
+      .patch(`/coach/students/${ids.trainee}`)
+      .set(auth(ctx.coachToken))
+      .send({ display_name: '  王馨伟  ' });
+
+    expect(renamed.status).toBe(200);
+    expect(renamed.body).toMatchObject({
+      id: ids.trainee,
+      display_name: '王馨伟',
+      profile: { user_id: ids.trainee, display_name: '王馨伟' },
+    });
+    const profile = await ctx.db
+      .selectFrom('student_profiles')
+      .select('display_name')
+      .where('user_id', '=', ids.trainee)
+      .executeTakeFirstOrThrow();
+    expect(profile.display_name).toBe('王馨伟');
+  });
+
+  it('rejects unbound students without revealing whether the profile exists', async () => {
+    const ctx = await makeContext();
+
+    const res = await request(ctx.app)
+      .patch(`/coach/students/${ids.otherStudent}`)
+      .set(auth(ctx.coachToken))
+      .send({ display_name: '不应修改' });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'COACH_STUDENT_NOT_FOUND' });
+  });
+
+  it('requires coach role and validates the new name', async () => {
+    const ctx = await makeContext();
+
+    const asStudent = await request(ctx.app)
+      .patch(`/coach/students/${ids.trainee}`)
+      .set(auth(ctx.traineeToken))
+      .send({ display_name: '新名字' });
+    const blank = await request(ctx.app)
+      .patch(`/coach/students/${ids.trainee}`)
+      .set(auth(ctx.coachToken))
+      .send({ display_name: '   ' });
+    const extraField = await request(ctx.app)
+      .patch(`/coach/students/${ids.trainee}`)
+      .set(auth(ctx.coachToken))
+      .send({ display_name: '新名字', role: 'coach' });
+
+    expect(asStudent.status).toBe(403);
+    expect(blank.status).toBe(400);
+    expect(extraField.status).toBe(400);
+  });
+});
