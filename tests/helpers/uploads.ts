@@ -6,9 +6,11 @@ import { auth, makeContext, type TestContext } from './studentActions';
 export interface FakeOssCalls {
   initiate: { key: string; contentType: string }[];
   signParts: { key: string; uploadId: string; partCount: number; expiresSeconds: number }[];
-  complete: { key: string; uploadId: string; parts: CompletedPart[] }[];
+  complete: { key: string; uploadId: string; parts: CompletedPart[]; expectedSizeBytes: number }[];
   abort: { key: string; uploadId: string }[];
   signGet: { key: string; expiresSeconds: number }[];
+  head: { key: string }[];
+  delete: { key: string }[];
 }
 
 export interface FakeOss {
@@ -19,8 +21,11 @@ export interface FakeOss {
 export interface FakeOssOptions {
   completeError?: Error;
   abortError?: Error;
+  deleteError?: Error;
   /** When set, completeMultipartUpload awaits this gate before resolving/rejecting — lets tests freeze a request mid-OSS-call. */
   completeGate?: () => Promise<void>;
+  /** Add a HEAD implementation; null simulates a missing completed object. */
+  headObjectResult?: number | null;
 }
 
 export function makeFakeOss(options: FakeOssOptions = {}): FakeOss {
@@ -30,9 +35,13 @@ export function makeFakeOss(options: FakeOssOptions = {}): FakeOss {
     complete: [],
     abort: [],
     signGet: [],
+    head: [],
+    delete: [],
   };
   let uploadCounter = 0;
 
+  const completedSizes = new Map<string, number>();
+  const hasHeadObjectResult = Object.prototype.hasOwnProperty.call(options, 'headObjectResult');
   const service: OssService = {
     initiateMultipartUpload(key, contentType) {
       calls.initiate.push({ key, contentType });
@@ -48,8 +57,9 @@ export function makeFakeOss(options: FakeOssOptions = {}): FakeOss {
         })),
       );
     },
-    async completeMultipartUpload(key, uploadId, parts) {
-      calls.complete.push({ key, uploadId, parts });
+    async completeMultipartUpload(key, uploadId, parts, expectedSizeBytes) {
+      calls.complete.push({ key, uploadId, parts, expectedSizeBytes });
+      completedSizes.set(key, expectedSizeBytes);
       if (options.completeGate) await options.completeGate();
       if (options.completeError) throw options.completeError;
     },
@@ -63,6 +73,16 @@ export function makeFakeOss(options: FakeOssOptions = {}): FakeOss {
       return Promise.resolve(
         `https://fake-oss.invalid/${key}?expires=${String(expiresSeconds)}&sig=get`,
       );
+    },
+    headObject(key) {
+      calls.head.push({ key });
+      const sizeBytes = hasHeadObjectResult ? options.headObjectResult : completedSizes.get(key);
+      return Promise.resolve(sizeBytes === null || sizeBytes === undefined ? null : { sizeBytes });
+    },
+    deleteObject(key) {
+      calls.delete.push({ key });
+      if (options.deleteError) return Promise.reject(options.deleteError);
+      return Promise.resolve();
     },
   };
 

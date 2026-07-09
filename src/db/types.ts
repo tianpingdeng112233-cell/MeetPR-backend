@@ -103,6 +103,8 @@ export const ATTACHMENT_STATUSES = [
   'aborting',
   'ready',
   'aborted',
+  'failed',
+  'deleting',
 ] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
@@ -378,6 +380,17 @@ export interface AttachmentsTable {
   filename: NullableColumn<string>;
   // set_video association (spec 007); SET NULL on log deletion.
   set_log_id: NullableColumn<string>;
+  // Immutable source provenance for set_video visibility. Legacy rows with no
+  // proof of origin remain null and are deliberately not coach-readable.
+  source_plan_id: NullableColumn<string>;
+  source_coach_id: NullableColumn<string>;
+  is_unlinked_explicit: Generated<boolean>;
+  part_count: number;
+  actual_size_bytes: ColumnType<
+    string | number | null,
+    number | null | undefined,
+    string | number | null
+  >;
   status: Generated<AttachmentStatus>;
   created_at: TimestampColumn;
   updated_at: TimestampColumn;

@@ -21,9 +21,10 @@ interface StudentVideosRouterDeps {
  * Metadata only: playback goes through GET /uploads/:id/url per item, so a
  * single intercepted response never leaks a wall of live URLs (Codex review).
  * Authorization mirrors GET /students/:id/sets — student self, or an
- * accepted-bind coach scoped to videos from their own plans (dual-coach
- * students don't leak across coaches); unlinked videos are visible to any
- * bonded coach, like unattributed uploads.
+ * accepted-bind coach scoped by immutable upload provenance (dual-coach
+ * students don't leak across coaches). Only uploads explicitly created without
+ * a set-log link are shareable with any bonded coach; legacy/orphaned links are
+ * deliberately not treated as unlinked.
  */
 export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRouter {
   const router = Router();
@@ -73,12 +74,15 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
         .where('a.status', '=', 'ready');
 
       if (isBondedCoach) {
-        // Sets-endpoint scoping: a coach sees videos linked to their own
-        // plans, plus unlinked uploads; a dual-coach student's other-plan
-        // videos stay private to the other coach.
+        // A set-log can be detached by legacy data maintenance. Its immutable
+        // source coach remains the visibility gate, so an orphan cannot become
+        // a broadly-visible "unlinked" video.
         const coachId = req.user.id;
         query = query.where((eb) =>
-          eb.or([eb('a.set_log_id', 'is', null), eb('p.coach_id', '=', coachId)]),
+          eb.or([
+            eb.and([eb('a.is_unlinked_explicit', '=', true), eb('a.source_coach_id', 'is', null)]),
+            eb('a.source_coach_id', '=', coachId),
+          ]),
         );
       }
 
