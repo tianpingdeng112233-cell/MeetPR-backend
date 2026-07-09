@@ -217,6 +217,7 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       UNIQUE (event_type, aggregate_id, recipient_id)
     );
   `);
+  mem.public.none(fs.readFileSync('db/migrations/0030-add-plan-day-shifts.sql', 'utf8'));
 
   const { Pool } = mem.adapters.createPg();
   const pool = new Pool();

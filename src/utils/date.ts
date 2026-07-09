@@ -33,3 +33,8 @@ export function utcDate(value: string | Date): Date {
 export function utcDateOnly(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
+
+/** Normalize a database DATE value across node-postgres and pg-mem. */
+export function normalizeDateOnly(value: string | Date): string {
+  return value instanceof Date ? utcDateOnly(value) : value;
+}
