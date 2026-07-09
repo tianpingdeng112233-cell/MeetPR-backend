@@ -15,6 +15,8 @@ export interface SetLogResponse {
   rpe: string | null;
   completed: boolean;
   failed: boolean;
+  /** Present for imports; older clients may safely ignore this additive field. */
+  assumed?: boolean;
   logged_at: string;
 }
 
@@ -29,6 +31,7 @@ export function toSetLog(row: SetLogRow): SetLogResponse {
     rpe: row.rpe == null ? null : Number(row.rpe).toFixed(1),
     completed: row.completed,
     failed: row.failed,
+    assumed: (row as { assumed?: boolean }).assumed ?? false,
     logged_at: timestamp(row.logged_at),
   };
 }
@@ -73,12 +76,12 @@ export async function fetchCoachSetLogs(
       'sl.rpe as rpe',
       'sl.completed as completed',
       'sl.failed as failed',
+      'sl.assumed as assumed',
       'sl.logged_at as logged_at',
     ])
     .where('sl.student_id', '=', studentId)
     .where('p.coach_id', '=', coachId)
     .where('p.trainee_id', '=', studentId)
-    .where('p.status', '=', 'published')
     .where('sl.logged_at', '>=', from)
     .where('sl.logged_at', '<', to)
     .orderBy('sl.logged_at', 'desc')

@@ -334,6 +334,8 @@ export interface SetLogsTable {
   rpe: NullableColumn<string>;
   completed: Generated<boolean>;
   failed: Generated<boolean>;
+  /** True only for user-confirmed historical import assumptions. */
+  assumed: Generated<boolean>;
   logged_at: TimestampColumn;
 }
 
@@ -396,6 +398,19 @@ export interface AttachmentsTable {
   updated_at: TimestampColumn;
 }
 
+export interface NotificationOutboxTable {
+  id: Generated<string>;
+  event_type: string;
+  aggregate_id: string;
+  recipient_id: string;
+  payload: ColumnType<unknown, string, unknown>;
+  status: Generated<'pending' | 'delivered' | 'failed'>;
+  attempt_count: Generated<number>;
+  last_error: NullableColumn<string>;
+  created_at: TimestampColumn;
+  delivered_at: NullableColumn<Date>;
+}
+
 export interface Database {
   users: UsersTable;
   exercises: ExercisesTable;
@@ -416,4 +431,5 @@ export interface Database {
   student_onboarding_profiles: StudentOnboardingProfilesTable;
   onboarding_uploads: OnboardingUploadsTable;
   attachments: AttachmentsTable;
+  notification_outbox: NotificationOutboxTable;
 }

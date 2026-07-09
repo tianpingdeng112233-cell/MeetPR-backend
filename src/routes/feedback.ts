@@ -12,6 +12,7 @@ import {
 } from '../handlers/feedback-post';
 import { requireRole } from '../middleware/auth';
 import { uuidEquals } from '../utils/uuid';
+import { isIsoCalendarDate, isoCalendarDateSchemaMessage } from '../utils/date';
 import { route, validationEnvelope } from './http';
 
 interface FeedbackRouterDeps {
@@ -19,7 +20,10 @@ interface FeedbackRouterDeps {
 }
 
 const UuidSchema = z.string().uuid();
-const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
+const DateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD')
+  .refine(isIsoCalendarDate, isoCalendarDateSchemaMessage());
 
 const FeedbackBodySchema = z
   .object({

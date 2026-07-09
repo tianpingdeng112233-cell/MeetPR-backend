@@ -60,6 +60,9 @@ export async function upsertSetLog(
       rpe: input.rpe,
       completed: input.completed,
       failed,
+      // A genuine client log always supersedes a user-confirmed import
+      // assumption for the same plan set.
+      assumed: false,
     })
     .onConflict((oc) =>
       oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
@@ -68,6 +71,7 @@ export async function upsertSetLog(
         rpe: (eb) => eb.ref('excluded.rpe'),
         completed: (eb) => eb.ref('excluded.completed'),
         failed: (eb) => eb.ref('excluded.failed'),
+        assumed: false,
         logged_at: sql<Date>`now()`,
       }),
     )
