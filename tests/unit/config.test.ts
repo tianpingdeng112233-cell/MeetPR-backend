@@ -64,6 +64,19 @@ describe('config', () => {
     expect(config.FORCE_HTTPS).toBe(true);
   });
 
+  it('requires an allowlist if production self-registration is enabled', () => {
+    expect(() =>
+      loadConfig({
+        ...validEnv,
+        NODE_ENV: 'production',
+        CORS_ORIGIN: 'https://plan.example.test',
+        PUBLIC_BASE_URL: 'https://api.example.test',
+        TRUST_PROXY: '1',
+        REGISTRATION_ENABLED: 'true',
+      }),
+    ).toThrow();
+  });
+
   it('coerces numeric strings to numbers', () => {
     const config = loadConfig({ ...validEnv, PORT: '4000', RATE_LIMIT_MAX: '50' });
     expect(config.PORT).toBe(4000);

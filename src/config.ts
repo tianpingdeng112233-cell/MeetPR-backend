@@ -36,9 +36,13 @@ export const ConfigSchema = z
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
     CORS_ORIGIN: z.string().default('*'),
     TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+    // Production is closed by default. A small invite/allowlist cohort may
+    // explicitly opt in, but coach accounts must always be pre-provisioned.
+    REGISTRATION_ENABLED: BooleanEnvSchema,
+    REGISTRATION_ALLOWLIST: z.string().optional(),
     // Go-live blocker, off by default. Enable only once the business license,
     // ICP filing, and domain TLS are ready. When true, the app enforces HTTPS
-    // (426 + HSTS) and the checks below reject an incomplete TLS/CORS setup.
+    // (426 + HSTS) and the production checks below reject an incomplete setup.
     FORCE_HTTPS: BooleanEnvSchema,
     // Public TLS is terminated outside this process. This value documents the
     // canonical external endpoint and makes an incomplete production setup fail
@@ -101,6 +105,14 @@ export const ConfigSchema = z
         });
       }
     }
+
+    if (config.REGISTRATION_ENABLED === true && !hasRegistrationAllowlist(config)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['REGISTRATION_ALLOWLIST'],
+        message: 'REGISTRATION_ALLOWLIST is required when production registration is enabled',
+      });
+    }
   });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -122,4 +134,25 @@ export function jwtAudience(config: Pick<Config, 'JWT_AUDIENCE'>): string {
 
 export function allowLegacyTokens(config: Pick<Config, 'AUTH_ALLOW_LEGACY_TOKENS'>): boolean {
   return config.AUTH_ALLOW_LEGACY_TOKENS ?? true;
+}
+
+export function isRegistrationEnabled(
+  config: Pick<Config, 'NODE_ENV' | 'REGISTRATION_ENABLED'>,
+): boolean {
+  return config.REGISTRATION_ENABLED ?? config.NODE_ENV !== 'production';
+}
+
+export function registrationAllowlist(
+  config: Pick<Config, 'REGISTRATION_ALLOWLIST'>,
+): ReadonlySet<string> {
+  return new Set(
+    (config.REGISTRATION_ALLOWLIST ?? '')
+      .split(',')
+      .map((phone) => phone.trim())
+      .filter((phone) => phone.length > 0),
+  );
+}
+
+function hasRegistrationAllowlist(config: Pick<Config, 'REGISTRATION_ALLOWLIST'>): boolean {
+  return registrationAllowlist(config).size > 0;
 }
