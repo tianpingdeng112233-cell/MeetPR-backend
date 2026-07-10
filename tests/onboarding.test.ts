@@ -134,6 +134,22 @@ describe('student onboarding profile', () => {
     expect(again.body.completed_at).toBe(completed.body.completed_at);
   });
 
+  it('allows completion when training days are uncertain', async () => {
+    const ctx = await makeContext();
+
+    await putOnboarding(ctx, ctx.boundStudentToken, {
+      ...fullProfile,
+      training_days: null,
+    });
+
+    const completed = await request(ctx.app)
+      .post('/students/me/onboarding/complete')
+      .set(auth(ctx.boundStudentToken));
+    expect(completed.status).toBe(200);
+    expect(completed.body.training_days).toBeNull();
+    expect(completed.body.completed_at).not.toBeNull();
+  });
+
   it('locks the three 1RM fields after completion; coach endpoint stays authoritative', async () => {
     const ctx = await makeContext();
     await putOnboarding(ctx, ctx.boundStudentToken, fullProfile);

@@ -203,4 +203,30 @@ describe('GET /uploads/:id/url wall-scoping parity (spec 007)', () => {
       .set(auth(ctx.otherCoachToken));
     expect(otherUnlinked.status).toBe(200);
   });
+
+  it('does not reclassify a detached linked video as broadly-visible unlinked media', async () => {
+    const ctx = await makeUploadsContext();
+    const setLogId = await seedSetLog(ctx);
+    const linkedId = await uploadReadyVideo(ctx, setLogId);
+
+    // Simulate a legacy orphan/data repair. New production migrations preserve
+    // source_coach_id, which must remain the authorization source of truth.
+    await ctx.db
+      .updateTable('attachments')
+      .set({ set_log_id: null })
+      .where('id', '=', linkedId)
+      .execute();
+
+    const wall = await request(ctx.app)
+      .get(`/students/${ids.trainee}/videos`)
+      .set(auth(ctx.otherCoachToken));
+    expect(wall.status).toBe(200);
+    expect(wall.body.videos).toEqual([]);
+
+    const url = await request(ctx.app)
+      .get(`/uploads/${linkedId}/url`)
+      .set(auth(ctx.otherCoachToken));
+    expect(url.status).toBe(404);
+    expect(url.body).toEqual({ error: 'ATTACHMENT_NOT_FOUND' });
+  });
 });

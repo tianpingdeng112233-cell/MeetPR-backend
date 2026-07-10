@@ -188,6 +188,34 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (student_id, plan_exercise_id, set_index)
     );
+
+    -- Publishing re-checks the accepted bond (server-side gate) and records a
+    -- durable notification. Keep in sync with tests/helpers/studentActions.ts.
+    CREATE TABLE bind_requests (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      responded_at TIMESTAMPTZ,
+      expired_at TIMESTAMPTZ NOT NULL,
+      skip_evaluation BOOLEAN NOT NULL DEFAULT FALSE,
+      rejection_silent BOOLEAN NOT NULL DEFAULT TRUE
+    );
+
+    CREATE TABLE notification_outbox (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      event_type TEXT NOT NULL,
+      aggregate_id UUID NOT NULL,
+      recipient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      payload JSONB NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempt_count INT NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      delivered_at TIMESTAMPTZ,
+      UNIQUE (event_type, aggregate_id, recipient_id)
+    );
   `);
 
   const { Pool } = mem.adapters.createPg();
@@ -222,6 +250,16 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
         role: 'coached_student',
       },
     ])
+    .execute();
+
+  await db
+    .insertInto('bind_requests')
+    .values({
+      student_id: traineeId,
+      coach_id: coachId,
+      status: 'accepted',
+      expired_at: new Date('2026-05-22T00:00:00.000Z'),
+    })
     .execute();
 
   return {
@@ -429,6 +467,51 @@ describe('coach planning CRUD', () => {
     expect(joinedLogs).toContain('plan_published_notification_stub');
     expect(joinedLogs).not.toContain(ctx.coachToken);
     expect(joinedLogs).not.toContain('"name":"Squat / Bench Block 1"');
+  });
+
+  it('records a durable notification_outbox row on publish', async () => {
+    const ctx = await makeContext();
+    const { plan } = await createCompleteDraft(ctx);
+
+    const response = await request(ctx.app)
+      .post(`/plans/${responseId(plan)}/publish`)
+      .set(auth(ctx.coachToken));
+    expect(response.status).toBe(200);
+
+    const outbox = await ctx.db.selectFrom('notification_outbox').selectAll().execute();
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]).toMatchObject({
+      event_type: 'plan_published',
+      aggregate_id: responseId(plan),
+      recipient_id: traineeId,
+      status: 'pending',
+    });
+  });
+
+  it('rejects publishing once the accepted bond is gone (server-side gate)', async () => {
+    const ctx = await makeContext();
+    const { plan } = await createCompleteDraft(ctx);
+    await ctx.db
+      .updateTable('bind_requests')
+      .set({ status: 'cancelled' })
+      .where('coach_id', '=', coachId)
+      .where('student_id', '=', traineeId)
+      .execute();
+
+    const response = await request(ctx.app)
+      .post(`/plans/${responseId(plan)}/publish`)
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: 'BIND_NOT_ACCEPTED' });
+    const outbox = await ctx.db.selectFrom('notification_outbox').selectAll().execute();
+    expect(outbox).toEqual([]);
+    const stillDraft = await ctx.db
+      .selectFrom('plans')
+      .select('status')
+      .where('id', '=', responseId(plan))
+      .executeTakeFirstOrThrow();
+    expect(stillDraft.status).toBe('draft');
   });
 
   it('GET /students/:studentId/plans lists coach plans ordered newest first', async () => {

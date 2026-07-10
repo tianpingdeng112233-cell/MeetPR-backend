@@ -11,6 +11,7 @@ import {
   upsertSetLog,
 } from '../handlers/sets-log';
 import { requireRole } from '../middleware/auth';
+import { isIsoCalendarDate, isoCalendarDateSchemaMessage } from '../utils/date';
 import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
@@ -19,7 +20,10 @@ interface SetsRouterDeps {
 }
 
 const UuidSchema = z.string().uuid();
-const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
+const DateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD')
+  .refine(isIsoCalendarDate, isoCalendarDateSchemaMessage());
 const DecimalSchema = z
   .union([z.string(), z.number()])
   .transform((value) => (typeof value === 'number' ? String(value) : value))

@@ -52,9 +52,11 @@ export interface PublishedPlanFixture {
 }
 
 export function signToken(userId: string, role: UserRole): string {
-  return jwt.sign({ sub: userId, role }, config.JWT_ACCESS_SECRET, {
+  return jwt.sign({ sub: userId, role, typ: 'access' }, config.JWT_ACCESS_SECRET, {
     algorithm: 'HS256',
     expiresIn: '15m',
+    issuer: 'meetpr-api',
+    audience: 'meetpr-client',
   });
 }
 
@@ -274,9 +276,37 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       size_bytes BIGINT NOT NULL,
       filename TEXT,
       set_log_id UUID REFERENCES set_logs(id) ON DELETE SET NULL,
+      source_plan_id UUID REFERENCES plans(id) ON DELETE RESTRICT,
+      source_coach_id UUID REFERENCES users(id) ON DELETE RESTRICT,
+      is_unlinked_explicit BOOLEAN NOT NULL DEFAULT FALSE,
+      part_count SMALLINT NOT NULL DEFAULT 1,
+      actual_size_bytes BIGINT,
       status TEXT NOT NULL DEFAULT 'uploading',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE onboarding_uploads (
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      attachment_id UUID NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, attachment_id)
+    );
+
+    -- Post-0036 shape (durable publish notifications). Keep in sync with
+    -- db/migrations/0036-notification-outbox.sql.
+    CREATE TABLE notification_outbox (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      event_type TEXT NOT NULL,
+      aggregate_id UUID NOT NULL,
+      recipient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      payload JSONB NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempt_count INT NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      delivered_at TIMESTAMPTZ,
+      UNIQUE (event_type, aggregate_id, recipient_id)
     );
   `);
 }

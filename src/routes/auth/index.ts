@@ -12,10 +12,18 @@ import type { Kysely, Selectable } from 'kysely';
 import { sql } from 'kysely';
 import type { ZodError } from 'zod';
 
-import type { Config } from '../../config';
+import {
+  allowLegacyTokens,
+  isRegistrationEnabled,
+  jwtAudience,
+  jwtIssuer,
+  registrationAllowlist,
+  type Config,
+} from '../../config';
 import type { Database, UsersTable, UserRole } from '../../db/types';
 import type { Logger } from '../../logger';
 import {
+  LegacyRefreshTokenPayloadSchema,
   LoginBodySchema,
   RefreshBodySchema,
   RefreshTokenPayloadSchema,
@@ -26,7 +34,16 @@ const BCRYPT_COST = 10;
 
 type AuthConfig = Pick<
   Config,
-  'JWT_ACCESS_SECRET' | 'JWT_REFRESH_SECRET' | 'JWT_ACCESS_TTL' | 'JWT_REFRESH_TTL'
+  | 'JWT_ACCESS_SECRET'
+  | 'JWT_REFRESH_SECRET'
+  | 'JWT_ACCESS_TTL'
+  | 'JWT_REFRESH_TTL'
+  | 'JWT_AUDIENCE'
+  | 'JWT_ISSUER'
+  | 'AUTH_ALLOW_LEGACY_TOKENS'
+  | 'NODE_ENV'
+  | 'REGISTRATION_ENABLED'
+  | 'REGISTRATION_ALLOWLIST'
 >;
 
 interface AuthRouterDeps {
@@ -64,16 +81,45 @@ function signTokenPair(config: AuthConfig, userId: string, role: UserRole, jti: 
   const accessOptions: SignOptions = {
     algorithm: 'HS256',
     expiresIn: config.JWT_ACCESS_TTL as JwtTtl,
+    audience: jwtAudience(config),
+    issuer: jwtIssuer(config),
   };
   const refreshOptions: SignOptions = {
     algorithm: 'HS256',
     expiresIn: config.JWT_REFRESH_TTL as JwtTtl,
+    audience: jwtAudience(config),
+    issuer: jwtIssuer(config),
   };
 
   return {
-    accessToken: jwt.sign({ sub: userId, role }, config.JWT_ACCESS_SECRET, accessOptions),
-    refreshToken: jwt.sign({ sub: userId, role, jti }, config.JWT_REFRESH_SECRET, refreshOptions),
+    accessToken: jwt.sign(
+      { sub: userId, role, typ: 'access' },
+      config.JWT_ACCESS_SECRET,
+      accessOptions,
+    ),
+    refreshToken: jwt.sign(
+      { sub: userId, role, jti, typ: 'refresh' },
+      config.JWT_REFRESH_SECRET,
+      refreshOptions,
+    ),
   };
+}
+
+function registrationRejection(
+  config: AuthConfig,
+  input: { phone: string; role: UserRole },
+): 'AUTH_REGISTRATION_DISABLED' | 'AUTH_REGISTRATION_NOT_ALLOWED' | null {
+  if (!isRegistrationEnabled(config)) return 'AUTH_REGISTRATION_DISABLED';
+
+  // Coach identities are provisioned by an operator. Even when a small
+  // production cohort is allowlisted, a client cannot create a coach account.
+  if (config.NODE_ENV === 'production' && input.role === 'coach') {
+    return 'AUTH_REGISTRATION_NOT_ALLOWED';
+  }
+  if (config.NODE_ENV === 'production' && !registrationAllowlist(config).has(input.phone)) {
+    return 'AUTH_REGISTRATION_NOT_ALLOWED';
+  }
+  return null;
 }
 
 function validationEnvelope(error: ZodError) {
@@ -110,6 +156,12 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
       const body = RegisterBodySchema.safeParse(req.body);
       if (!body.success) {
         res.status(400).json(validationEnvelope(body.error));
+        return;
+      }
+
+      const registrationError = registrationRejection(deps.config, body.data);
+      if (registrationError !== null) {
+        res.status(403).json({ error: registrationError });
         return;
       }
 
@@ -201,18 +253,40 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
       }
 
       let verifiedPayload: unknown;
+      let legacyRefresh = false;
       try {
-        verifiedPayload = jwt.verify(body.data.refreshToken, deps.config.JWT_REFRESH_SECRET);
+        verifiedPayload = jwt.verify(body.data.refreshToken, deps.config.JWT_REFRESH_SECRET, {
+          algorithms: ['HS256'],
+          audience: jwtAudience(deps.config),
+          issuer: jwtIssuer(deps.config),
+        });
       } catch (error: unknown) {
         if (error instanceof jwt.TokenExpiredError) {
           res.status(401).json({ error: 'AUTH_REFRESH_EXPIRED' });
           return;
         }
-        res.status(401).json({ error: 'AUTH_INVALID_REFRESH' });
-        return;
+        // A refresh token minted before the aud/iss claims existed fails the
+        // strict verify. When legacy grace is on, retry without the aud/iss
+        // requirement; expiry was already enforced above, and rotation re-issues
+        // a full-claim token so the holder migrates forward on this refresh.
+        if (!allowLegacyTokens(deps.config)) {
+          res.status(401).json({ error: 'AUTH_INVALID_REFRESH' });
+          return;
+        }
+        try {
+          verifiedPayload = jwt.verify(body.data.refreshToken, deps.config.JWT_REFRESH_SECRET, {
+            algorithms: ['HS256'],
+          });
+          legacyRefresh = true;
+        } catch {
+          res.status(401).json({ error: 'AUTH_INVALID_REFRESH' });
+          return;
+        }
       }
 
-      const payload = RefreshTokenPayloadSchema.safeParse(verifiedPayload);
+      const payload = (
+        legacyRefresh ? LegacyRefreshTokenPayloadSchema : RefreshTokenPayloadSchema
+      ).safeParse(verifiedPayload);
       if (!payload.success) {
         res.status(401).json({ error: 'AUTH_INVALID_REFRESH' });
         return;

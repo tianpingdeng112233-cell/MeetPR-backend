@@ -10,8 +10,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  verify:
+    name: Verify before image push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm test
+      - run: pnpm build
+
   build-push:
     name: Build & push linux/amd64 image
+    needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

@@ -40,6 +40,11 @@ describe('POST /uploads/:attachmentId/complete', () => {
       size_bytes: 50 * 1024 * 1024,
       filename: 'squat-day1.mp4',
       set_log_id: null,
+      source_plan_id: null,
+      source_coach_id: null,
+      is_unlinked_explicit: true,
+      part_count: 2,
+      actual_size_bytes: 50 * 1024 * 1024,
       status: 'ready',
       created_at: expect.any(String),
       updated_at: expect.any(String),
@@ -50,6 +55,7 @@ describe('POST /uploads/:attachmentId/complete', () => {
         key: res.body.oss_key as string,
         uploadId: 'fake-upload-1',
         parts: parts.parts,
+        expectedSizeBytes: 50 * 1024 * 1024,
       },
     ]);
 
@@ -151,11 +157,66 @@ describe('POST /uploads/:attachmentId/complete', () => {
       .post('/uploads/not-a-uuid/complete')
       .set(auth(ctx.traineeToken))
       .send(parts);
+    const wrongCount = await request(ctx.app)
+      .post(`/uploads/${attachmentId}/complete`)
+      .set(auth(ctx.traineeToken))
+      .send({ parts: [{ part_number: 1, etag: 'etag-1' }] });
+    const duplicated = await request(ctx.app)
+      .post(`/uploads/${attachmentId}/complete`)
+      .set(auth(ctx.traineeToken))
+      .send({
+        parts: [
+          { part_number: 1, etag: 'etag-1' },
+          { part_number: 1, etag: 'etag-2' },
+        ],
+      });
 
-    for (const res of [empty, camel, badParam]) {
+    for (const res of [empty, camel, badParam, duplicated]) {
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('VALIDATION_ERROR');
     }
+    expect(wrongCount.status).toBe(400);
+    expect(wrongCount.body).toEqual({ error: 'UPLOAD_INVALID_PARTS' });
+  });
+
+  it('fails closed and deletes a completed object whose authoritative size differs', async () => {
+    const ctx = await makeUploadsContext({ headObjectResult: 123 });
+    const attachmentId = await initiatedAttachmentId(ctx, ctx.traineeToken);
+
+    const response = await request(ctx.app)
+      .post(`/uploads/${attachmentId}/complete`)
+      .set(auth(ctx.traineeToken))
+      .send(parts);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: 'UPLOAD_SIZE_MISMATCH' });
+    const row = await ctx.db
+      .selectFrom('attachments')
+      .selectAll()
+      .where('id', '=', attachmentId)
+      .executeTakeFirstOrThrow();
+    expect(row.status).toBe('failed');
+    expect(ctx.oss.calls.head).toHaveLength(1);
+    expect(ctx.oss.calls.delete).toHaveLength(1);
+  });
+
+  it('reconciles a completing upload after a process interruption', async () => {
+    const ctx = await makeUploadsContext({ headObjectResult: 50 * 1024 * 1024 });
+    const attachmentId = await initiatedAttachmentId(ctx, ctx.traineeToken);
+    await ctx.db
+      .updateTable('attachments')
+      .set({ status: 'completing' })
+      .where('id', '=', attachmentId)
+      .execute();
+
+    const response = await request(ctx.app)
+      .post(`/uploads/${attachmentId}/reconcile`)
+      .set(auth(ctx.traineeToken))
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ id: attachmentId, status: 'ready' });
+    expect(response.body.actual_size_bytes).toBe(50 * 1024 * 1024);
   });
 
   it('concurrent double-complete: loser gets 409 before OSS is touched', async () => {

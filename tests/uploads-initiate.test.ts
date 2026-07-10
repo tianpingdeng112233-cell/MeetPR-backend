@@ -142,15 +142,35 @@ describe('POST /uploads/initiate', () => {
     const ctx = await makeUploadsContext();
 
     const zeroParts = await initiateUpload(ctx, ctx.traineeToken, { part_count: 0 });
-    const tooManyParts = await initiateUpload(ctx, ctx.traineeToken, { part_count: 10_001 });
+    const tooManyParts = await initiateUpload(ctx, ctx.traineeToken, { part_count: 201 });
+    const fanoutMismatch = await initiateUpload(ctx, ctx.traineeToken, {
+      size_bytes: 1,
+      part_count: 2,
+    });
     const badKind = await initiateUpload(ctx, ctx.traineeToken, { kind: 'avatar' });
     const negativeSize = await initiateUpload(ctx, ctx.traineeToken, { size_bytes: -1 });
 
-    for (const res of [zeroParts, tooManyParts, badKind, negativeSize]) {
+    for (const res of [zeroParts, tooManyParts, fanoutMismatch, badKind, negativeSize]) {
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('VALIDATION_ERROR');
     }
     expect(ctx.oss.calls.initiate).toHaveLength(0);
+  });
+
+  it('enforces the per-owner active-upload quota before signing more parts', async () => {
+    const ctx = await makeUploadsContext();
+
+    for (let index = 0; index < 10; index += 1) {
+      const response = await initiateUpload(ctx, ctx.traineeToken, {
+        filename: `file-${String(index)}.mp4`,
+      });
+      expect(response.status).toBe(201);
+    }
+    const overQuota = await initiateUpload(ctx, ctx.traineeToken, { filename: 'too-many.mp4' });
+
+    expect(overQuota.status).toBe(429);
+    expect(overQuota.body).toEqual({ error: 'UPLOAD_QUOTA_EXCEEDED' });
+    expect(ctx.oss.calls.signParts).toHaveLength(10);
   });
 
   it('rejects camelCase request fields (snake_case wire shape)', async () => {

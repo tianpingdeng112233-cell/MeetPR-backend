@@ -18,6 +18,7 @@ import { requireRole } from '../../middleware/auth';
 import { notifyPlanPublished } from '../../services/notifications';
 import { calculateTrainingMaxKg, formatTrainingMaxKg } from '../../services/trainingMax';
 import { uuidEquals } from '../../utils/uuid';
+import { utcDate, utcDateOnly } from '../../utils/date';
 import { visibleExerciseForCoach } from '../exercises';
 import { route, validationEnvelope } from '../http';
 import {
@@ -222,23 +223,12 @@ function normalizeTargetValue(value: string): string {
   return Number(value).toFixed(2);
 }
 
-function utcDate(value: string | Date): Date {
-  if (value instanceof Date) {
-    return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
-  }
-  const [yearText, monthText, dayText] = value.split('-');
-  return new Date(Date.UTC(Number(yearText), Number(monthText) - 1, Number(dayText)));
-}
-
-function utcDateOnly(value: Date): string {
-  return value.toISOString().slice(0, 10);
-}
-
 function plannedDayDate(startDate: string | Date, weekNumber: number, dayOfWeek: number): string {
   const start = utcDate(startDate);
-  const startDayOfWeek = ((start.getUTCDay() + 6) % 7) + 1;
-  const dayOffset = (dayOfWeek - startDayOfWeek + 7) % 7;
-  start.setUTCDate(start.getUTCDate() + (weekNumber - 1) * 7 + dayOffset);
+  // Positional day-date semantics (canonical per David 2026-07-10): day_of_week is the
+  // day's ordinal position within its plan week (1 = start_date itself), matching
+  // plan-web import/rendering and the iOS projection. It is NOT an ISO weekday.
+  start.setUTCDate(start.getUTCDate() + (weekNumber - 1) * 7 + (dayOfWeek - 1));
   return utcDateOnly(start);
 }
 
@@ -659,6 +649,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           return { type: 'not-draft' as const };
         }
 
+        if (!(await hasAcceptedBond(trx, user.id, plan.trainee_id))) {
+          return { type: 'bind-not-accepted' as const, planId: plan.id };
+        }
+
         // Evaluation hard gate (spec 005 D9): while the coach has an active
         // evaluation period with this trainee, only a 1-week adaptation plan
         // may be published. Server-side enforcement — not just hidden UI.
@@ -693,8 +687,25 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           .updateTable('plans')
           .set({ status: 'published', updated_at: sql<Date>`now()` })
           .where('id', '=', plan.id)
+          .where('status', '=', 'draft')
           .returningAll()
-          .executeTakeFirstOrThrow();
+          .executeTakeFirst();
+        if (!updated) {
+          return { type: 'not-draft' as const };
+        }
+
+        await trx
+          .insertInto('notification_outbox')
+          .values({
+            event_type: 'plan_published',
+            aggregate_id: plan.id,
+            recipient_id: plan.trainee_id,
+            payload: JSON.stringify({ plan_id: plan.id, trainee_id: plan.trainee_id }),
+          })
+          .onConflict((oc) =>
+            oc.columns(['event_type', 'aggregate_id', 'recipient_id']).doNothing(),
+          )
+          .execute();
 
         return { type: 'published' as const, plan: updated, counts };
       });
@@ -705,6 +716,14 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       }
       if (result.type === 'not-draft') {
         res.status(409).json({ error: 'PLAN_NOT_DRAFT' });
+        return;
+      }
+      if (result.type === 'bind-not-accepted') {
+        deps.logger.warn(
+          { planId: result.planId, reason: 'bind_not_accepted' },
+          'plan_publish_rejected',
+        );
+        res.status(403).json({ error: 'BIND_NOT_ACCEPTED' });
         return;
       }
       if (result.type === 'evaluation-in-progress') {

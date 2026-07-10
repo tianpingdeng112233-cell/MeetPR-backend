@@ -211,9 +211,9 @@ class InMemoryAuthDb {
   }
 }
 
-function makeApp(logger = pino({ level: 'silent' })) {
+function makeApp(logger = pino({ level: 'silent' }), config: Config = authConfig) {
   const db = new InMemoryAuthDb();
-  const app = createApp({ config: authConfig, logger, db: db.asKysely() });
+  const app = createApp({ config, logger, db: db.asKysely() });
   return { app, db };
 }
 
@@ -329,6 +329,35 @@ describe('auth endpoints', () => {
     );
   });
 
+  it('closes production registration by default and never permits coach self-registration', async () => {
+    const productionConfig: Config = {
+      ...authConfig,
+      NODE_ENV: 'production',
+      CORS_ORIGIN: 'https://plan.example.test',
+      TRUST_PROXY: 1,
+      PUBLIC_BASE_URL: 'https://api.example.test',
+    };
+    const closed = makeApp(undefined, productionConfig);
+    const closedResponse = await request(closed.app)
+      .post('/auth/register')
+      .set('X-Forwarded-Proto', 'https')
+      .send({ phone: '+8613800000001', password: 'hunter2hunter2', role: 'coached_student' });
+    expect(closedResponse.status).toBe(403);
+    expect(closedResponse.body).toEqual({ error: 'AUTH_REGISTRATION_DISABLED' });
+
+    const allowlisted = makeApp(undefined, {
+      ...productionConfig,
+      REGISTRATION_ENABLED: true,
+      REGISTRATION_ALLOWLIST: '+8613800000001',
+    });
+    const coachResponse = await request(allowlisted.app)
+      .post('/auth/register')
+      .set('X-Forwarded-Proto', 'https')
+      .send({ phone: '+8613800000001', password: 'hunter2hunter2', role: 'coach' });
+    expect(coachResponse.status).toBe(403);
+    expect(coachResponse.body).toEqual({ error: 'AUTH_REGISTRATION_NOT_ALLOWED' });
+  });
+
   it('logs in with a valid phone and password', async () => {
     const { app, db } = await registerUser();
     const beforeJti = db.getByPhone('+8613800000001')?.refresh_token_jti;
@@ -405,9 +434,14 @@ describe('auth endpoints', () => {
     const { app, db } = await registerUser();
     const user = db.getByPhone('+8613800000001');
     const expiredToken = jwt.sign(
-      { sub: user?.id, role: 'coach', jti: user?.refresh_token_jti },
+      { sub: user?.id, role: 'coach', jti: user?.refresh_token_jti, typ: 'refresh' },
       authConfig.JWT_REFRESH_SECRET,
-      { algorithm: 'HS256', expiresIn: -1 } satisfies SignOptions,
+      {
+        algorithm: 'HS256',
+        expiresIn: -1,
+        issuer: 'meetpr-api',
+        audience: 'meetpr-client',
+      } satisfies SignOptions,
     );
 
     const response = await request(app).post('/auth/refresh').send({
@@ -455,11 +489,13 @@ describe('auth endpoints', () => {
   it('allows a valid access token through requireAuth middleware', async () => {
     const { app } = makeApp();
     const accessToken = jwt.sign(
-      { sub: 'user_test_1', role: 'coach' },
+      { sub: 'user_test_1', role: 'coach', typ: 'access' },
       authConfig.JWT_ACCESS_SECRET,
       {
         algorithm: 'HS256',
         expiresIn: '15m',
+        issuer: 'meetpr-api',
+        audience: 'meetpr-client',
       } satisfies SignOptions,
     );
 
@@ -473,6 +509,27 @@ describe('auth endpoints', () => {
     expect(response.status).toBe(400);
   });
 
+  it('rejects a refresh-shaped token at an access-protected route even if it is signed by the access key', async () => {
+    const { app } = makeApp();
+    const refreshShapedToken = jwt.sign(
+      { sub: 'user_test_1', role: 'coach', jti: randomUUID(), typ: 'refresh' },
+      authConfig.JWT_ACCESS_SECRET,
+      {
+        algorithm: 'HS256',
+        expiresIn: '15m',
+        issuer: 'meetpr-api',
+        audience: 'meetpr-client',
+      } satisfies SignOptions,
+    );
+
+    const response = await request(app)
+      .get('/me')
+      .set('Authorization', `Bearer ${refreshShapedToken}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'AUTH_INVALID_TOKEN' });
+  });
+
   it('rejects an invalid access token in requireAuth middleware', async () => {
     const { app } = makeApp();
 
@@ -480,5 +537,77 @@ describe('auth endpoints', () => {
 
     expect(response.status).toBe(401);
     expect(response.body).toEqual({ error: 'AUTH_INVALID_TOKEN' });
+  });
+
+  it('accepts a legacy access token lacking aud/iss when legacy grace is enabled', async () => {
+    const { app } = makeApp();
+    const legacyToken = jwt.sign(
+      { sub: 'user_test_1', role: 'coach' },
+      authConfig.JWT_ACCESS_SECRET,
+      { algorithm: 'HS256', expiresIn: '15m' } satisfies SignOptions,
+    );
+
+    // Empty body → 400 from the real route: proof the legacy token cleared
+    // requireAuth (spec 011 replaced the old GET /me 501 stub). A rejected
+    // token would 401 before ever reaching validation.
+    const response = await request(app)
+      .put('/me/password')
+      .set('Authorization', `Bearer ${legacyToken}`)
+      .send({});
+
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects a legacy access token when AUTH_ALLOW_LEGACY_TOKENS is false', async () => {
+    const { app } = makeApp(undefined, { ...authConfig, AUTH_ALLOW_LEGACY_TOKENS: false });
+    const legacyToken = jwt.sign(
+      { sub: 'user_test_1', role: 'coach' },
+      authConfig.JWT_ACCESS_SECRET,
+      { algorithm: 'HS256', expiresIn: '15m' } satisfies SignOptions,
+    );
+
+    const response = await request(app).get('/me').set('Authorization', `Bearer ${legacyToken}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'AUTH_INVALID_TOKEN' });
+  });
+
+  it('rotates a legacy refresh token lacking aud/iss and re-issues full-claim tokens', async () => {
+    const { app, db } = await registerUser();
+    const stored = db.getByPhone('+8613800000001');
+    const oldJti = stored?.refresh_token_jti;
+    const legacyRefresh = jwt.sign(
+      { sub: stored?.id, role: stored?.role, jti: oldJti },
+      authConfig.JWT_REFRESH_SECRET,
+      { algorithm: 'HS256', expiresIn: '30d' } satisfies SignOptions,
+    );
+
+    const response = await request(app).post('/auth/refresh').send({ refreshToken: legacyRefresh });
+
+    expect(response.status).toBe(200);
+    expect(typeof response.body.refreshToken).toBe('string');
+    // The re-issued token verifies under the strict aud/iss path, so the holder
+    // migrates forward on this refresh; the stored jti is rotated.
+    expect(refreshJti(response.body.refreshToken as string)).not.toBe(oldJti);
+    expect(db.getByPhone('+8613800000001')?.refresh_token_jti).not.toBe(oldJti);
+  });
+
+  it('rejects a legacy refresh token when AUTH_ALLOW_LEGACY_TOKENS is false', async () => {
+    const { app, db } = makeApp(undefined, { ...authConfig, AUTH_ALLOW_LEGACY_TOKENS: false });
+    const registerResponse = await request(app)
+      .post('/auth/register')
+      .send({ phone: '+8613800000001', password: 'hunter2hunter2', role: 'coach' });
+    expect(registerResponse.status).toBe(201);
+    const stored = db.getByPhone('+8613800000001');
+    const legacyRefresh = jwt.sign(
+      { sub: stored?.id, role: stored?.role, jti: stored?.refresh_token_jti },
+      authConfig.JWT_REFRESH_SECRET,
+      { algorithm: 'HS256', expiresIn: '30d' } satisfies SignOptions,
+    );
+
+    const response = await request(app).post('/auth/refresh').send({ refreshToken: legacyRefresh });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'AUTH_INVALID_REFRESH' });
   });
 });
