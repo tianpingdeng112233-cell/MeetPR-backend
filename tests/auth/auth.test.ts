@@ -547,9 +547,15 @@ describe('auth endpoints', () => {
       { algorithm: 'HS256', expiresIn: '15m' } satisfies SignOptions,
     );
 
-    const response = await request(app).get('/me').set('Authorization', `Bearer ${legacyToken}`);
+    // Empty body → 400 from the real route: proof the legacy token cleared
+    // requireAuth (spec 011 replaced the old GET /me 501 stub). A rejected
+    // token would 401 before ever reaching validation.
+    const response = await request(app)
+      .put('/me/password')
+      .set('Authorization', `Bearer ${legacyToken}`)
+      .send({});
 
-    expect(response.status).toBe(501);
+    expect(response.status).toBe(400);
   });
 
   it('rejects a legacy access token when AUTH_ALLOW_LEGACY_TOKENS is false', async () => {
