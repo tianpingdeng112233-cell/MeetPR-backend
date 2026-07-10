@@ -23,6 +23,7 @@ import {
   upsertOnboardingProfile,
 } from '../handlers/onboarding';
 import { requireRole } from '../middleware/auth';
+import { isIsoCalendarDate, isoCalendarDateSchemaMessage } from '../utils/date';
 import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
@@ -31,7 +32,10 @@ interface OnboardingRouterDeps {
 }
 
 const UuidSchema = z.string().uuid();
-const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
+const DateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD')
+  .refine(isIsoCalendarDate, isoCalendarDateSchemaMessage());
 
 const IdParamSchema = z.object({
   id: UuidSchema,
