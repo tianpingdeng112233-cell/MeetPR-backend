@@ -134,7 +134,8 @@ async function makeContext(): Promise<TestContext> {
     CREATE TABLE set_logs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      plan_exercise_id UUID NOT NULL REFERENCES plan_exercises(id) ON DELETE RESTRICT,
+      plan_exercise_id UUID REFERENCES plan_exercises(id) ON DELETE RESTRICT,
+      exercise_id UUID NOT NULL,
       set_index INT NOT NULL,
       weight_kg NUMERIC(6,2) NOT NULL,
       reps INT NOT NULL,
@@ -142,11 +143,13 @@ async function makeContext(): Promise<TestContext> {
       completed BOOLEAN NOT NULL DEFAULT FALSE,
       failed BOOLEAN NOT NULL DEFAULT FALSE,
       assumed BOOLEAN NOT NULL DEFAULT FALSE,
+      adhoc BOOLEAN NOT NULL DEFAULT FALSE,
+      logged_date DATE NOT NULL,
       logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (student_id, plan_exercise_id, set_index)
     );
   `);
-  mem.public.none(fs.readFileSync('db/migrations/0030-add-plan-day-shifts.sql', 'utf8'));
+  mem.public.none(fs.readFileSync('db/migrations/0037-add-plan-day-shifts.sql', 'utf8'));
 
   const { Pool } = mem.adapters.createPg();
   const pool = new Pool();
@@ -242,6 +245,7 @@ async function addLog(ctx: TestContext, dayId: string) {
     .values({
       student_id: traineeId,
       plan_exercise_id: exercise.id,
+      exercise_id: exercise.exercise_id,
       set_index: 0,
       weight_kg: '100.00',
       reps: 5,
@@ -249,6 +253,7 @@ async function addLog(ctx: TestContext, dayId: string) {
       completed: true,
       failed: false,
       assumed: false,
+      logged_date: '2026-05-01',
     })
     .execute();
 }
