@@ -26,9 +26,11 @@ certificate is live, then supply the matching runtime environment values.
    (at least 32 characters). The process refuses equal secrets. Rotate both if
    the old HTTP endpoint ever carried credentials; users may then need to log in
    again.
-6. Apply `db/migrations/0029-security-history-hardening.sql` in the normal
-   migration runner before deploying code that uses imported-history or upload
-   provenance. Verify no old direct plan-tree writer bypasses the API.
+6. Apply `db/migrations/0035-attachment-lifecycle.sql` and
+   `db/migrations/0036-notification-outbox.sql` (the set-log history-retention
+   and `assumed` marker already shipped in `0034-imported-history-assumed.sql`)
+   before deploying code that uses upload provenance or publish notifications.
+   Verify no old direct plan-tree writer bypasses the API.
 7. Set an OSS multipart lifecycle rule to abort incomplete uploads after a short
    period (for example 24 hours). The API provides `POST /uploads/:id/reconcile`
    for client recovery, but it cannot clean uploads whose client never returns.
