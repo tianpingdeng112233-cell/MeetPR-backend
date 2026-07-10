@@ -6,6 +6,7 @@ import { hasAcceptedBond } from '../../db/bonds';
 import { planIdForDay, planIdForExercise, planIdForSet } from '../../db/planOwnership';
 import type {
   Database,
+  PlanDaysTable,
   PlanExercisesTable,
   PlansTable,
   PlanSetsTable,
@@ -18,7 +19,7 @@ import { requireRole } from '../../middleware/auth';
 import { notifyPlanPublished } from '../../services/notifications';
 import { calculateTrainingMaxKg, formatTrainingMaxKg } from '../../services/trainingMax';
 import { uuidEquals } from '../../utils/uuid';
-import { utcDate, utcDateOnly } from '../../utils/date';
+import { normalizeDateOnly, utcDate, utcDateOnly } from '../../utils/date';
 import { visibleExerciseForCoach } from '../exercises';
 import { route, validationEnvelope } from '../http';
 import {
@@ -35,16 +36,19 @@ import {
   PatchPlanExerciseBodySchema,
   PatchPlanSetBodySchema,
   SetIdParamSchema,
+  ShiftPlanDayBodySchema,
   StudentPlansParamSchema,
   StudentPlansQuerySchema,
 } from './schemas';
 import {
   type PlanExerciseResponse,
+  type PlanDayShiftResponse,
   type PlanSetResponse,
   type PlanWithChildrenResponse,
   toImportedHistory,
   toPlan,
   toPlanDay,
+  toPlanDayShift,
   toPlanExercise,
   toPlanSet,
 } from './serialization';
@@ -56,6 +60,7 @@ interface PlansRouterDeps {
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
 type PlanRow = Selectable<PlansTable>;
+type PlanDayRow = Selectable<PlanDaysTable>;
 type PlanSetRow = Selectable<PlanSetsTable>;
 type PlanSetValidationShape = Pick<
   PlanSetRow,
@@ -144,6 +149,15 @@ async function getPlanWithChildren(
           .orderBy('sort_order', 'asc')
           .execute();
 
+  const shiftRows =
+    dayIds.length === 0
+      ? []
+      : await db
+          .selectFrom('plan_day_shifts')
+          .select(['plan_day_id', 'shifted_to_date'])
+          .where('plan_day_id', 'in', dayIds)
+          .execute();
+
   const exerciseIds = exerciseRows.map((exercise) => exercise.id);
   const setRows =
     exerciseIds.length === 0
@@ -169,9 +183,15 @@ async function getPlanWithChildren(
     exercisesByDay.set(exercise.plan_day_id, exercises);
   }
 
+  const shiftsByDay = new Map(
+    shiftRows.map((shift) => [shift.plan_day_id, shift.shifted_to_date] as const),
+  );
+
   return {
     ...toPlan(plan),
-    days: dayRows.map((day) => toPlanDay(day, exercisesByDay.get(day.id) ?? [])),
+    days: dayRows.map((day) =>
+      toPlanDay(day, exercisesByDay.get(day.id) ?? [], shiftsByDay.get(day.id) ?? null),
+    ),
   };
 }
 
@@ -230,6 +250,133 @@ function plannedDayDate(startDate: string | Date, weekNumber: number, dayOfWeek:
   // plan-web import/rendering and the iOS projection. It is NOT an ISO weekday.
   start.setUTCDate(start.getUTCDate() + (weekNumber - 1) * 7 + (dayOfWeek - 1));
   return utcDateOnly(start);
+}
+
+function planWeekDateRange(startDate: string, weekNumber: number): [string, string] {
+  const start = utcDate(startDate);
+  start.setUTCDate(start.getUTCDate() + (weekNumber - 1) * 7);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+  return [utcDateOnly(start), utcDateOnly(end)];
+}
+
+async function selectPlanDayContext(
+  db: DbExecutor,
+  dayId: string,
+): Promise<{ day: PlanDayRow; plan: PlanRow } | null> {
+  const day = await db
+    .selectFrom('plan_days')
+    .selectAll()
+    .where('id', '=', dayId)
+    .executeTakeFirst();
+  if (!day) return null;
+
+  const plan = await db
+    .selectFrom('plans')
+    .selectAll()
+    .where('id', '=', day.plan_id)
+    .executeTakeFirstOrThrow();
+  return { day, plan };
+}
+
+async function planDayHasLogs(db: DbExecutor, dayId: string): Promise<boolean> {
+  const loggedSet = await db
+    .selectFrom('set_logs as sl')
+    .innerJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
+    .select('sl.id')
+    .where('pe.plan_day_id', '=', dayId)
+    .limit(1)
+    .executeTakeFirst();
+  return loggedSet !== undefined;
+}
+
+async function targetHasOtherPlanDay(
+  db: DbExecutor,
+  plan: PlanRow,
+  currentDayId: string,
+  targetDate: string,
+): Promise<boolean> {
+  const days = await db
+    .selectFrom('plan_days as pd')
+    .leftJoin('plan_day_shifts as pds', 'pds.plan_day_id', 'pd.id')
+    .select([
+      'pd.id as id',
+      'pd.week_number as week_number',
+      'pd.day_of_week as day_of_week',
+      'pds.shifted_to_date as shifted_to_date',
+    ])
+    .where('pd.plan_id', '=', plan.id)
+    .execute();
+
+  return days.some((day) => {
+    if (uuidEquals(day.id, currentDayId)) return false;
+    const effectiveDate =
+      day.shifted_to_date === null
+        ? plannedDayDate(plan.start_date, day.week_number, day.day_of_week)
+        : normalizeDateOnly(day.shifted_to_date);
+    return effectiveDate === targetDate;
+  });
+}
+
+async function createOrUpdatePlanDayShift(
+  db: Kysely<Database>,
+  day: PlanDayRow,
+  plan: PlanRow,
+  studentId: string,
+  targetDate: string,
+): Promise<
+  | { shift: PlanDayShiftResponse }
+  | {
+      error:
+        | 'PLAN_NOT_ACTIVE'
+        | 'SHIFT_ONLY_TODAY'
+        | 'SHIFT_DAY_HAS_LOGS'
+        | 'SHIFT_TARGET_NOT_REST_DAY';
+    }
+> {
+  const today = utcDateOnly(new Date());
+  if (plan.status !== 'published' || today < plan.start_date || today > plan.end_date) {
+    return { error: 'PLAN_NOT_ACTIVE' };
+  }
+
+  const existingShift = await db
+    .selectFrom('plan_day_shifts')
+    .selectAll()
+    .where('plan_day_id', '=', day.id)
+    .executeTakeFirst();
+  const existingTarget = existingShift ? normalizeDateOnly(existingShift.shifted_to_date) : null;
+  const effectiveDate =
+    existingTarget ?? plannedDayDate(plan.start_date, day.week_number, day.day_of_week);
+  const isIdempotentRetry = existingTarget === targetDate;
+  if (effectiveDate !== today && !isIdempotentRetry) {
+    return { error: 'SHIFT_ONLY_TODAY' };
+  }
+
+  if (await planDayHasLogs(db, day.id)) {
+    return { error: 'SHIFT_DAY_HAS_LOGS' };
+  }
+
+  const [weekStart, weekEnd] = planWeekDateRange(plan.start_date, day.week_number);
+  if (
+    targetDate <= today ||
+    targetDate < weekStart ||
+    targetDate > weekEnd ||
+    (await targetHasOtherPlanDay(db, plan, day.id, targetDate))
+  ) {
+    return { error: 'SHIFT_TARGET_NOT_REST_DAY' };
+  }
+
+  const shift = await db
+    .insertInto('plan_day_shifts')
+    .values({
+      plan_day_id: day.id,
+      student_id: studentId,
+      shifted_to_date: targetDate,
+    })
+    .onConflict((oc) => oc.column('plan_day_id').doUpdateSet({ shifted_to_date: targetDate }))
+    .returningAll()
+    .executeTakeFirstOrThrow();
+  return { shift: toPlanDayShift(shift) };
 }
 
 async function createImportedHistory(
@@ -896,6 +1043,103 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       deps.logger.info(
         { planId, action: 'day', op: 'delete', resourceId: params.data.dayId },
         'plan_tree_mutated',
+      );
+      res.status(204).send();
+    }),
+  );
+
+  router.post(
+    '/days/:dayId/shift',
+    requireRole('coached_student'),
+    route(async (req, res) => {
+      const user = ensureUser(req);
+      const params = DayIdParamSchema.safeParse(req.params);
+      const body = ShiftPlanDayBodySchema.safeParse(req.body);
+      if (!user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+      if (!body.success) {
+        res.status(400).json(validationEnvelope(body.error));
+        return;
+      }
+
+      const context = await selectPlanDayContext(deps.db, params.data.dayId);
+      if (!context) {
+        res.status(404).json({ error: 'PLAN_DAY_NOT_FOUND' });
+        return;
+      }
+      if (!uuidEquals(context.plan.trainee_id, user.id)) {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
+
+      const result = await createOrUpdatePlanDayShift(
+        deps.db,
+        context.day,
+        context.plan,
+        user.id,
+        body.data.shifted_to_date,
+      );
+      if ('error' in result) {
+        res.status(409).json({ error: result.error });
+        return;
+      }
+
+      deps.logger.info(
+        {
+          planId: context.plan.id,
+          planDayId: context.day.id,
+          studentId: user.id,
+          shiftedToDate: result.shift.shifted_to_date,
+        },
+        'plan_day_shifted',
+      );
+      res.status(201).json(result.shift);
+    }),
+  );
+
+  router.delete(
+    '/days/:dayId/shift',
+    requireRole('coached_student'),
+    route(async (req, res) => {
+      const user = ensureUser(req);
+      const params = DayIdParamSchema.safeParse(req.params);
+      if (!user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+
+      const context = await selectPlanDayContext(deps.db, params.data.dayId);
+      if (!context) {
+        res.status(404).json({ error: 'PLAN_DAY_NOT_FOUND' });
+        return;
+      }
+      if (!uuidEquals(context.plan.trainee_id, user.id)) {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
+      if (await planDayHasLogs(deps.db, context.day.id)) {
+        res.status(409).json({ error: 'SHIFT_DAY_HAS_LOGS' });
+        return;
+      }
+
+      await deps.db
+        .deleteFrom('plan_day_shifts')
+        .where('plan_day_id', '=', context.day.id)
+        .where('student_id', '=', user.id)
+        .execute();
+      deps.logger.info(
+        { planId: context.plan.id, planDayId: context.day.id, studentId: user.id },
+        'plan_day_shift_deleted',
       );
       res.status(204).send();
     }),
