@@ -19,7 +19,7 @@
 
 ## Wire shape 摘录(权威在 030 §C7)
 
-**`POST /students/me/readiness`** — student only(`coached_student` / `self_train_student`),upsert 语义(`ON CONFLICT (student_id, checkin_date) DO UPDATE`,`submitted_at` 保首提时间、`updated_at` 跟覆盖),覆盖后仍 `201 { id, submitted_at }`:
+**`POST /students/me/readiness`** — student only(`coached_student` / `self_train_student`),upsert 语义(`ON CONFLICT (student_id, checkin_date) DO UPDATE`,`submitted_at` 保首提时间、`updated_at` 跟覆盖),覆盖后仍 `201`,响应为**完整 check-in 行**(与 GET 的 `checkin` 对象同构;iOS 按完整 `ReadinessCheckinDTO` 解码 POST 响应,2026-07-11 修订——此前只回 `{ id, submitted_at }` 导致客户端解码假失败):
 
 ```json
 {
@@ -42,6 +42,7 @@ zod(服务端是真 gate):`checkin_date` 严格 `YYYY-MM-DD` 且为真实日历�
 
 ## 修订记录
 
-| 日期       | 修订                                                      |
-| ---------- | --------------------------------------------------------- |
-| 2026-06-11 | 初版:落点登记 + wire 摘录;migration 编号 0008 → 0014 顺延 |
+| 日期       | 修订                                                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------------------- |
+| 2026-06-11 | 初版:落点登记 + wire 摘录;migration 编号 0008 → 0014 顺延                                                         |
+| 2026-07-11 | POST 响应从 `{ id, submitted_at }` 扩为完整 check-in 行(与 GET 同构):iOS 按完整 DTO 解码,旧响应致已发包提交假失败 |

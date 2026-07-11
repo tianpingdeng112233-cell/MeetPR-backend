@@ -15,7 +15,7 @@ const validBody = {
 };
 
 describe('POST /students/me/readiness', () => {
-  it('creates a check-in and returns 201 with id + submitted_at', async () => {
+  it('creates a check-in and returns 201 with the full check-in row', async () => {
     const ctx = await makeContext();
 
     const res = await request(ctx.app)
@@ -26,6 +26,35 @@ describe('POST /students/me/readiness', () => {
     expect(res.status).toBe(201);
     expect(res.body.id).toEqual(expect.any(String));
     expect(res.body.submitted_at).toEqual(expect.any(String));
+    expect(res.body.updated_at).toEqual(expect.any(String));
+    // Full row, not just {id, submitted_at}: the iOS client decodes this
+    // response as a complete ReadinessCheckinDTO (spec 030 §C7).
+    expect(Object.keys(res.body).sort()).toEqual([
+      'checkin_date',
+      'id',
+      'mood',
+      'muscle_fatigue',
+      'sleep_quality',
+      'stress',
+      'student_id',
+      'submitted_at',
+      'updated_at',
+    ]);
+    expect(res.body).toMatchObject({
+      student_id: ids.trainee,
+      checkin_date: validBody.checkin_date,
+      sleep_quality: validBody.sleep_quality,
+      mood: validBody.mood,
+      stress: validBody.stress,
+      muscle_fatigue: validBody.muscle_fatigue,
+    });
+
+    // POST response and a subsequent GET must serialize identically.
+    const fetched = await request(ctx.app)
+      .get(`/students/${ids.trainee}/readiness?date=${validBody.checkin_date}`)
+      .set(auth(ctx.traineeToken));
+    expect(fetched.status).toBe(200);
+    expect(fetched.body.checkin).toEqual(res.body);
   });
 
   it('accepts an empty muscle_fatigue array (not tired is a legal answer)', async () => {
@@ -60,6 +89,12 @@ describe('POST /students/me/readiness', () => {
       });
     expect(second.status).toBe(201);
     expect(second.body.id).toBe(first.body.id);
+    expect(second.body).toMatchObject({
+      sleep_quality: 1,
+      mood: 5,
+      stress: 4,
+      muscle_fatigue: [{ muscle_group: 'hamstring', severity: 2 }],
+    });
 
     const res = await request(ctx.app)
       .get(`/students/${ids.trainee}/readiness?date=2026-06-11`)
