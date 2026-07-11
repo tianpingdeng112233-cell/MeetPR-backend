@@ -124,7 +124,7 @@ class InMemoryAuthDb {
 
   applySessionsMigration(): void {
     if (this.sessionsMigrationApplied) return;
-    this.mem.public.none(fs.readFileSync('db/migrations/0038-multi-device-sessions.sql', 'utf8'));
+    this.mem.public.none(fs.readFileSync('db/migrations/0039-multi-device-sessions.sql', 'utf8'));
     this.sessionsMigrationApplied = true;
   }
 }

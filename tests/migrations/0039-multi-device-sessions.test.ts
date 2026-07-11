@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { makeMigrationDb, runMigration } from '../helpers/migrations';
 
-const MIGRATION = 'db/migrations/0038-multi-device-sessions.sql';
+const MIGRATION = 'db/migrations/0039-multi-device-sessions.sql';
 
 interface SessionRow {
   user_id: string;
@@ -13,7 +13,7 @@ interface SessionRow {
   revoked_at: Date | null;
 }
 
-describe('migration 0038 multi-device sessions', () => {
+describe('migration 0039 multi-device sessions', () => {
   it('creates the indexed session table and preserves every legacy jti', () => {
     const mem = makeMigrationDb();
     runMigration(mem, 'db/migrations/0001-init-users.sql');
