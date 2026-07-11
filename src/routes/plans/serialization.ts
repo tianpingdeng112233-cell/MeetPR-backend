@@ -88,14 +88,12 @@ export interface PlanDayResponse {
   exercises: PlanExerciseResponse[];
 }
 
-export interface PlanDayShiftResponse {
-  id: string;
-  plan_day_id: string;
-  shifted_to_date: string;
-  created_at: string;
+export interface PlanShiftSummaryResponse {
+  total_shift_days: number;
+  latest_shift_created_at: string | null;
 }
 
-export interface PlanWithChildrenResponse extends PlanResponse {
+export interface PlanWithChildrenResponse extends PlanResponse, PlanShiftSummaryResponse {
   days: PlanDayResponse[];
 }
 
@@ -158,12 +156,17 @@ export function toPlanDay(
   };
 }
 
-export function toPlanDayShift(row: PlanDayShiftRow): PlanDayShiftResponse {
+export function toPlanShiftSummary(
+  rows: Pick<PlanDayShiftRow, 'batch_id' | 'created_at'>[],
+): PlanShiftSummaryResponse {
+  const batchIds = new Set(rows.map((row) => row.batch_id));
+  const latestCreatedAt = rows.reduce<Date | null>(
+    (latest, row) => (latest === null || row.created_at > latest ? row.created_at : latest),
+    null,
+  );
   return {
-    id: row.id,
-    plan_day_id: row.plan_day_id,
-    shifted_to_date: normalizeDateOnly(row.shifted_to_date),
-    created_at: timestamp(row.created_at),
+    total_shift_days: batchIds.size,
+    latest_shift_created_at: latestCreatedAt === null ? null : timestamp(latestCreatedAt),
   };
 }
 

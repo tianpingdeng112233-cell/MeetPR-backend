@@ -168,10 +168,12 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
 
     CREATE TABLE plan_day_shifts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      plan_day_id UUID NOT NULL UNIQUE REFERENCES plan_days(id) ON DELETE CASCADE,
+      plan_day_id UUID NOT NULL REFERENCES plan_days(id) ON DELETE CASCADE,
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      batch_id UUID NOT NULL,
       shifted_to_date DATE NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (plan_day_id, batch_id)
     );
 
     CREATE TABLE plan_sets (

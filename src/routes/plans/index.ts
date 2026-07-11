@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely, Selectable, Transaction, Updateable } from 'kysely';
 import { sql } from 'kysely';
@@ -6,6 +8,7 @@ import { hasAcceptedBond } from '../../db/bonds';
 import { planIdForDay, planIdForExercise, planIdForSet } from '../../db/planOwnership';
 import type {
   Database,
+  PlanDayShiftsTable,
   PlanDaysTable,
   PlanExercisesTable,
   PlansTable,
@@ -36,20 +39,19 @@ import {
   PatchPlanExerciseBodySchema,
   PatchPlanSetBodySchema,
   SetIdParamSchema,
-  ShiftPlanDayBodySchema,
   StudentPlansParamSchema,
   StudentPlansQuerySchema,
 } from './schemas';
 import {
   type PlanExerciseResponse,
-  type PlanDayShiftResponse,
+  type PlanShiftSummaryResponse,
   type PlanSetResponse,
   type PlanWithChildrenResponse,
   toImportedHistory,
   toPlan,
   toPlanDay,
-  toPlanDayShift,
   toPlanExercise,
+  toPlanShiftSummary,
   toPlanSet,
 } from './serialization';
 
@@ -61,6 +63,7 @@ interface PlansRouterDeps {
 type DbExecutor = Kysely<Database> | Transaction<Database>;
 type PlanRow = Selectable<PlansTable>;
 type PlanDayRow = Selectable<PlanDaysTable>;
+type PlanDayShiftRow = Selectable<PlanDayShiftsTable>;
 type PlanSetRow = Selectable<PlanSetsTable>;
 type PlanSetValidationShape = Pick<
   PlanSetRow,
@@ -154,8 +157,10 @@ async function getPlanWithChildren(
       ? []
       : await db
           .selectFrom('plan_day_shifts')
-          .select(['plan_day_id', 'shifted_to_date'])
+          .selectAll()
           .where('plan_day_id', 'in', dayIds)
+          .orderBy('created_at', 'asc')
+          .orderBy('id', 'asc')
           .execute();
 
   const exerciseIds = exerciseRows.map((exercise) => exercise.id);
@@ -190,16 +195,42 @@ async function getPlanWithChildren(
     exercisesByDay.set(exercise.plan_day_id, exercises);
   }
 
-  const shiftsByDay = new Map(
-    shiftRows.map((shift) => [shift.plan_day_id, shift.shifted_to_date] as const),
-  );
+  const shiftsByDay = new Map<string, string | Date>();
+  for (const shift of shiftRows) {
+    shiftsByDay.set(shift.plan_day_id, shift.shifted_to_date);
+  }
 
   return {
     ...toPlan(plan),
+    ...toPlanShiftSummary(shiftRows),
     days: dayRows.map((day) =>
       toPlanDay(day, exercisesByDay.get(day.id) ?? [], shiftsByDay.get(day.id) ?? null),
     ),
   };
+}
+
+async function planShiftSummaries(
+  db: Kysely<Database>,
+  planIds: string[],
+): Promise<Map<string, PlanShiftSummaryResponse>> {
+  if (planIds.length === 0) return new Map();
+
+  const rows = await db
+    .selectFrom('plan_day_shifts as pds')
+    .innerJoin('plan_days as pd', 'pd.id', 'pds.plan_day_id')
+    .select(['pd.plan_id as plan_id', 'pds.batch_id as batch_id', 'pds.created_at as created_at'])
+    .where('pd.plan_id', 'in', planIds)
+    .execute();
+  const rowsByPlan = new Map<string, { batch_id: string; created_at: Date }[]>();
+  for (const row of rows) {
+    const planRows = rowsByPlan.get(row.plan_id) ?? [];
+    planRows.push({ batch_id: row.batch_id, created_at: row.created_at });
+    rowsByPlan.set(row.plan_id, planRows);
+  }
+
+  return new Map(
+    planIds.map((planId) => [planId, toPlanShiftSummary(rowsByPlan.get(planId) ?? [])]),
+  );
 }
 
 async function publishCounts(db: DbExecutor, planId: string): Promise<PublishCounts> {
@@ -259,33 +290,6 @@ function plannedDayDate(startDate: string | Date, weekNumber: number, dayOfWeek:
   return utcDateOnly(start);
 }
 
-function planWeekDateRange(startDate: string, weekNumber: number): [string, string] {
-  const start = utcDate(startDate);
-  start.setUTCDate(start.getUTCDate() + (weekNumber - 1) * 7);
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 6);
-  return [utcDateOnly(start), utcDateOnly(end)];
-}
-
-async function selectPlanDayContext(
-  db: DbExecutor,
-  dayId: string,
-): Promise<{ day: PlanDayRow; plan: PlanRow } | null> {
-  const day = await db
-    .selectFrom('plan_days')
-    .selectAll()
-    .where('id', '=', dayId)
-    .executeTakeFirst();
-  if (!day) return null;
-
-  const plan = await db
-    .selectFrom('plans')
-    .selectAll()
-    .where('id', '=', day.plan_id)
-    .executeTakeFirstOrThrow();
-  return { day, plan };
-}
-
 async function planDayHasLogs(db: DbExecutor, dayId: string): Promise<boolean> {
   return (await loggedExerciseIdsForDay(db, dayId)).length > 0;
 }
@@ -325,93 +329,209 @@ async function loggedExerciseIdsForDay(db: DbExecutor, dayId: string): Promise<s
   ];
 }
 
-async function targetHasOtherPlanDay(
-  db: DbExecutor,
-  plan: PlanRow,
-  currentDayId: string,
-  targetDate: string,
-): Promise<boolean> {
-  const days = await db
-    .selectFrom('plan_days as pd')
-    .leftJoin('plan_day_shifts as pds', 'pds.plan_day_id', 'pd.id')
-    .select([
-      'pd.id as id',
-      'pd.week_number as week_number',
-      'pd.day_of_week as day_of_week',
-      'pds.shifted_to_date as shifted_to_date',
-    ])
-    .where('pd.plan_id', '=', plan.id)
-    .execute();
-
-  return days.some((day) => {
-    if (uuidEquals(day.id, currentDayId)) return false;
-    const effectiveDate =
-      day.shifted_to_date === null
-        ? plannedDayDate(plan.start_date, day.week_number, day.day_of_week)
-        : normalizeDateOnly(day.shifted_to_date);
-    return effectiveDate === targetDate;
-  });
+interface EffectivePlanDay {
+  day: PlanDayRow;
+  effectiveDate: string;
 }
 
-async function createOrUpdatePlanDayShift(
-  db: Kysely<Database>,
-  day: PlanDayRow,
+interface ShiftedDayResponse {
+  day_id: string;
+  shifted_to_date: string;
+}
+
+type PlanShiftError =
+  | 'ALREADY_STARTED'
+  | 'NO_ACTIVE_SHIFT'
+  | 'NOT_PLAN_STUDENT'
+  | 'PLAN_NOT_ACTIVE'
+  | 'SHIFT_ONLY_TODAY'
+  | 'UNDO_WINDOW_PASSED';
+
+function addUtcDaysToDateOnly(value: string, days: number): string {
+  const date = utcDate(value);
+  date.setUTCDate(date.getUTCDate() + days);
+  return utcDateOnly(date);
+}
+
+function effectivePlanDays(
   plan: PlanRow,
-  studentId: string,
-  targetDate: string,
-): Promise<
-  | { shift: PlanDayShiftResponse }
-  | {
-      error:
-        | 'PLAN_NOT_ACTIVE'
-        | 'SHIFT_ONLY_TODAY'
-        | 'SHIFT_DAY_HAS_LOGS'
-        | 'SHIFT_TARGET_NOT_REST_DAY';
-    }
-> {
-  const today = utcDateOnly(new Date());
-  if (plan.status !== 'published' || today < plan.start_date || today > plan.end_date) {
-    return { error: 'PLAN_NOT_ACTIVE' };
+  days: PlanDayRow[],
+  shifts: PlanDayShiftRow[],
+): EffectivePlanDay[] {
+  const latestShiftByDay = new Map<string, string>();
+  for (const shift of shifts) {
+    latestShiftByDay.set(shift.plan_day_id, normalizeDateOnly(shift.shifted_to_date));
   }
+  return days.map((day) => ({
+    day,
+    effectiveDate:
+      latestShiftByDay.get(day.id) ??
+      plannedDayDate(plan.start_date, day.week_number, day.day_of_week),
+  }));
+}
 
-  const existingShift = await db
-    .selectFrom('plan_day_shifts')
+async function lockPlanShiftContext(
+  db: Transaction<Database>,
+  planId: string,
+): Promise<{ plan: PlanRow; days: PlanDayRow[]; shifts: PlanDayShiftRow[] } | null> {
+  const plan = await db
+    .selectFrom('plans')
     .selectAll()
-    .where('plan_day_id', '=', day.id)
+    .where('id', '=', planId)
+    .forUpdate()
     .executeTakeFirst();
-  const existingTarget = existingShift ? normalizeDateOnly(existingShift.shifted_to_date) : null;
-  const effectiveDate =
-    existingTarget ?? plannedDayDate(plan.start_date, day.week_number, day.day_of_week);
-  const isIdempotentRetry = existingTarget === targetDate;
-  if (effectiveDate !== today && !isIdempotentRetry) {
-    return { error: 'SHIFT_ONLY_TODAY' };
+  if (!plan) return null;
+
+  const days = await db
+    .selectFrom('plan_days')
+    .selectAll()
+    .where('plan_id', '=', planId)
+    .orderBy('week_number', 'asc')
+    .orderBy('day_of_week', 'asc')
+    .orderBy('sort_order', 'asc')
+    .orderBy('id', 'asc')
+    .forUpdate()
+    .execute();
+  const dayIds = days.map((day) => day.id);
+  const shifts =
+    dayIds.length === 0
+      ? []
+      : await db
+          .selectFrom('plan_day_shifts')
+          .selectAll()
+          .where('plan_day_id', 'in', dayIds)
+          .orderBy('created_at', 'asc')
+          .orderBy('id', 'asc')
+          .execute();
+  return { plan, days, shifts };
+}
+
+async function createWholePlanShift(
+  db: Transaction<Database>,
+  planId: string,
+  studentId: string,
+): Promise<
+  | {
+      type: 'shifted';
+      batchId: string;
+      shiftedDays: ShiftedDayResponse[];
+      totalOffsetDays: number;
+    }
+  | { type: 'error'; error: PlanShiftError }
+> {
+  const context = await lockPlanShiftContext(db, planId);
+  if (context?.plan.coach_id == null || !uuidEquals(context.plan.trainee_id, studentId)) {
+    return { type: 'error', error: 'NOT_PLAN_STUDENT' };
+  }
+  if (context.plan.status !== 'published') {
+    return { type: 'error', error: 'PLAN_NOT_ACTIVE' };
   }
 
-  if (await planDayHasLogs(db, day.id)) {
-    return { error: 'SHIFT_DAY_HAS_LOGS' };
+  const today = utcDateOnly(new Date());
+  const effectiveDays = effectivePlanDays(context.plan, context.days, context.shifts);
+  const todayDay = effectiveDays.find((item) => item.effectiveDate === today);
+  if (!todayDay) {
+    return { type: 'error', error: 'SHIFT_ONLY_TODAY' };
+  }
+  if (await planDayHasLogs(db, todayDay.day.id)) {
+    return { type: 'error', error: 'ALREADY_STARTED' };
   }
 
-  const [weekStart, weekEnd] = planWeekDateRange(plan.start_date, day.week_number);
-  if (
-    targetDate <= today ||
-    targetDate < weekStart ||
-    targetDate > weekEnd ||
-    (await targetHasOtherPlanDay(db, plan, day.id, targetDate))
-  ) {
-    return { error: 'SHIFT_TARGET_NOT_REST_DAY' };
-  }
-
-  const shift = await db
+  const batchId = randomUUID();
+  const shiftedDays = effectiveDays
+    .filter((item) => item.effectiveDate >= today)
+    .map((item) => ({
+      day_id: item.day.id,
+      shifted_to_date: addUtcDaysToDateOnly(item.effectiveDate, 1),
+    }));
+  await db
     .insertInto('plan_day_shifts')
-    .values({
-      plan_day_id: day.id,
-      student_id: studentId,
-      shifted_to_date: targetDate,
-    })
-    .onConflict((oc) => oc.column('plan_day_id').doUpdateSet({ shifted_to_date: targetDate }))
-    .returningAll()
-    .executeTakeFirstOrThrow();
-  return { shift: toPlanDayShift(shift) };
+    .values(
+      shiftedDays.map((day) => ({
+        plan_day_id: day.day_id,
+        student_id: studentId,
+        batch_id: batchId,
+        shifted_to_date: day.shifted_to_date,
+      })),
+    )
+    .execute();
+
+  return {
+    type: 'shifted',
+    batchId,
+    shiftedDays,
+    totalOffsetDays: new Set(context.shifts.map((shift) => shift.batch_id)).size + 1,
+  };
+}
+
+function latestBatch(shifts: PlanDayShiftRow[]): PlanDayShiftRow[] {
+  if (shifts.length === 0) return [];
+  const latest = shifts.reduce((candidate, shift) =>
+    shift.created_at > candidate.created_at ||
+    (shift.created_at.getTime() === candidate.created_at.getTime() && shift.id > candidate.id)
+      ? shift
+      : candidate,
+  );
+  return shifts.filter((shift) => shift.batch_id === latest.batch_id);
+}
+
+function effectiveDateBeforeBatch(
+  plan: PlanRow,
+  day: PlanDayRow,
+  shifts: PlanDayShiftRow[],
+  batchId: string,
+): string {
+  let previous: PlanDayShiftRow | null = null;
+  for (const shift of shifts) {
+    if (shift.plan_day_id === day.id && shift.batch_id !== batchId) previous = shift;
+  }
+  return previous === null
+    ? plannedDayDate(plan.start_date, day.week_number, day.day_of_week)
+    : normalizeDateOnly(previous.shifted_to_date);
+}
+
+async function undoLatestWholePlanShift(
+  db: Transaction<Database>,
+  planId: string,
+  studentId: string,
+): Promise<{ type: 'deleted'; batchId: string } | { type: 'error'; error: PlanShiftError }> {
+  const context = await lockPlanShiftContext(db, planId);
+  if (context?.plan.coach_id == null || !uuidEquals(context.plan.trainee_id, studentId)) {
+    return { type: 'error', error: 'NOT_PLAN_STUDENT' };
+  }
+
+  const batchRows = latestBatch(context.shifts);
+  const firstBatchRow = batchRows[0];
+  if (!firstBatchRow) {
+    return { type: 'error', error: 'NO_ACTIVE_SHIFT' };
+  }
+  const today = utcDateOnly(new Date());
+  if (utcDateOnly(firstBatchRow.created_at) !== today) {
+    return { type: 'error', error: 'UNDO_WINDOW_PASSED' };
+  }
+
+  const daysById = new Map(context.days.map((day) => [day.id, day]));
+  for (const row of batchRows) {
+    const day = daysById.get(row.plan_day_id);
+    if (
+      day &&
+      effectiveDateBeforeBatch(context.plan, day, context.shifts, row.batch_id) === today &&
+      (await planDayHasLogs(db, day.id))
+    ) {
+      return { type: 'error', error: 'ALREADY_STARTED' };
+    }
+  }
+
+  await db
+    .deleteFrom('plan_day_shifts')
+    .where('batch_id', '=', firstBatchRow.batch_id)
+    .where(
+      'plan_day_id',
+      'in',
+      context.days.map((day) => day.id),
+    )
+    .execute();
+  return { type: 'deleted', batchId: firstBatchRow.batch_id };
 }
 
 async function createImportedHistory(
@@ -1212,12 +1332,11 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
   );
 
   router.post(
-    '/days/:dayId/shift',
+    '/:id/shift',
     requireRole('coached_student'),
     route(async (req, res) => {
       const user = ensureUser(req);
-      const params = DayIdParamSchema.safeParse(req.params);
-      const body = ShiftPlanDayBodySchema.safeParse(req.body);
+      const params = IdParamSchema.safeParse(req.params);
       if (!user) {
         res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
         return;
@@ -1226,52 +1345,39 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         res.status(400).json(validationEnvelope(params.error));
         return;
       }
-      if (!body.success) {
-        res.status(400).json(validationEnvelope(body.error));
-        return;
-      }
 
-      const context = await selectPlanDayContext(deps.db, params.data.dayId);
-      if (!context) {
-        res.status(404).json({ error: 'PLAN_DAY_NOT_FOUND' });
-        return;
-      }
-      if (!uuidEquals(context.plan.trainee_id, user.id)) {
-        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
-        return;
-      }
-
-      const result = await createOrUpdatePlanDayShift(
-        deps.db,
-        context.day,
-        context.plan,
-        user.id,
-        body.data.shifted_to_date,
-      );
-      if ('error' in result) {
-        res.status(409).json({ error: result.error });
+      const result = await deps.db
+        .transaction()
+        .execute((trx) => createWholePlanShift(trx, params.data.id, user.id));
+      if (result.type === 'error') {
+        res.status(result.error === 'NOT_PLAN_STUDENT' ? 403 : 409).json({ error: result.error });
         return;
       }
 
       deps.logger.info(
         {
-          planId: context.plan.id,
-          planDayId: context.day.id,
+          planId: params.data.id,
           studentId: user.id,
-          shiftedToDate: result.shift.shifted_to_date,
+          batchId: result.batchId,
+          shiftedDayCount: result.shiftedDays.length,
+          totalOffsetDays: result.totalOffsetDays,
         },
-        'plan_day_shifted',
+        'whole_plan_shifted',
       );
-      res.status(201).json(result.shift);
+      res.status(201).json({
+        batch_id: result.batchId,
+        shifted_days: result.shiftedDays,
+        total_offset_days: result.totalOffsetDays,
+      });
     }),
   );
 
   router.delete(
-    '/days/:dayId/shift',
+    '/:id/shift',
     requireRole('coached_student'),
     route(async (req, res) => {
       const user = ensureUser(req);
-      const params = DayIdParamSchema.safeParse(req.params);
+      const params = IdParamSchema.safeParse(req.params);
       if (!user) {
         res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
         return;
@@ -1281,28 +1387,17 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      const context = await selectPlanDayContext(deps.db, params.data.dayId);
-      if (!context) {
-        res.status(404).json({ error: 'PLAN_DAY_NOT_FOUND' });
-        return;
-      }
-      if (!uuidEquals(context.plan.trainee_id, user.id)) {
-        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
-        return;
-      }
-      if (await planDayHasLogs(deps.db, context.day.id)) {
-        res.status(409).json({ error: 'SHIFT_DAY_HAS_LOGS' });
+      const result = await deps.db
+        .transaction()
+        .execute((trx) => undoLatestWholePlanShift(trx, params.data.id, user.id));
+      if (result.type === 'error') {
+        res.status(result.error === 'NOT_PLAN_STUDENT' ? 403 : 409).json({ error: result.error });
         return;
       }
 
-      await deps.db
-        .deleteFrom('plan_day_shifts')
-        .where('plan_day_id', '=', context.day.id)
-        .where('student_id', '=', user.id)
-        .execute();
       deps.logger.info(
-        { planId: context.plan.id, planDayId: context.day.id, studentId: user.id },
-        'plan_day_shift_deleted',
+        { planId: params.data.id, studentId: user.id, batchId: result.batchId },
+        'whole_plan_shift_deleted',
       );
       res.status(204).send();
     }),
@@ -1747,7 +1842,16 @@ export function studentPlansRouter(deps: PlansRouterDeps): ExpressRouter {
       }
 
       const plans = await dbQuery.execute();
-      res.status(200).json({ plans: plans.map(toPlan) });
+      const shiftSummaries = await planShiftSummaries(
+        deps.db,
+        plans.map((plan) => plan.id),
+      );
+      res.status(200).json({
+        plans: plans.map((plan) => ({
+          ...toPlan(plan),
+          ...(shiftSummaries.get(plan.id) ?? toPlanShiftSummary([])),
+        })),
+      });
     }),
   );
 
