@@ -1,13 +1,16 @@
 import bcrypt from 'bcrypt';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import type { Kysely } from 'kysely';
+import { DataType, newDb } from 'pg-mem';
 import pino from 'pino';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
 import { createApp } from '../../src/app';
 import type { Config } from '../../src/config';
+import { createDb } from '../../src/db/kysely';
 import type { Database, UserRole } from '../../src/db/types';
 
 const authConfig: Config = {
@@ -42,178 +45,87 @@ interface UserRecord {
   updated_at: Date;
 }
 
-interface Condition {
-  column: keyof UserRecord;
-  value: unknown;
-}
-
-type RowProjection = Record<string, unknown>;
-
-function projectRow(row: UserRecord, selections: readonly string[]): RowProjection {
-  const projected: RowProjection = {};
-  for (const selection of selections) {
-    projected[selection] = row[selection as keyof UserRecord];
-  }
-  return projected;
-}
-
-class SelectBuilder {
-  private selections: string[] = [];
-  private conditions: Condition[] = [];
-
-  constructor(private readonly db: InMemoryAuthDb) {}
-
-  select(selection: readonly string[] | string): this {
-    this.selections = typeof selection === 'string' ? [selection] : [...selection];
-    return this;
-  }
-
-  where(column: string, _operator: string, value: unknown): this {
-    this.conditions.push({ column: column as keyof UserRecord, value });
-    return this;
-  }
-
-  executeTakeFirst(): Promise<RowProjection | undefined> {
-    const row = this.db.find(this.conditions);
-    if (!row) return Promise.resolve(undefined);
-    return Promise.resolve(projectRow(row, this.selections));
-  }
-}
-
-class InsertBuilder {
-  private valuesToInsert: RowProjection = {};
-  private selections: string[] = [];
-
-  constructor(private readonly db: InMemoryAuthDb) {}
-
-  values(values: RowProjection): this {
-    this.valuesToInsert = values;
-    return this;
-  }
-
-  returning(selection: readonly string[]): this {
-    this.selections = [...selection];
-    return this;
-  }
-
-  executeTakeFirstOrThrow(): Promise<RowProjection> {
-    const row = this.db.insert(this.valuesToInsert);
-    return Promise.resolve(projectRow(row, this.selections));
-  }
-}
-
-class UpdateBuilder {
-  private patch: RowProjection = {};
-  private conditions: Condition[] = [];
-  private selections: string[] = [];
-
-  constructor(private readonly db: InMemoryAuthDb) {}
-
-  set(patch: RowProjection): this {
-    this.patch = patch;
-    return this;
-  }
-
-  where(column: string, _operator: string, value: unknown): this {
-    this.conditions.push({ column: column as keyof UserRecord, value });
-    return this;
-  }
-
-  returning(selection: readonly string[]): this {
-    this.selections = [...selection];
-    return this;
-  }
-
-  execute(): Promise<unknown[]> {
-    this.db.update(this.conditions, this.patch);
-    return Promise.resolve([]);
-  }
-
-  executeTakeFirst(): Promise<RowProjection | undefined> {
-    const updated = this.db.update(this.conditions, this.patch);
-    const first = updated[0];
-    if (!first) return Promise.resolve(undefined);
-    return Promise.resolve(projectRow(first, this.selections));
-  }
+interface SessionRecord {
+  id: string;
+  user_id: string;
+  refresh_token_jti: string;
+  prev_jti: string | null;
+  prev_jti_valid_until: Date | null;
+  created_at: Date;
+  last_used_at: Date;
+  revoked_at: Date | null;
 }
 
 class InMemoryAuthDb {
-  private users = new Map<string, UserRecord>();
-  private phoneIndex = new Map<string, string>();
+  private readonly mem = newDb();
+  private readonly db: Kysely<Database>;
+  private sessionsMigrationApplied = false;
+
+  constructor(options: { applySessionsMigration?: boolean } = {}) {
+    this.mem.public.registerFunction({
+      name: 'gen_random_uuid',
+      returns: DataType.uuid,
+      impure: true,
+      implementation: randomUUID,
+    });
+    this.mem.public.none(fs.readFileSync('db/migrations/0001-init-users.sql', 'utf8'));
+    if (options.applySessionsMigration !== false) this.applySessionsMigration();
+
+    const { Pool } = this.mem.adapters.createPg();
+    this.db = createDb(new Pool());
+  }
 
   asKysely(): Kysely<Database> {
-    return this as unknown as Kysely<Database>;
-  }
-
-  selectFrom(_table: 'users'): SelectBuilder {
-    return new SelectBuilder(this);
-  }
-
-  insertInto(_table: 'users'): InsertBuilder {
-    return new InsertBuilder(this);
-  }
-
-  updateTable(_table: 'users'): UpdateBuilder {
-    return new UpdateBuilder(this);
-  }
-
-  find(conditions: readonly Condition[]): UserRecord | undefined {
-    return [...this.users.values()].find((user) => this.matches(user, conditions));
+    return this.db;
   }
 
   getByPhone(phone: string): UserRecord | undefined {
-    const id = this.phoneIndex.get(phone);
-    return id ? this.users.get(id) : undefined;
+    return (this.mem.public.many('SELECT * FROM users') as UserRecord[]).find(
+      (user) => user.phone === phone,
+    );
   }
 
-  insert(values: RowProjection): UserRecord {
-    const phone = String(values.phone);
-    if (this.phoneIndex.has(phone)) {
-      throw Object.assign(new Error('duplicate phone'), {
-        code: '23505',
-        constraint: 'users_phone_key',
-      });
-    }
-
-    const now = new Date();
-    const user: UserRecord = {
-      id: randomUUID(),
-      phone,
-      apple_user_id: null,
-      password_hash: String(values.password_hash),
-      role: values.role as UserRole,
-      refresh_token_jti: null,
-      created_at: now,
-      updated_at: now,
-    };
-
-    this.users.set(user.id, user);
-    this.phoneIndex.set(user.phone, user.id);
-    return user;
+  getSessions(userId: string): SessionRecord[] {
+    return (this.mem.public.many('SELECT * FROM sessions') as SessionRecord[])
+      .filter((session) => session.user_id === userId)
+      .sort((left, right) => left.created_at.getTime() - right.created_at.getTime());
   }
 
-  update(conditions: readonly Condition[], patch: RowProjection): UserRecord[] {
-    const updated: UserRecord[] = [];
-    for (const user of this.users.values()) {
-      if (!this.matches(user, conditions)) continue;
-      this.applyPatch(user, patch);
-      updated.push(user);
-    }
-    return updated;
+  getSessionByCurrentJti(jti: string): SessionRecord | undefined {
+    return (this.mem.public.many('SELECT * FROM sessions') as SessionRecord[]).find(
+      (session) => session.refresh_token_jti === jti,
+    );
   }
 
-  private matches(user: UserRecord, conditions: readonly Condition[]): boolean {
-    return conditions.every((condition) => user[condition.column] === condition.value);
+  expirePreviousJti(jti: string): void {
+    this.mem.public.none(
+      `UPDATE sessions SET prev_jti_valid_until = '2000-01-01T00:00:00Z' WHERE prev_jti = '${jti}'`,
+    );
   }
 
-  private applyPatch(user: UserRecord, patch: RowProjection): void {
-    if ('refresh_token_jti' in patch) {
-      const refreshTokenJti = patch.refresh_token_jti;
-      user.refresh_token_jti = typeof refreshTokenJti === 'string' ? refreshTokenJti : null;
-    }
-    if ('updated_at' in patch) {
-      user.updated_at = new Date();
-    }
+  makeSessionOld(jti: string): void {
+    this.mem.public.none(
+      `UPDATE sessions SET last_used_at = '2000-01-01T00:00:00Z' WHERE refresh_token_jti = '${jti}'`,
+    );
+  }
+
+  insertLegacyUser(user: Pick<UserRecord, 'id' | 'phone' | 'role' | 'refresh_token_jti'>): void {
+    this.mem.public.none(`
+      INSERT INTO users (id, phone, password_hash, role, refresh_token_jti)
+      VALUES (
+        '${user.id}',
+        '${user.phone}',
+        'legacy-password-hash',
+        '${user.role}',
+        ${user.refresh_token_jti === null ? 'NULL' : `'${user.refresh_token_jti}'`}
+      )
+    `);
+  }
+
+  applySessionsMigration(): void {
+    if (this.sessionsMigrationApplied) return;
+    this.mem.public.none(fs.readFileSync('db/migrations/0038-multi-device-sessions.sql', 'utf8'));
+    this.sessionsMigrationApplied = true;
   }
 }
 
@@ -263,9 +175,16 @@ describe('auth endpoints', () => {
     expect(row).toBeDefined();
     expect(row?.password_hash).toMatch(/^\$2[ayb]\$10\$/);
     await expect(bcrypt.compare('hunter2hunter2', row?.password_hash ?? '')).resolves.toBe(true);
-    expect(row?.refresh_token_jti).toMatch(
+    expect(row?.refresh_token_jti).toBeNull();
+
+    const issuedJti = refreshJti(response.body.refreshToken as string);
+    expect(issuedJti).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+    expect(db.getSessionByCurrentJti(issuedJti)).toMatchObject({
+      user_id: row?.id,
+      revoked_at: null,
+    });
 
     const accessPayload = verifyAccessToken(response.body.accessToken as string);
     expect(accessPayload).toMatchObject({
@@ -365,8 +284,8 @@ describe('auth endpoints', () => {
   });
 
   it('logs in with a valid phone and password', async () => {
-    const { app, db } = await registerUser();
-    const beforeJti = db.getByPhone('+8613800000001')?.refresh_token_jti;
+    const { app, db, response: registerResponse } = await registerUser();
+    const registerJti = refreshJti(registerResponse.body.refreshToken as string);
 
     const response = await request(app).post('/auth/login').send({
       phone: '+8613800000001',
@@ -377,7 +296,52 @@ describe('auth endpoints', () => {
     expect(response.body.user.phone).toBe('+8613800000001');
     expect(typeof response.body.accessToken).toBe('string');
     expect(typeof response.body.refreshToken).toBe('string');
-    expect(db.getByPhone('+8613800000001')?.refresh_token_jti).not.toBe(beforeJti);
+    const loginJti = refreshJti(response.body.refreshToken as string);
+    expect(loginJti).not.toBe(registerJti);
+    expect(db.getSessionByCurrentJti(registerJti)?.revoked_at).toBeNull();
+    expect(db.getSessionByCurrentJti(loginJti)?.revoked_at).toBeNull();
+  });
+
+  it('keeps two device sessions independent while each rotates', async () => {
+    const { app, db, response: firstDevice } = await registerUser();
+    const secondDevice = await request(app).post('/auth/login').send({
+      phone: '+8613800000001',
+      password: 'hunter2hunter2',
+    });
+    expect(secondDevice.status).toBe(200);
+
+    const firstRefresh = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken: firstDevice.body.refreshToken });
+    const secondRefresh = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken: secondDevice.body.refreshToken });
+
+    expect(firstRefresh.status).toBe(200);
+    expect(secondRefresh.status).toBe(200);
+    const user = db.getByPhone('+8613800000001');
+    expect(
+      db.getSessions(user?.id ?? '').filter((session) => session.revoked_at === null),
+    ).toHaveLength(2);
+  });
+
+  it('caps active sessions at five and revokes the least recently used', async () => {
+    const { app, db, response: registration } = await registerUser();
+    const oldestJti = refreshJti(registration.body.refreshToken as string);
+    db.makeSessionOld(oldestJti);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await request(app).post('/auth/login').send({
+        phone: '+8613800000001',
+        password: 'hunter2hunter2',
+      });
+      expect(response.status).toBe(200);
+    }
+
+    const user = db.getByPhone('+8613800000001');
+    const sessions = db.getSessions(user?.id ?? '');
+    expect(sessions.filter((session) => session.revoked_at === null)).toHaveLength(5);
+    expect(db.getSessionByCurrentJti(oldestJti)?.revoked_at).toBeInstanceOf(Date);
   });
 
   it('rejects login with a wrong password without revealing phone existence', async () => {
@@ -414,8 +378,9 @@ describe('auth endpoints', () => {
     expect(response.status).toBe(200);
     expect(typeof response.body.accessToken).toBe('string');
     expect(typeof response.body.refreshToken).toBe('string');
-    expect(refreshJti(response.body.refreshToken as string)).not.toBe(oldJti);
-    expect(db.getByPhone('+8613800000001')?.refresh_token_jti).not.toBe(oldJti);
+    const newJti = refreshJti(response.body.refreshToken as string);
+    expect(newJti).not.toBe(oldJti);
+    expect(db.getSessionByCurrentJti(newJti)).toMatchObject({ prev_jti: oldJti });
   });
 
   it('accepts the snake_case refresh_token key sent by the shipped iOS client', async () => {
@@ -430,8 +395,9 @@ describe('auth endpoints', () => {
     expect(response.status).toBe(200);
     expect(typeof response.body.accessToken).toBe('string');
     expect(typeof response.body.refreshToken).toBe('string');
-    expect(refreshJti(response.body.refreshToken as string)).not.toBe(oldJti);
-    expect(db.getByPhone('+8613800000001')?.refresh_token_jti).not.toBe(oldJti);
+    const newJti = refreshJti(response.body.refreshToken as string);
+    expect(newJti).not.toBe(oldJti);
+    expect(db.getSessionByCurrentJti(newJti)).toMatchObject({ prev_jti: oldJti });
   });
 
   it('prefers refreshToken when both key spellings are present', async () => {
@@ -455,29 +421,49 @@ describe('auth endpoints', () => {
     expect(response.body.error).toBe('VALIDATION_ERROR');
   });
 
-  it('detects refresh token reuse and clears the stored jti', async () => {
+  it('retries the previous jti idempotently in grace, then revokes only that session outside it', async () => {
     const { app, db, response: registerResponse } = await registerUser();
     const oldRefreshToken = registerResponse.body.refreshToken as string;
+    const oldJti = refreshJti(oldRefreshToken);
+    const otherDevice = await request(app).post('/auth/login').send({
+      phone: '+8613800000001',
+      password: 'hunter2hunter2',
+    });
+    expect(otherDevice.status).toBe(200);
 
     const firstRefresh = await request(app).post('/auth/refresh').send({
       refreshToken: oldRefreshToken,
     });
     expect(firstRefresh.status).toBe(200);
+    const currentJti = refreshJti(firstRefresh.body.refreshToken as string);
 
-    const reuseResponse = await request(app).post('/auth/refresh').send({
+    const graceRetry = await request(app).post('/auth/refresh').send({
       refreshToken: oldRefreshToken,
     });
+    expect(graceRetry.status).toBe(200);
+    expect(refreshJti(graceRetry.body.refreshToken as string)).toBe(currentJti);
+    expect(db.getSessionByCurrentJti(currentJti)?.prev_jti).toBe(oldJti);
 
-    expect(reuseResponse.status).toBe(401);
-    expect(reuseResponse.body).toEqual({ error: 'AUTH_INVALID_REFRESH' });
-    expect(db.getByPhone('+8613800000001')?.refresh_token_jti).toBeNull();
+    db.expirePreviousJti(oldJti);
+    const staleRetry = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken: oldRefreshToken });
+    expect(staleRetry.status).toBe(401);
+    expect(staleRetry.body).toEqual({ error: 'AUTH_INVALID_REFRESH' });
+    expect(db.getSessionByCurrentJti(currentJti)?.revoked_at).toBeInstanceOf(Date);
+
+    const otherDeviceRefresh = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken: otherDevice.body.refreshToken });
+    expect(otherDeviceRefresh.status).toBe(200);
   });
 
   it('rejects an expired refresh token with AUTH_REFRESH_EXPIRED', async () => {
     const { app, db } = await registerUser();
     const user = db.getByPhone('+8613800000001');
+    const session = db.getSessions(user?.id ?? '')[0];
     const expiredToken = jwt.sign(
-      { sub: user?.id, role: 'coach', jti: user?.refresh_token_jti, typ: 'refresh' },
+      { sub: user?.id, role: 'coach', jti: session?.refresh_token_jti, typ: 'refresh' },
       authConfig.JWT_REFRESH_SECRET,
       {
         algorithm: 'HS256',
@@ -615,12 +601,59 @@ describe('auth endpoints', () => {
     expect(response.body).toEqual({ error: 'AUTH_INVALID_TOKEN' });
   });
 
-  it('rotates a legacy refresh token lacking aud/iss and re-issues full-claim tokens', async () => {
-    const { app, db } = await registerUser();
-    const stored = db.getByPhone('+8613800000001');
-    const oldJti = stored?.refresh_token_jti;
+  it('backfills an existing users jti and refreshes its pre-migration token without logout', async () => {
+    const db = new InMemoryAuthDb({ applySessionsMigration: false });
+    const userId = randomUUID();
+    const oldJti = randomUUID();
+    db.insertLegacyUser({
+      id: userId,
+      phone: '+8613800000001',
+      role: 'coach',
+      refresh_token_jti: oldJti,
+    });
+    const preMigrationRefresh = jwt.sign(
+      { sub: userId, role: 'coach', jti: oldJti, typ: 'refresh' },
+      authConfig.JWT_REFRESH_SECRET,
+      {
+        algorithm: 'HS256',
+        expiresIn: '30d',
+        issuer: 'meetpr-api',
+        audience: 'meetpr-client',
+      } satisfies SignOptions,
+    );
+    db.applySessionsMigration();
+    const app = createApp({
+      config: authConfig,
+      logger: pino({ level: 'silent' }),
+      db: db.asKysely(),
+    });
+
+    expect(db.getSessionByCurrentJti(oldJti)).toMatchObject({ user_id: userId });
+    const response = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken: preMigrationRefresh });
+
+    expect(response.status).toBe(200);
+    expect(refreshJti(response.body.refreshToken as string)).not.toBe(oldJti);
+  });
+
+  it('creates a missing session for a valid legacy refresh token and re-issues full claims', async () => {
+    const db = new InMemoryAuthDb();
+    const userId = randomUUID();
+    const oldJti = randomUUID();
+    db.insertLegacyUser({
+      id: userId,
+      phone: '+8613800000001',
+      role: 'coach',
+      refresh_token_jti: oldJti,
+    });
+    const app = createApp({
+      config: authConfig,
+      logger: pino({ level: 'silent' }),
+      db: db.asKysely(),
+    });
     const legacyRefresh = jwt.sign(
-      { sub: stored?.id, role: stored?.role, jti: oldJti },
+      { sub: userId, role: 'coach', jti: oldJti },
       authConfig.JWT_REFRESH_SECRET,
       { algorithm: 'HS256', expiresIn: '30d' } satisfies SignOptions,
     );
@@ -630,9 +663,82 @@ describe('auth endpoints', () => {
     expect(response.status).toBe(200);
     expect(typeof response.body.refreshToken).toBe('string');
     // The re-issued token verifies under the strict aud/iss path, so the holder
-    // migrates forward on this refresh; the stored jti is rotated.
-    expect(refreshJti(response.body.refreshToken as string)).not.toBe(oldJti);
-    expect(db.getByPhone('+8613800000001')?.refresh_token_jti).not.toBe(oldJti);
+    // migrates forward on this refresh; the newly created session is rotated.
+    const newJti = refreshJti(response.body.refreshToken as string);
+    expect(newJti).not.toBe(oldJti);
+    expect(db.getSessionByCurrentJti(newJti)).toMatchObject({
+      user_id: userId,
+      prev_jti: oldJti,
+      revoked_at: null,
+    });
+  });
+
+  it('rejects a rotated legacy token without creating a session', async () => {
+    const db = new InMemoryAuthDb();
+    const userId = randomUUID();
+    const revokedJti = randomUUID();
+    const currentJti = randomUUID();
+    db.insertLegacyUser({
+      id: userId,
+      phone: '+8613800000001',
+      role: 'coach',
+      refresh_token_jti: currentJti,
+    });
+    const app = createApp({
+      config: authConfig,
+      logger: pino({ level: 'silent' }),
+      db: db.asKysely(),
+    });
+    const revokedLegacyRefresh = jwt.sign(
+      { sub: userId, role: 'coach', jti: revokedJti },
+      authConfig.JWT_REFRESH_SECRET,
+      { algorithm: 'HS256', expiresIn: '30d' } satisfies SignOptions,
+    );
+
+    const response = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken: revokedLegacyRefresh });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'AUTH_INVALID_REFRESH' });
+    expect(db.getSessions(userId)).toHaveLength(0);
+  });
+
+  it('retries a backfilled legacy token without creating another session', async () => {
+    const db = new InMemoryAuthDb();
+    const userId = randomUUID();
+    const oldJti = randomUUID();
+    db.insertLegacyUser({
+      id: userId,
+      phone: '+8613800000001',
+      role: 'coach',
+      refresh_token_jti: oldJti,
+    });
+    const app = createApp({
+      config: authConfig,
+      logger: pino({ level: 'silent' }),
+      db: db.asKysely(),
+    });
+    const legacyRefresh = jwt.sign(
+      { sub: userId, role: 'coach', jti: oldJti },
+      authConfig.JWT_REFRESH_SECRET,
+      { algorithm: 'HS256', expiresIn: '30d' } satisfies SignOptions,
+    );
+
+    const firstResponse = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken: legacyRefresh });
+    expect(firstResponse.status).toBe(200);
+    const firstJti = refreshJti(firstResponse.body.refreshToken as string);
+    expect(db.getSessions(userId)).toHaveLength(1);
+
+    const retryResponse = await request(app)
+      .post('/auth/refresh')
+      .send({ refreshToken: legacyRefresh });
+
+    expect(retryResponse.status).toBe(200);
+    expect(refreshJti(retryResponse.body.refreshToken as string)).toBe(firstJti);
+    expect(db.getSessions(userId)).toHaveLength(1);
   });
 
   it('rejects a legacy refresh token when AUTH_ALLOW_LEGACY_TOKENS is false', async () => {
@@ -642,8 +748,9 @@ describe('auth endpoints', () => {
       .send({ phone: '+8613800000001', password: 'hunter2hunter2', role: 'coach' });
     expect(registerResponse.status).toBe(201);
     const stored = db.getByPhone('+8613800000001');
+    const currentJti = refreshJti(registerResponse.body.refreshToken as string);
     const legacyRefresh = jwt.sign(
-      { sub: stored?.id, role: stored?.role, jti: stored?.refresh_token_jti },
+      { sub: stored?.id, role: stored?.role, jti: currentJti },
       authConfig.JWT_REFRESH_SECRET,
       { algorithm: 'HS256', expiresIn: '30d' } satisfies SignOptions,
     );

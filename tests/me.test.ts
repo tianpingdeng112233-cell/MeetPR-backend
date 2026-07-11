@@ -1,7 +1,11 @@
+import { randomUUID } from 'node:crypto';
+
+import jwt from 'jsonwebtoken';
+import type { SignOptions } from 'jsonwebtoken';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
-import { auth, ids, makeContext } from './helpers/bindEval';
+import { auth, config, ids, makeContext } from './helpers/bindEval';
 
 describe('DELETE /me (spec 011 §1)', () => {
   it('deletes a student account and cascades their data', async () => {
@@ -89,5 +93,59 @@ describe('PUT /me/password (spec 011 §2)', () => {
     // Every refresh token from before the change is revoked.
     const refreshed = await request(ctx.app).post('/auth/refresh').send({ refreshToken });
     expect(refreshed.status).toBe(401);
+  });
+
+  it('kills pre-migration legacy refresh tokens on password change', async () => {
+    const ctx = await makeContext();
+    const phone = '+8613900047002';
+
+    const registered = await request(ctx.app)
+      .post('/auth/register')
+      .send({ phone, password: 'original-pass', role: 'self_train_student' });
+    expect(registered.status).toBe(201);
+    const accessToken: string = registered.body.accessToken;
+    const userId: string = registered.body.user.id;
+
+    // Rebuild the pre-migration state: a legacy jti on the user row with no
+    // session rows backing it — the state /auth/refresh backfills from.
+    const legacyJti = randomUUID();
+    await ctx.db.deleteFrom('sessions').where('user_id', '=', userId).execute();
+    await ctx.db
+      .updateTable('users')
+      .set({ refresh_token_jti: legacyJti })
+      .where('id', '=', userId)
+      .execute();
+
+    const changed = await request(ctx.app)
+      .put('/me/password')
+      .set(auth(accessToken))
+      .send({ old_password: 'original-pass', new_password: 'brand-new-pass' });
+    expect(changed.status).toBe(204);
+
+    const userRow = await ctx.db
+      .selectFrom('users')
+      .select(['refresh_token_jti'])
+      .where('id', '=', userId)
+      .executeTakeFirst();
+    expect(userRow?.refresh_token_jti).toBeNull();
+
+    // The legacy token can no longer resurrect a session after the change.
+    const legacyRefresh = jwt.sign(
+      { sub: userId, role: 'self_train_student', jti: legacyJti },
+      config.JWT_REFRESH_SECRET,
+      { algorithm: 'HS256', expiresIn: '30d' } satisfies SignOptions,
+    );
+    const refreshedLegacy = await request(ctx.app)
+      .post('/auth/refresh')
+      .send({ refreshToken: legacyRefresh });
+    expect(refreshedLegacy.status).toBe(401);
+    expect(refreshedLegacy.body).toEqual({ error: 'AUTH_INVALID_REFRESH' });
+
+    const sessions = await ctx.db
+      .selectFrom('sessions')
+      .selectAll()
+      .where('user_id', '=', userId)
+      .execute();
+    expect(sessions).toHaveLength(0);
   });
 });
