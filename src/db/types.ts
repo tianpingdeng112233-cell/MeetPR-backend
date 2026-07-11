@@ -189,6 +189,17 @@ export interface UsersTable {
   updated_at: Generated<Date>;
 }
 
+export interface SessionsTable {
+  id: Generated<string>;
+  user_id: string;
+  refresh_token_jti: string;
+  prev_jti: NullableColumn<string>;
+  prev_jti_valid_until: NullableColumn<Date>;
+  created_at: Generated<Date>;
+  last_used_at: Generated<Date>;
+  revoked_at: NullableColumn<Date>;
+}
+
 export interface ExercisesTable {
   id: Generated<string>;
   name: string;
@@ -663,6 +674,7 @@ export interface AnalyticsFeedbackTable {
 
 export interface Database {
   users: UsersTable;
+  sessions: SessionsTable;
   exercises: ExercisesTable;
   plans: PlansTable;
   plan_days: PlanDaysTable;
