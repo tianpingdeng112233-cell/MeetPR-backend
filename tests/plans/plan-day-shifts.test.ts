@@ -1,12 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import fs from 'node:fs';
 
 import jwt from 'jsonwebtoken';
 import type { Kysely } from 'kysely';
 import { DataType, newDb } from 'pg-mem';
 import pino from 'pino';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../src/app';
 import type { Config } from '../../src/config';
@@ -41,8 +40,6 @@ interface TestContext {
   otherStudentToken: string;
   today: string;
   tomorrow: string;
-  dayAfterTomorrow: string;
-  weekEnd: string;
 }
 
 function signToken(userId: string, role: UserRole): string {
@@ -62,6 +59,12 @@ function addUtcDays(value: Date, days: number): Date {
   const result = new Date(value);
   result.setUTCDate(result.getUTCDate() + days);
   return result;
+}
+
+function first<T>(items: T[]): T {
+  const item = items[0];
+  if (item === undefined) throw new Error('Expected a seeded item');
+  return item;
 }
 
 async function makeContext(): Promise<TestContext> {
@@ -148,8 +151,17 @@ async function makeContext(): Promise<TestContext> {
       logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (student_id, plan_exercise_id, set_index)
     );
+
+    CREATE TABLE plan_day_shifts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      plan_day_id UUID NOT NULL REFERENCES plan_days(id) ON DELETE CASCADE,
+      student_id UUID NOT NULL REFERENCES users(id),
+      batch_id UUID NOT NULL,
+      shifted_to_date DATE NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (plan_day_id, batch_id)
+    );
   `);
-  mem.public.none(fs.readFileSync('db/migrations/0037-add-plan-day-shifts.sql', 'utf8'));
 
   const { Pool } = mem.adapters.createPg();
   const pool = new Pool();
@@ -182,23 +194,22 @@ async function makeContext(): Promise<TestContext> {
     otherStudentToken: signToken(otherStudentId, 'coached_student'),
     today: utcDateOnly(now),
     tomorrow: utcDateOnly(addUtcDays(now, 1)),
-    dayAfterTomorrow: utcDateOnly(addUtcDays(now, 2)),
-    weekEnd: utcDateOnly(addUtcDays(now, 6)),
   };
 }
 
-async function seedPlanDay(
+async function seedPlan(
   ctx: TestContext,
-  options: { status?: PlanStatus; dayOffset?: number } = {},
+  options: { status?: PlanStatus; startOffset?: number; dayOffsets?: number[] } = {},
 ) {
+  const startDate = utcDateOnly(addUtcDays(new Date(), options.startOffset ?? 0));
   const plan = await ctx.db
     .insertInto('plans')
     .values({
       coach_id: coachId,
       trainee_id: traineeId,
       name: 'Shiftable plan',
-      start_date: ctx.today,
-      end_date: ctx.weekEnd,
+      start_date: startDate,
+      end_date: utcDateOnly(addUtcDays(new Date(`${startDate}T00:00:00.000Z`), 6)),
       plan_weeks: 1,
       source: 'coach',
       status: options.status ?? 'published',
@@ -206,26 +217,19 @@ async function seedPlanDay(
     })
     .returningAll()
     .executeTakeFirstOrThrow();
-  // Positional semantics: day_of_week is the ordinal position from start_date (1 = start).
-  const day = await ctx.db
+  const days = await ctx.db
     .insertInto('plan_days')
-    .values({
-      plan_id: plan.id,
-      day_of_week: (options.dayOffset ?? 0) + 1,
-      week_number: 1,
-      sort_order: 0,
-    })
+    .values(
+      (options.dayOffsets ?? [0, 2, 4]).map((dayOffset) => ({
+        plan_id: plan.id,
+        day_of_week: dayOffset + 1,
+        week_number: 1,
+        sort_order: 0,
+      })),
+    )
     .returningAll()
-    .executeTakeFirstOrThrow();
-  return { plan, day };
-}
-
-async function addDay(ctx: TestContext, planId: string, dayOffset: number) {
-  return ctx.db
-    .insertInto('plan_days')
-    .values({ plan_id: planId, day_of_week: dayOffset + 1, week_number: 1, sort_order: 0 })
-    .returningAll()
-    .executeTakeFirstOrThrow();
+    .execute();
+  return { plan, days };
 }
 
 async function addLog(ctx: TestContext, dayId: string) {
@@ -253,155 +257,230 @@ async function addLog(ctx: TestContext, dayId: string) {
       completed: true,
       failed: false,
       assumed: false,
-      logged_date: '2026-05-01',
+      logged_date: ctx.today,
     })
     .execute();
 }
 
-describe('coached student plan day shifts', () => {
-  it('shifts today to a rest day and lets the student revoke it', async () => {
+beforeEach(() => {
+  // Fake only Date — freezing timers would hang supertest's async I/O.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-07-11T08:00:00.000Z'));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe('coached student whole-plan shifts', () => {
+  it('shifts every remaining plan day by one day and returns one batch', async () => {
     const ctx = await makeContext();
-    const { day } = await seedPlanDay(ctx);
-
-    const shifted = await request(ctx.app)
-      .post(`/plans/days/${day.id}/shift`)
-      .set(auth(ctx.traineeToken))
-      .send({ shifted_to_date: ctx.tomorrow });
-
-    expect(shifted.status).toBe(201);
-    expect(shifted.body).toMatchObject({
-      plan_day_id: day.id,
-      shifted_to_date: ctx.tomorrow,
-    });
-    expect(shifted.body.id).toEqual(expect.any(String));
-    expect(shifted.body.created_at).toEqual(expect.any(String));
-
-    const revoked = await request(ctx.app)
-      .delete(`/plans/days/${day.id}/shift`)
-      .set(auth(ctx.traineeToken));
-    expect(revoked.status).toBe(204);
-    expect(await ctx.db.selectFrom('plan_day_shifts').selectAll().execute()).toEqual([]);
-  });
-
-  it('forbids another student and the coach', async () => {
-    const ctx = await makeContext();
-    const { day } = await seedPlanDay(ctx);
-
-    const otherStudent = await request(ctx.app)
-      .post(`/plans/days/${day.id}/shift`)
-      .set(auth(ctx.otherStudentToken))
-      .send({ shifted_to_date: ctx.tomorrow });
-    expect(otherStudent.status).toBe(403);
-    expect(otherStudent.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
-
-    const coach = await request(ctx.app)
-      .post(`/plans/days/${day.id}/shift`)
-      .set(auth(ctx.coachToken))
-      .send({ shifted_to_date: ctx.tomorrow });
-    expect(coach.status).toBe(403);
-    expect(coach.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
-  });
-
-  it('rejects a day whose effective date is not today', async () => {
-    const ctx = await makeContext();
-    const { day } = await seedPlanDay(ctx, { dayOffset: 1 });
+    const { plan, days } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [0, 1, 3] });
 
     const response = await request(ctx.app)
-      .post(`/plans/days/${day.id}/shift`)
-      .set(auth(ctx.traineeToken))
-      .send({ shifted_to_date: ctx.dayAfterTomorrow });
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      batch_id: expect.any(String),
+      shifted_days: [
+        { day_id: days[1]?.id, shifted_to_date: ctx.tomorrow },
+        { day_id: days[2]?.id, shifted_to_date: '2026-07-14' },
+      ],
+      total_offset_days: 1,
+    });
+    const rows = await ctx.db
+      .selectFrom('plan_day_shifts')
+      .selectAll()
+      .orderBy('shifted_to_date', 'asc')
+      .execute();
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((row) => row.batch_id))).toEqual(new Set([response.body.batch_id]));
+  });
+
+  it('stacks across UTC days from each current effective date', async () => {
+    const ctx = await makeContext();
+    const { plan } = await seedPlan(ctx);
+    const first = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
+
+    vi.setSystemTime(new Date('2026-07-12T08:00:00.000Z'));
+    const nextDayToken = signToken(traineeId, 'coached_student');
+    const second = await request(ctx.app).post(`/plans/${plan.id}/shift`).set(auth(nextDayToken));
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.total_offset_days).toBe(2);
+    expect(
+      second.body.shifted_days.map((day: { shifted_to_date: string }) => day.shifted_to_date),
+    ).toEqual(['2026-07-13', '2026-07-15', '2026-07-17']);
+    const rows = await ctx.db.selectFrom('plan_day_shifts').selectAll().execute();
+    expect(rows).toHaveLength(6);
+    expect(new Set(rows.map((row) => row.batch_id)).size).toBe(2);
+  });
+
+  it('undoes only the latest batch and reveals the previous effective dates', async () => {
+    const ctx = await makeContext();
+    const { plan } = await seedPlan(ctx);
+    const first = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
+    vi.setSystemTime(new Date('2026-07-12T08:00:00.000Z'));
+    const nextDayToken = signToken(traineeId, 'coached_student');
+    await request(ctx.app).post(`/plans/${plan.id}/shift`).set(auth(nextDayToken));
+
+    const undone = await request(ctx.app).delete(`/plans/${plan.id}/shift`).set(auth(nextDayToken));
+
+    expect(undone.status).toBe(204);
+    const rows = await ctx.db.selectFrom('plan_day_shifts').selectAll().execute();
+    expect(rows).toHaveLength(3);
+    expect(new Set(rows.map((row) => row.batch_id))).toEqual(new Set([first.body.batch_id]));
+    const planResponse = await request(ctx.app).get(`/plans/${plan.id}`).set(auth(nextDayToken));
+    expect(planResponse.body.total_shift_days).toBe(1);
+    expect(
+      planResponse.body.days.map((day: { shifted_to_date: string }) => day.shifted_to_date),
+    ).toEqual(['2026-07-12', '2026-07-14', '2026-07-16']);
+  });
+
+  it('rejects a shift when UTC today is not an effective training day', async () => {
+    const ctx = await makeContext();
+    const { plan } = await seedPlan(ctx, { dayOffsets: [1] });
+
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
 
     expect(response.status).toBe(409);
     expect(response.body).toEqual({ error: 'SHIFT_ONLY_TODAY' });
   });
 
-  it('rejects a target occupied by another derived plan day', async () => {
+  it("rejects POST after today's course has any set log", async () => {
     const ctx = await makeContext();
-    const { plan, day } = await seedPlanDay(ctx);
-    await addDay(ctx, plan.id, 1);
+    const { plan, days } = await seedPlan(ctx, { dayOffsets: [0] });
+    await addLog(ctx, first(days).id);
 
     const response = await request(ctx.app)
-      .post(`/plans/days/${day.id}/shift`)
-      .set(auth(ctx.traineeToken))
-      .send({ shifted_to_date: ctx.tomorrow });
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
 
     expect(response.status).toBe(409);
-    expect(response.body).toEqual({ error: 'SHIFT_TARGET_NOT_REST_DAY' });
+    expect(response.body).toEqual({ error: 'ALREADY_STARTED' });
   });
 
-  it('rejects POST and DELETE once the plan day has a set log', async () => {
+  it('rejects a student who does not own the plan from POST and DELETE', async () => {
     const ctx = await makeContext();
-    const { day } = await seedPlanDay(ctx);
-    await ctx.db
-      .insertInto('plan_day_shifts')
-      .values({
-        plan_day_id: day.id,
-        student_id: traineeId,
-        shifted_to_date: ctx.tomorrow,
-      })
-      .execute();
-    await addLog(ctx, day.id);
+    const { plan } = await seedPlan(ctx, { dayOffsets: [0] });
 
-    const shifted = await request(ctx.app)
-      .post(`/plans/days/${day.id}/shift`)
-      .set(auth(ctx.traineeToken))
-      .send({ shifted_to_date: ctx.tomorrow });
-    expect(shifted.status).toBe(409);
-    expect(shifted.body).toEqual({ error: 'SHIFT_DAY_HAS_LOGS' });
+    const posted = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.otherStudentToken));
+    await request(ctx.app).post(`/plans/${plan.id}/shift`).set(auth(ctx.traineeToken));
+    const deleted = await request(ctx.app)
+      .delete(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.otherStudentToken));
 
-    const revoked = await request(ctx.app)
-      .delete(`/plans/days/${day.id}/shift`)
-      .set(auth(ctx.traineeToken));
-    expect(revoked.status).toBe(409);
-    expect(revoked.body).toEqual({ error: 'SHIFT_DAY_HAS_LOGS' });
+    expect(posted.status).toBe(403);
+    expect(posted.body).toEqual({ error: 'NOT_PLAN_STUDENT' });
+    expect(deleted.status).toBe(403);
+    expect(deleted.body).toEqual({ error: 'NOT_PLAN_STUDENT' });
   });
 
   it('rejects a draft plan as not active', async () => {
     const ctx = await makeContext();
-    const { day } = await seedPlanDay(ctx, { status: 'draft' });
+    const { plan } = await seedPlan(ctx, { status: 'draft', dayOffsets: [0] });
 
     const response = await request(ctx.app)
-      .post(`/plans/days/${day.id}/shift`)
-      .set(auth(ctx.traineeToken))
-      .send({ shifted_to_date: ctx.tomorrow });
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
 
     expect(response.status).toBe(409);
     expect(response.body).toEqual({ error: 'PLAN_NOT_ACTIVE' });
   });
 
-  it('serializes shifted_to_date and null on GET /plans/:id', async () => {
+  it('rejects DELETE when no shift batch exists', async () => {
     const ctx = await makeContext();
-    const { plan, day } = await seedPlanDay(ctx);
-    const unshiftedDay = await addDay(ctx, plan.id, 2);
-    await request(ctx.app)
-      .post(`/plans/days/${day.id}/shift`)
-      .set(auth(ctx.traineeToken))
-      .send({ shifted_to_date: ctx.tomorrow });
+    const { plan } = await seedPlan(ctx, { dayOffsets: [0] });
 
-    const response = await request(ctx.app).get(`/plans/${plan.id}`).set(auth(ctx.traineeToken));
+    const response = await request(ctx.app)
+      .delete(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
 
-    expect(response.status).toBe(200);
-    const days = response.body.days as { id: string; shifted_to_date: string | null }[];
-    expect(days.find((item) => item.id === day.id)?.shifted_to_date).toBe(ctx.tomorrow);
-    expect(days.find((item) => item.id === unshiftedDay.id)?.shifted_to_date).toBeNull();
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: 'NO_ACTIVE_SHIFT' });
   });
 
-  it('upserts the same target idempotently without changing identity', async () => {
+  it('rejects DELETE after the latest batch UTC creation day', async () => {
     const ctx = await makeContext();
-    const { day } = await seedPlanDay(ctx);
-    const first = await request(ctx.app)
-      .post(`/plans/days/${day.id}/shift`)
-      .set(auth(ctx.traineeToken))
-      .send({ shifted_to_date: ctx.tomorrow });
-    const second = await request(ctx.app)
-      .post(`/plans/days/${day.id}/shift`)
+    const { plan } = await seedPlan(ctx, { dayOffsets: [0] });
+    await request(ctx.app).post(`/plans/${plan.id}/shift`).set(auth(ctx.traineeToken));
+    await ctx.db
+      .updateTable('plan_day_shifts')
+      .set({ created_at: new Date('2026-07-10T23:59:59.000Z') })
+      .execute();
+
+    const response = await request(ctx.app)
+      .delete(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: 'UNDO_WINDOW_PASSED' });
+  });
+
+  it('rejects DELETE when the course returning to today has started', async () => {
+    const ctx = await makeContext();
+    const { plan, days } = await seedPlan(ctx, { dayOffsets: [0] });
+    await request(ctx.app).post(`/plans/${plan.id}/shift`).set(auth(ctx.traineeToken));
+    await addLog(ctx, first(days).id);
+
+    const response = await request(ctx.app)
+      .delete(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: 'ALREADY_STARTED' });
+  });
+
+  it('serializes per-day overrides and both plan shift summary fields on detail and list GETs', async () => {
+    const ctx = await makeContext();
+    const { plan, days } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [0, 1, 3] });
+    const before = await request(ctx.app).get(`/plans/${plan.id}`).set(auth(ctx.traineeToken));
+    expect(before.body.total_shift_days).toBe(0);
+    expect(before.body.latest_shift_created_at).toBeNull();
+
+    await request(ctx.app).post(`/plans/${plan.id}/shift`).set(auth(ctx.traineeToken));
+    const detail = await request(ctx.app).get(`/plans/${plan.id}`).set(auth(ctx.traineeToken));
+    const list = await request(ctx.app)
+      .get(`/students/${traineeId}/plans`)
+      .set(auth(ctx.coachToken));
+
+    expect(detail.status).toBe(200);
+    expect(detail.body.total_shift_days).toBe(1);
+    expect(detail.body.latest_shift_created_at).toEqual(expect.any(String));
+    expect(detail.body.days).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: days[0]?.id, shifted_to_date: null }),
+        expect.objectContaining({ id: days[1]?.id, shifted_to_date: ctx.tomorrow }),
+      ]),
+    );
+    expect(list.status).toBe(200);
+    expect(list.body.plans[0]).toMatchObject({
+      id: plan.id,
+      total_shift_days: 1,
+      latest_shift_created_at: detail.body.latest_shift_created_at,
+    });
+  });
+
+  it('removes the V1 day-level shift endpoints', async () => {
+    const ctx = await makeContext();
+    const { days } = await seedPlan(ctx, { dayOffsets: [0] });
+
+    const response = await request(ctx.app)
+      .post(`/plans/days/${first(days).id}/shift`)
       .set(auth(ctx.traineeToken))
       .send({ shifted_to_date: ctx.tomorrow });
 
-    expect(first.status).toBe(201);
-    expect(second.status).toBe(201);
-    expect(second.body).toEqual(first.body);
-    const rows = await ctx.db.selectFrom('plan_day_shifts').selectAll().execute();
-    expect(rows).toHaveLength(1);
+    expect(response.status).toBe(404);
   });
 });

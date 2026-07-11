@@ -217,7 +217,20 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       UNIQUE (event_type, aggregate_id, recipient_id)
     );
   `);
-  mem.public.none(fs.readFileSync('db/migrations/0037-add-plan-day-shifts.sql', 'utf8'));
+  // Final shape of db/migrations/0037 + 0038 (pg-mem cannot replay 0038's
+  // DROP CONSTRAINT because it names 0037's inline UNIQUE differently than
+  // real Postgres). Keep in sync with those migrations.
+  mem.public.none(`
+    CREATE TABLE plan_day_shifts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      plan_day_id UUID NOT NULL REFERENCES plan_days(id) ON DELETE CASCADE,
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      batch_id UUID NOT NULL,
+      shifted_to_date DATE NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (plan_day_id, batch_id)
+    );
+  `);
 
   const { Pool } = mem.adapters.createPg();
   const pool = new Pool();

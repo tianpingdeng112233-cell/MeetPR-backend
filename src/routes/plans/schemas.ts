@@ -34,12 +34,6 @@ export const DayIdParamSchema = z.object({
   dayId: UuidSchema,
 });
 
-export const ShiftPlanDayBodySchema = z
-  .object({
-    shifted_to_date: DateSchema,
-  })
-  .strict();
-
 export const ExerciseIdParamSchema = z.object({
   exerciseId: UuidSchema,
 });
@@ -254,7 +248,6 @@ export type CreatePlanBody = z.infer<typeof CreatePlanBodySchema>;
 export type PatchPlanBody = z.infer<typeof PatchPlanBodySchema>;
 export type CreatePlanDayBody = z.infer<typeof CreatePlanDayBodySchema>;
 export type PatchPlanDayBody = z.infer<typeof PatchPlanDayBodySchema>;
-export type ShiftPlanDayBody = z.infer<typeof ShiftPlanDayBodySchema>;
 export type CreatePlanExerciseBody = z.infer<typeof CreatePlanExerciseBodySchema>;
 export type PatchPlanExerciseBody = z.infer<typeof PatchPlanExerciseBodySchema>;
 export type CreatePlanSetBody = z.infer<typeof CreatePlanSetBodySchema>;

@@ -235,6 +235,7 @@ export interface PlanDayShiftsTable {
   id: Generated<string>;
   plan_day_id: string;
   student_id: string;
+  batch_id: string;
   // DATE-as-text in production; pg-mem returns a Date in integration tests.
   shifted_to_date: ColumnType<string | Date, string, string>;
   created_at: TimestampColumn;
