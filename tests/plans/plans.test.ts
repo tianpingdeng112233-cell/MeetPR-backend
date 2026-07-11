@@ -168,9 +168,9 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
-    -- Post-0034 shape: the tree-lock guard (PLAN_HISTORY_IMMUTABLE) and the
-    -- imported-history endpoint both read/write set_logs from the plans
-    -- router. Keep in sync with tests/helpers/studentActions.ts.
+    -- Post-0034 shape: plan history guards and the imported-history endpoint
+    -- both read/write set_logs from the plans router. Keep in sync with
+    -- tests/helpers/studentActions.ts.
     CREATE TABLE set_logs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

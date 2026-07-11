@@ -159,6 +159,7 @@ async function getPlanWithChildren(
           .execute();
 
   const exerciseIds = exerciseRows.map((exercise) => exercise.id);
+  const loggedExerciseIds = await planExercisesWithLogs(db, exerciseIds);
   const setRows =
     exerciseIds.length === 0
       ? []
@@ -179,7 +180,13 @@ async function getPlanWithChildren(
   const exercisesByDay = new Map<string, PlanExerciseResponse[]>();
   for (const exercise of exerciseRows) {
     const exercises = exercisesByDay.get(exercise.plan_day_id) ?? [];
-    exercises.push(toPlanExercise(exercise, setsByExercise.get(exercise.id) ?? []));
+    exercises.push(
+      toPlanExercise(
+        exercise,
+        setsByExercise.get(exercise.id) ?? [],
+        loggedExerciseIds.has(exercise.id),
+      ),
+    );
     exercisesByDay.set(exercise.plan_day_id, exercises);
   }
 
@@ -280,14 +287,42 @@ async function selectPlanDayContext(
 }
 
 async function planDayHasLogs(db: DbExecutor, dayId: string): Promise<boolean> {
-  const loggedSet = await db
-    .selectFrom('set_logs as sl')
-    .innerJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
-    .select('sl.id')
-    .where('pe.plan_day_id', '=', dayId)
-    .limit(1)
-    .executeTakeFirst();
-  return loggedSet !== undefined;
+  return (await loggedExerciseIdsForDay(db, dayId)).length > 0;
+}
+
+async function planExercisesWithLogs(db: DbExecutor, exerciseIds: string[]): Promise<Set<string>> {
+  if (exerciseIds.length === 0) return new Set();
+
+  const rows = await db
+    .selectFrom('set_logs')
+    .select('plan_exercise_id')
+    .where('plan_exercise_id', 'in', exerciseIds)
+    .groupBy('plan_exercise_id')
+    .orderBy('plan_exercise_id', 'asc')
+    .execute();
+
+  return new Set(
+    rows.flatMap((row) => (row.plan_exercise_id === null ? [] : [row.plan_exercise_id])),
+  );
+}
+
+async function planExerciseHasLogs(db: DbExecutor, exerciseId: string): Promise<boolean> {
+  return (await planExercisesWithLogs(db, [exerciseId])).has(exerciseId);
+}
+
+async function loggedExerciseIdsForDay(db: DbExecutor, dayId: string): Promise<string[]> {
+  const exercises = await db
+    .selectFrom('plan_exercises')
+    .select('id')
+    .where('plan_day_id', '=', dayId)
+    .orderBy('id', 'asc')
+    .execute();
+  return [
+    ...(await planExercisesWithLogs(
+      db,
+      exercises.map((exercise) => exercise.id),
+    )),
+  ];
 }
 
 async function targetHasOtherPlanDay(
@@ -460,21 +495,112 @@ async function createImportedHistory(
   return { created, existing: values.length - created };
 }
 
-// An explicit historical import may happen while a Plan Web draft is still
-// open (plan-web marks assumed history before publish). Once any set log
-// exists under the tree, the tree is locked: changing exercise identity, set
-// ordering, or day layout would reinterpret retained history. plan-web
-// handles this exact error code with「历史已锁定 · 请新建草稿后调整」.
-async function planHistoryLocked(db: Kysely<Database>, planId: string): Promise<boolean> {
-  const logged = await db
-    .selectFrom('set_logs as sl')
-    .innerJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
-    .innerJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
-    .select('sl.id')
-    .where('pd.plan_id', '=', planId)
-    .limit(1)
+async function planHistoryLocked(
+  db: DbExecutor,
+  planId: string,
+  lockedExerciseIds?: string[],
+): Promise<boolean> {
+  const exerciseIds =
+    lockedExerciseIds ??
+    (
+      await db
+        .selectFrom('plan_exercises as pe')
+        .innerJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
+        .select('pe.id')
+        .where('pd.plan_id', '=', planId)
+        .orderBy('pe.id', 'asc')
+        .execute()
+    ).map((exercise) => exercise.id);
+  return (await planExercisesWithLogs(db, exerciseIds)).size > 0;
+}
+
+async function lockPlanExercise(db: Transaction<Database>, exerciseId: string): Promise<boolean> {
+  const exercise = await db
+    .selectFrom('plan_exercises')
+    .select('id')
+    .where('id', '=', exerciseId)
+    .forUpdate()
     .executeTakeFirst();
-  return logged !== undefined;
+  return exercise !== undefined;
+}
+
+async function lockPlanDayTree(
+  db: Transaction<Database>,
+  dayId: string,
+): Promise<{ day: PlanDayRow; exerciseIds: string[] } | null> {
+  const day = await db
+    .selectFrom('plan_days')
+    .selectAll()
+    .where('id', '=', dayId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!day) return null;
+
+  const exercises = await db
+    .selectFrom('plan_exercises')
+    .select('id')
+    .where('plan_day_id', '=', dayId)
+    .orderBy('id', 'asc')
+    .forUpdate()
+    .execute();
+  return { day, exerciseIds: exercises.map((exercise) => exercise.id) };
+}
+
+async function lockOwnedPlan(
+  db: Transaction<Database>,
+  planId: string,
+  coachId: string,
+): Promise<PlanRow | undefined> {
+  return db
+    .selectFrom('plans')
+    .selectAll()
+    .where('id', '=', planId)
+    .where('coach_id', '=', coachId)
+    .forUpdate()
+    .executeTakeFirst();
+}
+
+async function lockOwnedPlanTree(
+  db: Transaction<Database>,
+  planId: string,
+  coachId: string,
+): Promise<{ plan: PlanRow; exerciseIds: string[] } | null> {
+  const plan = await lockOwnedPlan(db, planId, coachId);
+  if (!plan) return null;
+
+  const days = await db
+    .selectFrom('plan_days')
+    .select('id')
+    .where('plan_id', '=', planId)
+    .orderBy('id', 'asc')
+    .forUpdate()
+    .execute();
+  const dayIds = days.map((day) => day.id);
+  const exercises =
+    dayIds.length === 0
+      ? []
+      : await db
+          .selectFrom('plan_exercises')
+          .select('id')
+          .where('plan_day_id', 'in', dayIds)
+          .orderBy('id', 'asc')
+          .forUpdate()
+          .execute();
+  return { plan, exerciseIds: exercises.map((exercise) => exercise.id) };
+}
+
+function exerciseHistoryImmutable(exerciseIds: string[]) {
+  return {
+    error: 'EXERCISE_HISTORY_IMMUTABLE',
+    details: { exercise_ids: exerciseIds },
+  };
+}
+
+function dayHistoryImmutable(dayId: string, exerciseIds: string[]) {
+  return {
+    error: 'DAY_HISTORY_IMMUTABLE',
+    details: { day_id: dayId, exercise_ids: exerciseIds },
+  };
 }
 
 function trainingMaxWrite(oneRmKg: number | undefined): Record<string, unknown> {
@@ -632,82 +758,98 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      const existing = await selectOwnedPlan(deps.db, params.data.id, user.id);
-      if (!existing) {
+      const hasCalendarMetadataMutation =
+        body.data.start_date !== undefined ||
+        body.data.end_date !== undefined ||
+        body.data.plan_weeks !== undefined ||
+        body.data.source_template_id !== undefined;
+
+      const result = await deps.db.transaction().execute(async (trx) => {
+        const lockedTree = hasCalendarMetadataMutation
+          ? await lockOwnedPlanTree(trx, params.data.id, user.id)
+          : null;
+        const existing = lockedTree?.plan ?? (await lockOwnedPlan(trx, params.data.id, user.id));
+        if (!existing) return { type: 'not-found' } as const;
+
+        if (body.data.status && !isAllowedPlanStatusTransition(existing.status, body.data.status)) {
+          return { type: 'invalid-status' } as const;
+        }
+
+        if (
+          hasCalendarMetadataMutation &&
+          lockedTree &&
+          (await planHistoryLocked(trx, existing.id, lockedTree.exerciseIds))
+        ) {
+          return { type: 'history-immutable' } as const;
+        }
+
+        const mergedStartDate = body.data.start_date ?? existing.start_date;
+        const mergedEndDate = body.data.end_date ?? existing.end_date;
+        if (mergedEndDate < mergedStartDate) return { type: 'invalid-date-order' } as const;
+
+        if (body.data.source_template_id !== undefined) {
+          if (existing.source === 'template' && body.data.source_template_id === null) {
+            return { type: 'template-id-required' } as const;
+          }
+          if (existing.source !== 'template' && body.data.source_template_id !== null) {
+            return { type: 'template-id-must-be-null' } as const;
+          }
+        }
+
+        const patch: Record<string, unknown> = { updated_at: sql<Date>`now()` };
+        if (body.data.name !== undefined) patch.name = body.data.name;
+        if (body.data.start_date !== undefined) patch.start_date = body.data.start_date;
+        if (body.data.end_date !== undefined) patch.end_date = body.data.end_date;
+        if (body.data.plan_weeks !== undefined) patch.plan_weeks = body.data.plan_weeks;
+        if (body.data.status !== undefined) patch.status = body.data.status;
+        if (body.data.source_template_id !== undefined) {
+          patch.source_template_id = body.data.source_template_id;
+        }
+        Object.assign(patch, trainingMaxWrite(body.data.one_rm_kg));
+
+        const updated = await trx
+          .updateTable('plans')
+          .set(patch)
+          .where('id', '=', existing.id)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        return { type: 'updated', plan: updated } as const;
+      });
+
+      if (result.type === 'not-found') {
         res.status(404).json({ error: 'PLAN_NOT_FOUND' });
         return;
       }
-
-      if (body.data.status && !isAllowedPlanStatusTransition(existing.status, body.data.status)) {
+      if (result.type === 'invalid-status') {
         res
           .status(400)
           .json(validationIssue(['status'], 'Invalid plan status transition for PATCH'));
         return;
       }
-
-      // Imported history is intentionally allowed on an un-published draft so
-      // a coach can reconcile an old plan. Once its set logs exist, the
-      // draft's calendar/metadata locks too: shifting the horizon would
-      // reinterpret what dates the retained history was performed on. Status
-      // transitions stay open — publishing the imported plan must still work.
-      const hasTreeMetadataMutation =
-        body.data.name !== undefined ||
-        body.data.start_date !== undefined ||
-        body.data.end_date !== undefined ||
-        body.data.plan_weeks !== undefined ||
-        body.data.source_template_id !== undefined;
-      if (
-        existing.status === 'draft' &&
-        hasTreeMetadataMutation &&
-        (await planHistoryLocked(deps.db, existing.id))
-      ) {
+      if (result.type === 'history-immutable') {
         res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
         return;
       }
-
-      const mergedStartDate = body.data.start_date ?? existing.start_date;
-      const mergedEndDate = body.data.end_date ?? existing.end_date;
-      if (mergedEndDate < mergedStartDate) {
+      if (result.type === 'invalid-date-order') {
         res
           .status(400)
           .json(validationIssue(['end_date'], 'end_date must be on or after start_date'));
         return;
       }
-
-      if (body.data.source_template_id !== undefined) {
-        if (existing.source === 'template' && body.data.source_template_id === null) {
-          res
-            .status(400)
-            .json(validationIssue(['source_template_id'], 'source_template_id is required'));
-          return;
-        }
-        if (existing.source !== 'template' && body.data.source_template_id !== null) {
-          res
-            .status(400)
-            .json(validationIssue(['source_template_id'], 'source_template_id must be null'));
-          return;
-        }
+      if (result.type === 'template-id-required') {
+        res
+          .status(400)
+          .json(validationIssue(['source_template_id'], 'source_template_id is required'));
+        return;
+      }
+      if (result.type === 'template-id-must-be-null') {
+        res
+          .status(400)
+          .json(validationIssue(['source_template_id'], 'source_template_id must be null'));
+        return;
       }
 
-      const patch: Record<string, unknown> = { updated_at: sql<Date>`now()` };
-      if (body.data.name !== undefined) patch.name = body.data.name;
-      if (body.data.start_date !== undefined) patch.start_date = body.data.start_date;
-      if (body.data.end_date !== undefined) patch.end_date = body.data.end_date;
-      if (body.data.plan_weeks !== undefined) patch.plan_weeks = body.data.plan_weeks;
-      if (body.data.status !== undefined) patch.status = body.data.status;
-      if (body.data.source_template_id !== undefined) {
-        patch.source_template_id = body.data.source_template_id;
-      }
-      Object.assign(patch, trainingMaxWrite(body.data.one_rm_kg));
-
-      const updated = await deps.db
-        .updateTable('plans')
-        .set(patch)
-        .where('id', '=', existing.id)
-        .returningAll()
-        .executeTakeFirstOrThrow();
-
-      res.status(200).json(toPlan(updated));
+      res.status(200).json(toPlan(result.plan));
     }),
   );
 
@@ -950,10 +1092,6 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         res.status(404).json({ error: 'PLAN_NOT_FOUND' });
         return;
       }
-      if (await planHistoryLocked(deps.db, plan.id)) {
-        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
-        return;
-      }
 
       const day = await deps.db
         .insertInto('plan_days')
@@ -989,28 +1127,40 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      const planId = await planIdForDay(deps.db, params.data.dayId, user.id);
-      if (!planId) {
+      const result = await deps.db.transaction().execute(async (trx) => {
+        const planId = await planIdForDay(trx, params.data.dayId, user.id);
+        if (!planId) return { type: 'not-found' } as const;
+
+        const locked = await lockPlanDayTree(trx, params.data.dayId);
+        if (!locked) return { type: 'not-found' } as const;
+        const loggedExerciseIds = [...(await planExercisesWithLogs(trx, locked.exerciseIds))];
+        if (loggedExerciseIds.length > 0) {
+          return { type: 'history-immutable', exerciseIds: loggedExerciseIds } as const;
+        }
+
+        const day = await trx
+          .updateTable('plan_days')
+          .set(body.data)
+          .where('id', '=', params.data.dayId)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        return { type: 'updated', planId, day } as const;
+      });
+
+      if (result.type === 'not-found') {
         res.status(404).json({ error: 'PLAN_DAY_NOT_FOUND' });
         return;
       }
-      if (await planHistoryLocked(deps.db, planId)) {
-        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+      if (result.type === 'history-immutable') {
+        res.status(409).json(dayHistoryImmutable(params.data.dayId, result.exerciseIds));
         return;
       }
 
-      const day = await deps.db
-        .updateTable('plan_days')
-        .set(body.data)
-        .where('id', '=', params.data.dayId)
-        .returningAll()
-        .executeTakeFirstOrThrow();
-
       deps.logger.info(
-        { planId, action: 'day', op: 'update', resourceId: day.id },
+        { planId: result.planId, action: 'day', op: 'update', resourceId: result.day.id },
         'plan_tree_mutated',
       );
-      res.status(200).json(toPlanDay(day));
+      res.status(200).json(toPlanDay(result.day));
     }),
   );
 
@@ -1029,19 +1179,32 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      const planId = await planIdForDay(deps.db, params.data.dayId, user.id);
-      if (!planId) {
+      const result = await deps.db.transaction().execute(async (trx) => {
+        const planId = await planIdForDay(trx, params.data.dayId, user.id);
+        if (!planId) return { type: 'not-found' } as const;
+
+        const locked = await lockPlanDayTree(trx, params.data.dayId);
+        if (!locked) return { type: 'not-found' } as const;
+        const loggedExerciseIds = [...(await planExercisesWithLogs(trx, locked.exerciseIds))];
+        if (loggedExerciseIds.length > 0) {
+          return { type: 'history-immutable', exerciseIds: loggedExerciseIds } as const;
+        }
+
+        await trx.deleteFrom('plan_days').where('id', '=', params.data.dayId).execute();
+        return { type: 'deleted', planId } as const;
+      });
+
+      if (result.type === 'not-found') {
         res.status(404).json({ error: 'PLAN_DAY_NOT_FOUND' });
         return;
       }
-      if (await planHistoryLocked(deps.db, planId)) {
-        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+      if (result.type === 'history-immutable') {
+        res.status(409).json(dayHistoryImmutable(params.data.dayId, result.exerciseIds));
         return;
       }
 
-      await deps.db.deleteFrom('plan_days').where('id', '=', params.data.dayId).execute();
       deps.logger.info(
-        { planId, action: 'day', op: 'delete', resourceId: params.data.dayId },
+        { planId: result.planId, action: 'day', op: 'delete', resourceId: params.data.dayId },
         'plan_tree_mutated',
       );
       res.status(204).send();
@@ -1170,10 +1333,6 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         res.status(404).json({ error: 'PLAN_DAY_NOT_FOUND' });
         return;
       }
-      if (await planHistoryLocked(deps.db, planId)) {
-        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
-        return;
-      }
 
       const exerciseVisible = await visibleExerciseForCoach(
         deps.db,
@@ -1225,45 +1384,62 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      const planId = await planIdForExercise(deps.db, params.data.exerciseId, user.id);
-      if (!planId) {
+      const result = await deps.db.transaction().execute(async (trx) => {
+        const planId = await planIdForExercise(trx, params.data.exerciseId, user.id);
+        if (!planId) return { type: 'not-found' } as const;
+        if (!(await lockPlanExercise(trx, params.data.exerciseId))) {
+          return { type: 'not-found' } as const;
+        }
+        if (await planExerciseHasLogs(trx, params.data.exerciseId)) {
+          return { type: 'history-immutable' } as const;
+        }
+        if (body.data.exercise_id) {
+          const exerciseVisible = await visibleExerciseForCoach(
+            trx,
+            body.data.exercise_id,
+            user.id,
+          );
+          if (!exerciseVisible) return { type: 'exercise-hidden' } as const;
+        }
+
+        const patch: Updateable<PlanExercisesTable> = {};
+        if (body.data.exercise_id !== undefined) patch.exercise_id = body.data.exercise_id;
+        if (body.data.is_main_lift !== undefined) patch.is_main_lift = body.data.is_main_lift;
+        if (body.data.sort_order !== undefined) patch.sort_order = body.data.sort_order;
+        if (body.data.notes !== undefined) patch.notes = body.data.notes;
+
+        const planExercise = await trx
+          .updateTable('plan_exercises')
+          .set(patch)
+          .where('id', '=', params.data.exerciseId)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        return { type: 'updated', planId, planExercise } as const;
+      });
+
+      if (result.type === 'not-found') {
         res.status(404).json({ error: 'PLAN_EXERCISE_NOT_FOUND' });
         return;
       }
-      if (await planHistoryLocked(deps.db, planId)) {
-        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+      if (result.type === 'history-immutable') {
+        res.status(409).json(exerciseHistoryImmutable([params.data.exerciseId]));
         return;
       }
-      if (body.data.exercise_id) {
-        const exerciseVisible = await visibleExerciseForCoach(
-          deps.db,
-          body.data.exercise_id,
-          user.id,
-        );
-        if (!exerciseVisible) {
-          res.status(400).json({ error: 'EXERCISE_NOT_FOUND_OR_HIDDEN' });
-          return;
-        }
+      if (result.type === 'exercise-hidden') {
+        res.status(400).json({ error: 'EXERCISE_NOT_FOUND_OR_HIDDEN' });
+        return;
       }
 
-      const patch: Updateable<PlanExercisesTable> = {};
-      if (body.data.exercise_id !== undefined) patch.exercise_id = body.data.exercise_id;
-      if (body.data.is_main_lift !== undefined) patch.is_main_lift = body.data.is_main_lift;
-      if (body.data.sort_order !== undefined) patch.sort_order = body.data.sort_order;
-      if (body.data.notes !== undefined) patch.notes = body.data.notes;
-
-      const planExercise = await deps.db
-        .updateTable('plan_exercises')
-        .set(patch)
-        .where('id', '=', params.data.exerciseId)
-        .returningAll()
-        .executeTakeFirstOrThrow();
-
       deps.logger.info(
-        { planId, action: 'exercise', op: 'update', resourceId: planExercise.id },
+        {
+          planId: result.planId,
+          action: 'exercise',
+          op: 'update',
+          resourceId: result.planExercise.id,
+        },
         'plan_tree_mutated',
       );
-      res.status(200).json(toPlanExercise(planExercise));
+      res.status(200).json(toPlanExercise(result.planExercise));
     }),
   );
 
@@ -1282,19 +1458,36 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      const planId = await planIdForExercise(deps.db, params.data.exerciseId, user.id);
-      if (!planId) {
+      const result = await deps.db.transaction().execute(async (trx) => {
+        const planId = await planIdForExercise(trx, params.data.exerciseId, user.id);
+        if (!planId) return { type: 'not-found' } as const;
+        if (!(await lockPlanExercise(trx, params.data.exerciseId))) {
+          return { type: 'not-found' } as const;
+        }
+        if (await planExerciseHasLogs(trx, params.data.exerciseId)) {
+          return { type: 'history-immutable' } as const;
+        }
+
+        await trx.deleteFrom('plan_exercises').where('id', '=', params.data.exerciseId).execute();
+        return { type: 'deleted', planId } as const;
+      });
+
+      if (result.type === 'not-found') {
         res.status(404).json({ error: 'PLAN_EXERCISE_NOT_FOUND' });
         return;
       }
-      if (await planHistoryLocked(deps.db, planId)) {
-        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+      if (result.type === 'history-immutable') {
+        res.status(409).json(exerciseHistoryImmutable([params.data.exerciseId]));
         return;
       }
 
-      await deps.db.deleteFrom('plan_exercises').where('id', '=', params.data.exerciseId).execute();
       deps.logger.info(
-        { planId, action: 'exercise', op: 'delete', resourceId: params.data.exerciseId },
+        {
+          planId: result.planId,
+          action: 'exercise',
+          op: 'delete',
+          resourceId: params.data.exerciseId,
+        },
         'plan_tree_mutated',
       );
       res.status(204).send();
@@ -1321,37 +1514,48 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      const planId = await planIdForExercise(deps.db, params.data.exerciseId, user.id);
-      if (!planId) {
+      const result = await deps.db.transaction().execute(async (trx) => {
+        const planId = await planIdForExercise(trx, params.data.exerciseId, user.id);
+        if (!planId) return { type: 'not-found' } as const;
+        if (!(await lockPlanExercise(trx, params.data.exerciseId))) {
+          return { type: 'not-found' } as const;
+        }
+        if (await planExerciseHasLogs(trx, params.data.exerciseId)) {
+          return { type: 'history-immutable' } as const;
+        }
+
+        const set = await trx
+          .insertInto('plan_sets')
+          .values({
+            plan_exercise_id: params.data.exerciseId,
+            set_number: body.data.set_number,
+            target_reps: body.data.target_reps,
+            target_reps_max: body.data.target_reps_max ?? null,
+            intensity_mode: body.data.intensity_mode,
+            target_value: normalizeTargetValue(body.data.target_value),
+            set_type: body.data.set_type,
+            rest_seconds: body.data.rest_seconds ?? null,
+            coach_note: body.data.coach_note ?? null,
+          })
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        return { type: 'created', planId, set } as const;
+      });
+
+      if (result.type === 'not-found') {
         res.status(404).json({ error: 'PLAN_EXERCISE_NOT_FOUND' });
         return;
       }
-      if (await planHistoryLocked(deps.db, planId)) {
-        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+      if (result.type === 'history-immutable') {
+        res.status(409).json(exerciseHistoryImmutable([params.data.exerciseId]));
         return;
       }
 
-      const set = await deps.db
-        .insertInto('plan_sets')
-        .values({
-          plan_exercise_id: params.data.exerciseId,
-          set_number: body.data.set_number,
-          target_reps: body.data.target_reps,
-          target_reps_max: body.data.target_reps_max ?? null,
-          intensity_mode: body.data.intensity_mode,
-          target_value: normalizeTargetValue(body.data.target_value),
-          set_type: body.data.set_type,
-          rest_seconds: body.data.rest_seconds ?? null,
-          coach_note: body.data.coach_note ?? null,
-        })
-        .returningAll()
-        .executeTakeFirstOrThrow();
-
       deps.logger.info(
-        { planId, action: 'set', op: 'create', resourceId: set.id },
+        { planId: result.planId, action: 'set', op: 'create', resourceId: result.set.id },
         'plan_tree_mutated',
       );
-      res.status(201).json(toPlanSet(set));
+      res.status(201).json(toPlanSet(result.set));
     }),
   );
 
@@ -1375,54 +1579,72 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      const planId = await planIdForSet(deps.db, params.data.setId, user.id);
-      if (!planId) {
+      const result = await deps.db.transaction().execute(async (trx) => {
+        const planId = await planIdForSet(trx, params.data.setId, user.id);
+        if (!planId) return { type: 'not-found' } as const;
+
+        const existing = await trx
+          .selectFrom('plan_sets')
+          .selectAll()
+          .where('id', '=', params.data.setId)
+          .executeTakeFirst();
+        if (!existing) return { type: 'not-found' } as const;
+        if (!(await lockPlanExercise(trx, existing.plan_exercise_id))) {
+          return { type: 'not-found' } as const;
+        }
+        if (await planExerciseHasLogs(trx, existing.plan_exercise_id)) {
+          return {
+            type: 'history-immutable',
+            exerciseId: existing.plan_exercise_id,
+          } as const;
+        }
+
+        const patch: Updateable<PlanSetsTable> = {};
+        if (body.data.set_number !== undefined) patch.set_number = body.data.set_number;
+        if (body.data.target_reps !== undefined) patch.target_reps = body.data.target_reps;
+        if (body.data.target_reps_max !== undefined) {
+          patch.target_reps_max = body.data.target_reps_max;
+        }
+        if (body.data.intensity_mode !== undefined) {
+          patch.intensity_mode = body.data.intensity_mode;
+        }
+        if (body.data.target_value !== undefined) {
+          patch.target_value = normalizeTargetValue(body.data.target_value);
+        }
+        if (body.data.set_type !== undefined) patch.set_type = body.data.set_type;
+        if (body.data.rest_seconds !== undefined) patch.rest_seconds = body.data.rest_seconds;
+        if (body.data.coach_note !== undefined) patch.coach_note = body.data.coach_note;
+
+        const validation = mergedSetValidation(existing, patch);
+        if (validation) return { type: 'validation', validation } as const;
+
+        const set = await trx
+          .updateTable('plan_sets')
+          .set(patch)
+          .where('id', '=', params.data.setId)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        return { type: 'updated', planId, set } as const;
+      });
+
+      if (result.type === 'not-found') {
         res.status(404).json({ error: 'PLAN_SET_NOT_FOUND' });
         return;
       }
-      if (await planHistoryLocked(deps.db, planId)) {
-        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+      if (result.type === 'history-immutable') {
+        res.status(409).json(exerciseHistoryImmutable([result.exerciseId]));
         return;
       }
-
-      const existing = await deps.db
-        .selectFrom('plan_sets')
-        .selectAll()
-        .where('id', '=', params.data.setId)
-        .executeTakeFirstOrThrow();
-
-      const patch: Updateable<PlanSetsTable> = {};
-      if (body.data.set_number !== undefined) patch.set_number = body.data.set_number;
-      if (body.data.target_reps !== undefined) patch.target_reps = body.data.target_reps;
-      if (body.data.target_reps_max !== undefined) {
-        patch.target_reps_max = body.data.target_reps_max;
-      }
-      if (body.data.intensity_mode !== undefined) patch.intensity_mode = body.data.intensity_mode;
-      if (body.data.target_value !== undefined) {
-        patch.target_value = normalizeTargetValue(body.data.target_value);
-      }
-      if (body.data.set_type !== undefined) patch.set_type = body.data.set_type;
-      if (body.data.rest_seconds !== undefined) patch.rest_seconds = body.data.rest_seconds;
-      if (body.data.coach_note !== undefined) patch.coach_note = body.data.coach_note;
-
-      const validation = mergedSetValidation(existing, patch);
-      if (validation) {
-        res.status(400).json(validation);
+      if (result.type === 'validation') {
+        res.status(400).json(result.validation);
         return;
       }
-
-      const set = await deps.db
-        .updateTable('plan_sets')
-        .set(patch)
-        .where('id', '=', params.data.setId)
-        .returningAll()
-        .executeTakeFirstOrThrow();
 
       deps.logger.info(
-        { planId, action: 'set', op: 'update', resourceId: set.id },
+        { planId: result.planId, action: 'set', op: 'update', resourceId: result.set.id },
         'plan_tree_mutated',
       );
-      res.status(200).json(toPlanSet(set));
+      res.status(200).json(toPlanSet(result.set));
     }),
   );
 
@@ -1441,19 +1663,38 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      const planId = await planIdForSet(deps.db, params.data.setId, user.id);
-      if (!planId) {
+      const result = await deps.db.transaction().execute(async (trx) => {
+        const planId = await planIdForSet(trx, params.data.setId, user.id);
+        if (!planId) return { type: 'not-found' } as const;
+
+        const set = await trx
+          .selectFrom('plan_sets')
+          .select('plan_exercise_id')
+          .where('id', '=', params.data.setId)
+          .executeTakeFirst();
+        if (!set) return { type: 'not-found' } as const;
+        if (!(await lockPlanExercise(trx, set.plan_exercise_id))) {
+          return { type: 'not-found' } as const;
+        }
+        if (await planExerciseHasLogs(trx, set.plan_exercise_id)) {
+          return { type: 'history-immutable', exerciseId: set.plan_exercise_id } as const;
+        }
+
+        await trx.deleteFrom('plan_sets').where('id', '=', params.data.setId).execute();
+        return { type: 'deleted', planId } as const;
+      });
+
+      if (result.type === 'not-found') {
         res.status(404).json({ error: 'PLAN_SET_NOT_FOUND' });
         return;
       }
-      if (await planHistoryLocked(deps.db, planId)) {
-        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+      if (result.type === 'history-immutable') {
+        res.status(409).json(exerciseHistoryImmutable([result.exerciseId]));
         return;
       }
 
-      await deps.db.deleteFrom('plan_sets').where('id', '=', params.data.setId).execute();
       deps.logger.info(
-        { planId, action: 'set', op: 'delete', resourceId: params.data.setId },
+        { planId: result.planId, action: 'set', op: 'delete', resourceId: params.data.setId },
         'plan_tree_mutated',
       );
       res.status(204).send();

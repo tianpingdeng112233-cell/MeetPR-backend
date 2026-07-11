@@ -257,8 +257,8 @@ describe('POST /plans/:id/imported-history', () => {
   });
 });
 
-describe('plan tree lock once history exists (PLAN_HISTORY_IMMUTABLE)', () => {
-  it('locks tree mutations and draft calendar shifts after imported history; publish stays open', async () => {
+describe('plan tree mutability after imported history', () => {
+  it('locks only the imported exercise, its day, and calendar metadata; additive writes and publish stay open', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
     await ctx.db
@@ -283,14 +283,36 @@ describe('plan tree lock once history exists (PLAN_HISTORY_IMMUTABLE)', () => {
       .post(`/plans/${plan.planId}/days`)
       .set(auth(ctx.coachToken))
       .send({ day_of_week: 6, week_number: 1, sort_order: 9 });
-    expect(addDay.status).toBe(409);
-    expect(addDay.body).toEqual({ error: 'PLAN_HISTORY_IMMUTABLE' });
+    expect(addDay.status).toBe(201);
+
+    // Fill the new day so the publish completeness gate (422 on empty days /
+    // zero-set exercises) stays satisfied — this also proves additive
+    // exercise/set writes stay open on a history-locked plan.
+    const addExercise = await request(ctx.app)
+      .post(`/plans/days/${addDay.body.id as string}/exercises`)
+      .set(auth(ctx.coachToken))
+      .send({ exercise_id: ids.exercise, is_main_lift: false, sort_order: 0 });
+    expect(addExercise.status).toBe(201);
+    const addSet = await request(ctx.app)
+      .post(`/plans/exercises/${addExercise.body.id as string}/sets`)
+      .set(auth(ctx.coachToken))
+      .send({
+        set_number: 1,
+        target_reps: 5,
+        intensity_mode: 'weight',
+        target_value: '60',
+        set_type: 'working',
+      });
+    expect(addSet.status).toBe(201);
 
     const deleteDay = await request(ctx.app)
       .delete(`/plans/days/${day.id}`)
       .set(auth(ctx.coachToken));
     expect(deleteDay.status).toBe(409);
-    expect(deleteDay.body).toEqual({ error: 'PLAN_HISTORY_IMMUTABLE' });
+    expect(deleteDay.body).toEqual({
+      error: 'DAY_HISTORY_IMMUTABLE',
+      details: { day_id: day.id, exercise_ids: [plan.planExerciseId] },
+    });
 
     const shiftDates = await request(ctx.app)
       .patch(`/plans/${plan.planId}`)
@@ -307,7 +329,7 @@ describe('plan tree lock once history exists (PLAN_HISTORY_IMMUTABLE)', () => {
     expect(publish.status).toBe(200);
   });
 
-  it('a real logged set locks the tree the same way', async () => {
+  it('a real logged set freezes its plan exercise', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
     await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
@@ -322,6 +344,9 @@ describe('plan tree lock once history exists (PLAN_HISTORY_IMMUTABLE)', () => {
       .delete(`/plans/exercises/${plan.planExerciseId}`)
       .set(auth(ctx.coachToken));
     expect(deleteExercise.status).toBe(409);
-    expect(deleteExercise.body).toEqual({ error: 'PLAN_HISTORY_IMMUTABLE' });
+    expect(deleteExercise.body).toEqual({
+      error: 'EXERCISE_HISTORY_IMMUTABLE',
+      details: { exercise_ids: [plan.planExerciseId] },
+    });
   });
 });
