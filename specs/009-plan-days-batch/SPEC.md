@@ -109,8 +109,7 @@ export const BatchDaysBodySchema = z
 1. **归属真 gate（一次）**：`selectOwnedPlan(deps.db, planId, coach.id)`。不属于该教练 → `404 PLAN_NOT_FOUND`。之后所有子写入天然限定在这张计划内。
 2. **body 校验**：`BatchDaysBodySchema.safeParse` → 400 `validationEnvelope`。
 3. **动作可见性真 gate（批量，一次）**：收集 `upsert_days` 里全部去重 `exercise_id`，走**一次** `visibleExerciseQuery(db, coach.id, 'coach').where('id', 'in', ids)`（见 §2 helper）。任一 id 不在可见集 → `400 EXERCISE_NOT_FOUND_OR_HIDDEN`（附缺失 id 列表），**整批拒、零写入**。空集跳过。
-4. **一个事务**（`deps.db.transaction().execute(async (trx) => {…})`，沿用 `/:id/publish` 已有事务范式）：
-   0. **冻结检查（016 联动，0.2 起）**：对 `delete_day_ids` 覆盖的天按 016 锁梯取锁（day 行 `FOR UPDATE` → 其全部 `plan_exercises` `FOR UPDATE`）后查 `set_logs`——任一含冻结动作 → 整事务 409 `DAY_HISTORY_IMMUTABLE` + `details.day_ids`，零写入。`plan_patch` 含日历字段（`start_date`/`end_date`/`plan_weeks`）时，另按 016 计划级历史锁（整树锁梯 + `planHistoryLocked`）检查 → 锁则 409 `PLAN_HISTORY_IMMUTABLE`。判定 helper 与逐条端点共用（spec 016）。
+4. **一个事务**（`deps.db.transaction().execute(async (trx) => {…})`，沿用 `/:id/publish` 已有事务范式）：0. **冻结检查（016 联动，0.2 起）**：对 `delete_day_ids` 覆盖的天按 016 锁梯取锁（day 行 `FOR UPDATE` → 其全部 `plan_exercises` `FOR UPDATE`）后查 `set_logs`——任一含冻结动作 → 整事务 409 `DAY_HISTORY_IMMUTABLE` + `details.day_ids`，零写入。`plan_patch` 含日历字段（`start_date`/`end_date`/`plan_weeks`）时，另按 016 计划级历史锁（整树锁梯 + `planHistoryLocked`）检查 → 锁则 409 `PLAN_HISTORY_IMMUTABLE`。判定 helper 与逐条端点共用（spec 016）。
    1. `plan_patch` 若在：合并现值算日期序（同 `PATCH /plans/:id`：`mergedStart/End`），`updateTable('plans').set({…, updated_at: now()})`。
    2. **删**：`delete_day_ids` 非空 → `deleteFrom('plan_days').where('plan_id','=',planId).where('id','in',delete_day_ids)`。`plan_id` 兜底 = 客户端传别的计划的 day id **删不动**（静默 no-op，不 trust client id）。级联删 exercises/sets；`set_logs.plan_exercise_id` 自 0031 起 `ON DELETE SET NULL`（脱链非删除）——且步骤 4.0 已保证这些天无打卡，实际不会产生脱链。
    3. **插**：按 `upsert_days` 顺序，每天 `insertInto('plan_days').values({plan_id, week_number, day_of_week, sort_order}).returning(['id'])`；每个 exercise `insertInto('plan_exercises')…returning(['id'])`；该 exercise 的 sets **批量** `insertInto('plan_sets').values([...])`，`target_value` 逐条过 `normalizeTargetValue`（同单条 POST，2 位小数）。
@@ -205,7 +204,7 @@ export const batchDays = (
 ## 不做
 
 - **整盘 `POST /plans/:id/replace`**：使已打卡动作的 `set_logs` 脱链（0031 后不再是 cascade 删除，但脱链同样不可接受），且会被 016 的动作级门整单拒绝。天级/动作级差量是硬约束。
-- **天内 exercise/set 级 in-place 保 id**：天级替换、不改进，YAGNI——*2026-07-11 按 spec 016 补边界*：该结论仅覆盖**无冻结动作的天**;含冻结动作（有 `set_log`）的天**不入批**（步骤 4.0 整事务 409 `DAY_HISTORY_IMMUTABLE`），其编辑走逐条端点、由 016 的动作级门管辖。批量端点始终不承载冻结树部件，body schema 不加 id 字段。
+- **天内 exercise/set 级 in-place 保 id**：天级替换、不改进，YAGNI——_2026-07-11 按 spec 016 补边界_：该结论仅覆盖**无冻结动作的天**;含冻结动作（有 `set_log`）的天**不入批**（步骤 4.0 整事务 409 `DAY_HISTORY_IMMUTABLE`），其编辑走逐条端点、由 016 的动作级门管辖。批量端点始终不承载冻结树部件，body schema 不加 id 字段。
 - **提高/豁免 `RATE_LIMIT_MAX`** 或给 plan 写路由开限流豁免：削真 gate。
 - **乐观锁/版本号并发控制**：单教练编辑自有计划，低并发。
 - **server 端重算 diff**：客户端保留差量逻辑，server 只忠实执行 delete + upsert。
@@ -220,7 +219,7 @@ export const batchDays = (
 
 ## 修订记录
 
-| 日期       | 版本 | 变更                                                                                                                                                                                        | 作者   |
-| ---------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| 2026-07-02 | 0.1  | 起草：`POST /plans/:id/days/batch`（天级差量批量、一个事务、归属+可见性+plan_patch 白名单真 gate、数组 DoS 上限）+ plan-web reconcile 单请求化 + 分块 + tests。限流不动，不做整盘 replace。 | Claude |
+| 日期       | 版本 | 变更                                                                                                                                                                                                                                                                                                                                     | 作者   |
+| ---------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 2026-07-02 | 0.1  | 起草：`POST /plans/:id/days/batch`（天级差量批量、一个事务、归属+可见性+plan_patch 白名单真 gate、数组 DoS 上限）+ plan-web reconcile 单请求化 + 分块 + tests。限流不动，不做整盘 replace。                                                                                                                                              | Claude |
 | 2026-07-11 | 0.2  | 按 spec 016 修订：数据事实对齐 0031（CASCADE→SET NULL，删除后果=脱链非数据丢失）；事务新增步骤 4.0 冻结检查（含冻结动作的天整事务 409 `DAY_HISTORY_IMMUTABLE`，`plan_patch` 日历字段受计划级历史锁）；分块补注（4.0 逐块执行、冻结天不入批、published 跨块中间态接受）。含冻结天的编辑走逐条端点（016），批量 body schema 不加 id 字段。 | Claude |

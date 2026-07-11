@@ -23,18 +23,18 @@
 
 对 draft 同样生效(imported-history 会向草稿注入打卡,构成同样的冻结)。树写操作不看 status(现状已如此,维持);publish 端点自身的 draft 门(`PLAN_NOT_DRAFT`)不变——放开的是编辑,不是重复发布。
 
-| 操作 | 016 行为 |
-|---|---|
-| PATCH / DELETE `plan_exercise`(冻结) | 409 `EXERCISE_HISTORY_IMMUTABLE` |
-| POST / PATCH / DELETE 冻结动作下的 `plan_sets` | 409 `EXERCISE_HISTORY_IMMUTABLE` |
-| 未冻结动作的增删改(含已发布计划) | ✅ 允许 |
-| POST 新动作到任意天(含有冻结动作的天) | ✅ 允许(加东西不碰历史) |
-| POST 新天 | ✅ 允许 |
-| PATCH / DELETE `plan_day`(天内含冻结动作) | 409 `DAY_HISTORY_IMMUTABLE`(挪天/删天会重释已打卡历史的位置语义;学员侧单日顺延不受影响,走 `plan_day_shifts` 覆盖层) |
-| PATCH / DELETE `plan_day`(天内无冻结动作) | ✅ 允许 |
-| PATCH `/plans/:id`:`name` | ✅ 恒可 |
-| PATCH `/plans/:id`:`start_date` / `end_date` / `plan_weeks` / `source_template_id`,且计划内存在任何打卡 | 409 `PLAN_HISTORY_IMMUTABLE`(**去掉 `status==='draft'` 前置**,补上述缺口) |
-| status 流转 / publish 门 / `PATCHABLE_PLAN_STATUSES` | 不变 |
+| 操作                                                                                                    | 016 行为                                                                                                            |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| PATCH / DELETE `plan_exercise`(冻结)                                                                    | 409 `EXERCISE_HISTORY_IMMUTABLE`                                                                                    |
+| POST / PATCH / DELETE 冻结动作下的 `plan_sets`                                                          | 409 `EXERCISE_HISTORY_IMMUTABLE`                                                                                    |
+| 未冻结动作的增删改(含已发布计划)                                                                        | ✅ 允许                                                                                                             |
+| POST 新动作到任意天(含有冻结动作的天)                                                                   | ✅ 允许(加东西不碰历史)                                                                                             |
+| POST 新天                                                                                               | ✅ 允许                                                                                                             |
+| PATCH / DELETE `plan_day`(天内含冻结动作)                                                               | 409 `DAY_HISTORY_IMMUTABLE`(挪天/删天会重释已打卡历史的位置语义;学员侧单日顺延不受影响,走 `plan_day_shifts` 覆盖层) |
+| PATCH / DELETE `plan_day`(天内无冻结动作)                                                               | ✅ 允许                                                                                                             |
+| PATCH `/plans/:id`:`name`                                                                               | ✅ 恒可                                                                                                             |
+| PATCH `/plans/:id`:`start_date` / `end_date` / `plan_weeks` / `source_template_id`,且计划内存在任何打卡 | 409 `PLAN_HISTORY_IMMUTABLE`(**去掉 `status==='draft'` 前置**,补上述缺口)                                           |
+| status 流转 / publish 门 / `PATCHABLE_PLAN_STATUSES`                                                    | 不变                                                                                                                |
 
 错误码语义:`PLAN_HISTORY_IMMUTABLE` 从「整树锁」收窄为「仅计划级日历元数据锁」;新增 `EXERCISE_HISTORY_IMMUTABLE`、`DAY_HISTORY_IMMUTABLE`,409 body 附 `details`(如 `{ "exercise_ids": [...] }` / `{ "day_id": ... }`)供 plan-web 行级报错。
 
@@ -44,11 +44,11 @@
 
 **锁梯**(均在写事务内,锁全部 `FOR UPDATE`,按层级自上而下取锁避免死锁):
 
-| 端点 | 锁序 | 然后 |
-|---|---|---|
-| exercise PATCH / DELETE;其下 sets POST / PATCH / DELETE | 目标 `plan_exercise` 行 | 查 `set_logs` → 冻结则 409;否则执行 |
-| day PATCH / DELETE | `plan_day` 行(阻断并发新增 exercise)→ 该天全部 `plan_exercises` 行(阻断并发打卡) | 查 `set_logs` → 含冻结则 409;否则执行 |
-| plan PATCH(日历字段 `start_date`/`end_date`/`plan_weeks`/`source_template_id`) | `plans` 行(阻断并发新增 day)→ 全部 `plan_days` → 全部 `plan_exercises` | `planHistoryLocked` → 锁则 409;否则执行(低频端点,重锁可接受;phantom 天/动作/打卡被逐层阻断) |
+| 端点                                                                           | 锁序                                                                             | 然后                                                                                        |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| exercise PATCH / DELETE;其下 sets POST / PATCH / DELETE                        | 目标 `plan_exercise` 行                                                          | 查 `set_logs` → 冻结则 409;否则执行                                                         |
+| day PATCH / DELETE                                                             | `plan_day` 行(阻断并发新增 exercise)→ 该天全部 `plan_exercises` 行(阻断并发打卡) | 查 `set_logs` → 含冻结则 409;否则执行                                                       |
+| plan PATCH(日历字段 `start_date`/`end_date`/`plan_weeks`/`source_template_id`) | `plans` 行(阻断并发新增 day)→ 全部 `plan_days` → 全部 `plan_exercises`           | `planHistoryLocked` → 锁则 409;否则执行(低频端点,重锁可接受;phantom 天/动作/打卡被逐层阻断) |
 
 - 删除已提交后才到达的打卡:FK 复查失败,学员端按既有错误处理重取计划树——不产生脱链。
 - 显示层竞态不在本 spec 范围:学员手机已渲染旧目标、教练同刻改了**未冻结**动作的内容——打卡存实际完成值,历史不失真;mid-session 实时刷新契约见「不做」。
@@ -86,13 +86,13 @@
 
 ## 落点(实装时核实)
 
-| 件 | 位置 |
-|---|---|
-| 动作级 helper(`planExerciseHasLogs` / 复用 `planDayHasLogs`) | `src/routes/plans/index.ts:282` 附近 |
-| 9 个树写端点门改造 + `PATCH /plans/:id` 缺口 | `src/routes/plans/index.ts`(现有 `planHistoryLocked` call sites 逐个按上表换判定) |
-| `has_logs` 序列化 | `getPlanWithChildren`(`:128`)+ `toPlanExercise` + 响应类型 |
-| 009 修订 | `specs/009-plan-days-batch/SPEC.md`(修订记录留痕) |
-| 测试 | 规则表逐行(含 draft imported-history 同规则、published 无打卡可编辑、天内混合冻结/未冻结)+ 锁梯竞态用例(三层各一)+ `has_logs` 序列化(orphan 打卡 `plan_exercise_id IS NULL` 不计入任何行;无打卡整树全 `false`) |
+| 件                                                           | 位置                                                                                                                                                                                                           |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 动作级 helper(`planExerciseHasLogs` / 复用 `planDayHasLogs`) | `src/routes/plans/index.ts:282` 附近                                                                                                                                                                           |
+| 9 个树写端点门改造 + `PATCH /plans/:id` 缺口                 | `src/routes/plans/index.ts`(现有 `planHistoryLocked` call sites 逐个按上表换判定)                                                                                                                              |
+| `has_logs` 序列化                                            | `getPlanWithChildren`(`:128`)+ `toPlanExercise` + 响应类型                                                                                                                                                     |
+| 009 修订                                                     | `specs/009-plan-days-batch/SPEC.md`(修订记录留痕)                                                                                                                                                              |
+| 测试                                                         | 规则表逐行(含 draft imported-history 同规则、published 无打卡可编辑、天内混合冻结/未冻结)+ 锁梯竞态用例(三层各一)+ `has_logs` 序列化(orphan 打卡 `plan_exercise_id IS NULL` 不计入任何行;无打卡整树全 `false`) |
 
 ## 下游
 
@@ -102,6 +102,6 @@
 
 ## 修订记录
 
-| 日期 | 版本 | 修订 | 作者 |
-|---|---|---|---|
-| 2026-07-11 | 0.1 | 起草:计划级历史锁收窄为动作级(David 拍板 B·动作颗粒度·P1);补 published 元数据锁缺口;`has_logs` 序列化;009 同波修订;组级/动态调整两条已议未采路线存档 | Claude |
+| 日期       | 版本 | 修订                                                                                                                                                 | 作者   |
+| ---------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 2026-07-11 | 0.1  | 起草:计划级历史锁收窄为动作级(David 拍板 B·动作颗粒度·P1);补 published 元数据锁缺口;`has_logs` 序列化;009 同波修订;组级/动态调整两条已议未采路线存档 | Claude |
