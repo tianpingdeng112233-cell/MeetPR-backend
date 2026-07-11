@@ -74,6 +74,7 @@ export interface PlanExerciseResponse {
   is_main_lift: boolean;
   sort_order: number;
   notes: string | null;
+  has_logs: boolean;
   sets: PlanSetResponse[];
 }
 
@@ -169,6 +170,7 @@ export function toPlanDayShift(row: PlanDayShiftRow): PlanDayShiftResponse {
 export function toPlanExercise(
   row: PlanExerciseRow,
   sets: PlanSetResponse[] = [],
+  hasLogs = false,
 ): PlanExerciseResponse {
   return {
     id: row.id,
@@ -177,6 +179,7 @@ export function toPlanExercise(
     is_main_lift: row.is_main_lift,
     sort_order: row.sort_order,
     notes: row.notes,
+    has_logs: hasLogs,
     sets,
   };
 }

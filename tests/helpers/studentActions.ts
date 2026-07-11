@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import type { Kysely } from 'kysely';
+import type { PoolClient } from 'pg';
 import { DataType, newDb } from 'pg-mem';
 import pino from 'pino';
 import type { Response } from 'supertest';
@@ -128,6 +129,10 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       source_template_id UUID,
       status TEXT NOT NULL DEFAULT 'draft',
       kind TEXT NOT NULL DEFAULT 'regular',
+      block_type TEXT,
+      mesocycle_phase TEXT,
+      training_max NUMERIC,
+      tm_set_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -161,6 +166,14 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       notes TEXT
     );
 
+    CREATE TABLE plan_day_shifts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      plan_day_id UUID NOT NULL UNIQUE REFERENCES plan_days(id) ON DELETE CASCADE,
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      shifted_to_date DATE NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE plan_sets (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       plan_exercise_id UUID NOT NULL REFERENCES plan_exercises(id) ON DELETE CASCADE,
@@ -171,6 +184,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       target_value NUMERIC(6,2) NOT NULL,
       set_type TEXT NOT NULL,
       rest_seconds INT,
+      coach_note TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
@@ -313,7 +327,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
 
 export async function makeContext(
   logger = pino({ level: 'silent' }),
-  extras: { oss?: OssService } = {},
+  extras: { oss?: OssService; afterQuery?: (sql: string) => Promise<void> } = {},
 ): Promise<TestContext> {
   const mem = newDb();
   registerPgMemFunctions(mem);
@@ -321,6 +335,30 @@ export async function makeContext(
 
   const { Pool } = mem.adapters.createPg();
   const pool = new Pool();
+  if (extras.afterQuery) {
+    // pg-mem's adapter Pool never emits 'connect', so instrument checkout itself:
+    // wrap each client's query as it leaves pool.connect().
+    const afterQuery = extras.afterQuery;
+    const wrapped = new WeakSet();
+    const connect = pool.connect.bind(pool) as () => Promise<PoolClient>;
+    (pool as { connect: () => Promise<PoolClient> }).connect = async () => {
+      const client = await connect();
+      if (!wrapped.has(client)) {
+        wrapped.add(client);
+        const query = client.query.bind(client);
+        (client as { query: unknown }).query = new Proxy(query, {
+          apply: async (target, thisArg, args) => {
+            const result = (await Reflect.apply(target, thisArg, args)) as unknown;
+            const query = args[0] as string | { text?: string } | undefined;
+            const text = typeof query === 'string' ? query : query?.text;
+            if (text) await afterQuery(text);
+            return result;
+          },
+        });
+      }
+      return client;
+    };
+  }
   const db = createDb(pool);
 
   await db
@@ -409,7 +447,7 @@ export async function makeContext(
     .execute();
 
   return {
-    app: createApp({ config, logger, db, ...extras }),
+    app: createApp({ config, logger, db, ...(extras.oss ? { oss: extras.oss } : {}) }),
     db,
     coachToken: signToken(ids.coach, 'coach'),
     otherCoachToken: signToken(ids.otherCoach, 'coach'),
