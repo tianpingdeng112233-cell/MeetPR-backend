@@ -1,4 +1,4 @@
--- Migration 0038: replace the users refresh-token slot with independently
+-- Migration 0039: replace the users refresh-token slot with independently
 -- revocable sessions while preserving every currently issued refresh token.
 
 BEGIN;
