@@ -9,6 +9,7 @@ import { coachBindRequestsRouter, studentBindRequestsRouter } from './bind-reque
 import { coachRouter } from './coach';
 import { coachEvaluationsRouter, studentEvaluationsRouter } from './evaluations';
 import { exercisesRouter } from './exercises';
+import { coachExerciseStatsRouter } from './exercise-stats';
 import { coachFeedbackRouter, feedbackRouter, studentFeedbackRouter } from './feedback';
 import { coachInviteCodesRouter } from './invite-codes';
 import { meRouter } from './me';
@@ -51,6 +52,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use('/feedback', deps.requireAuth, feedbackRouter({ db: deps.db }));
   app.use('/me', deps.requireAuth, meRouter({ db: deps.db, logger: deps.logger }));
   app.use('/coach', deps.requireAuth, coachRouter({ db: deps.db }));
+  app.use('/coach', deps.requireAuth, coachExerciseStatsRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachFeedbackRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachInviteCodesRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachBindRequestsRouter({ db: deps.db }));
