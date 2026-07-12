@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 
 import { allowLegacyTokens, jwtAudience, jwtIssuer, type Config } from '../config';
-import { USER_ROLES } from '../db/types';
+import { USER_ROLES, type UserRole } from '../db/types';
 
 const AccessTokenPayloadSchema = z
   .object({
@@ -29,100 +29,105 @@ const LegacyAccessTokenPayloadSchema = z
 
 export type AccessTokenPayload = z.infer<typeof AccessTokenPayloadSchema>;
 
-export function createRequireAuth(
-  config: Pick<
-    Config,
-    'JWT_ACCESS_SECRET' | 'JWT_AUDIENCE' | 'JWT_ISSUER' | 'AUTH_ALLOW_LEGACY_TOKENS'
-  >,
-): RequestHandler {
-  return (req, res, next) => {
-    const header = req.headers.authorization;
-    if (typeof header !== 'string' || !header.startsWith('Bearer ')) {
-      res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
-      return;
-    }
+type AuthConfig = Pick<
+  Config,
+  'JWT_ACCESS_SECRET' | 'JWT_AUDIENCE' | 'JWT_ISSUER' | 'AUTH_ALLOW_LEGACY_TOKENS'
+>;
 
-    const token = header.slice('Bearer '.length).trim();
-    if (token.length === 0) {
-      res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
-      return;
-    }
+interface AuthenticatedUser {
+  id: string;
+  role: UserRole;
+}
 
-    let payload: unknown;
-    let legacy = false;
+/**
+ * The single source of truth for access-token validation, shared by the strict
+ * (createRequireAuth) and optional (createOptionalAuth) guards. Returns the
+ * authenticated principal, or null for any failure — missing/blank header,
+ * bad signature, wrong algorithm/aud/iss, expiry, or a payload that fails the
+ * schema. Never throws and never mutates the request.
+ *
+ * Security posture: HS256 only, aud/iss enforced. When legacy grace is on, a
+ * token that fails the strict verify is retried WITHOUT the aud/iss requirement
+ * so sessions minted before those claims existed keep working; signature and
+ * expiry are still enforced, so a tampered or expired (TokenExpiredError) token
+ * is rejected on both paths. A wrong `typ` never satisfies either schema, so a
+ * refresh token can't cross into an access-protected surface.
+ */
+function verifyBearerToken(
+  header: string | undefined,
+  config: AuthConfig,
+): AuthenticatedUser | null {
+  if (typeof header !== 'string' || !header.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const token = header.slice('Bearer '.length).trim();
+  if (token.length === 0) {
+    return null;
+  }
+
+  let payload: unknown;
+  let legacy = false;
+  try {
+    payload = jwt.verify(token, config.JWT_ACCESS_SECRET, {
+      algorithms: ['HS256'],
+      audience: jwtAudience(config),
+      issuer: jwtIssuer(config),
+    });
+  } catch (error: unknown) {
+    if (!allowLegacyTokens(config) || error instanceof jwt.TokenExpiredError) {
+      return null;
+    }
     try {
-      payload = jwt.verify(token, config.JWT_ACCESS_SECRET, {
-        algorithms: ['HS256'],
-        audience: jwtAudience(config),
-        issuer: jwtIssuer(config),
-      });
-    } catch (error: unknown) {
-      // A token issued before aud/iss claims existed fails the strict verify.
-      // When legacy grace is on, retry without the aud/iss requirement; the
-      // signature and expiry are still enforced, so a tampered or expired token
-      // (TokenExpiredError) is rejected here regardless.
-      if (!allowLegacyTokens(config) || error instanceof jwt.TokenExpiredError) {
-        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
-        return;
-      }
-      try {
-        payload = jwt.verify(token, config.JWT_ACCESS_SECRET, { algorithms: ['HS256'] });
-        legacy = true;
-      } catch {
-        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
-        return;
-      }
+      payload = jwt.verify(token, config.JWT_ACCESS_SECRET, { algorithms: ['HS256'] });
+      legacy = true;
+    } catch {
+      return null;
     }
+  }
 
-    const parsed = (legacy ? LegacyAccessTokenPayloadSchema : AccessTokenPayloadSchema).safeParse(
-      payload,
-    );
-    if (!parsed.success) {
+  const parsed = (legacy ? LegacyAccessTokenPayloadSchema : AccessTokenPayloadSchema).safeParse(
+    payload,
+  );
+  if (!parsed.success) {
+    return null;
+  }
+
+  return { id: parsed.data.sub, role: parsed.data.role };
+}
+
+export function createRequireAuth(config: AuthConfig): RequestHandler {
+  return (req, res, next) => {
+    const user = verifyBearerToken(req.headers.authorization, config);
+    if (!user) {
       res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
       return;
     }
 
-    req.user = { id: parsed.data.sub, role: parsed.data.role };
+    req.user = user;
     next();
   };
 }
 
 /**
  * Like createRequireAuth, but NEVER 401s. A valid Bearer token sets req.user;
- * anything else (missing/blank/invalid token) leaves req.user unset and calls
- * next(). This is what keeps the pre-login onboarding funnel alive: an anon
- * `onboarding_step` event must not be rejected for lacking a token (SPEC §2).
+ * anything else (missing/blank/invalid/legacy-rejected/forged token) leaves
+ * req.user unset and calls next(). This is what keeps the pre-login onboarding
+ * funnel alive: an anon `onboarding_step` event must not be rejected for lacking
+ * a token (SPEC §2). It shares verifyBearerToken with the strict guard, so a
+ * legacy token that requireAuth would accept is credited here too (req.user
+ * set), and one it would reject degrades to anonymous rather than 401.
  *
  * exactOptionalPropertyTypes gate: never assign `req.user = undefined` (type
  * error). Unset it with `delete` so the type stays `{id, role} | absent`.
  */
-export function createOptionalAuth(config: Pick<Config, 'JWT_ACCESS_SECRET'>): RequestHandler {
+export function createOptionalAuth(config: AuthConfig): RequestHandler {
   return (req, _res, next) => {
     delete req.user;
 
-    const header = req.headers.authorization;
-    if (typeof header !== 'string' || !header.startsWith('Bearer ')) {
-      next();
-      return;
-    }
-
-    const token = header.slice('Bearer '.length).trim();
-    if (token.length === 0) {
-      next();
-      return;
-    }
-
-    let payload: unknown;
-    try {
-      payload = jwt.verify(token, config.JWT_ACCESS_SECRET);
-    } catch {
-      next();
-      return;
-    }
-
-    const parsed = AccessTokenPayloadSchema.safeParse(payload);
-    if (parsed.success) {
-      req.user = { id: parsed.data.sub, role: parsed.data.role };
+    const user = verifyBearerToken(req.headers.authorization, config);
+    if (user) {
+      req.user = user;
     }
     next();
   };
