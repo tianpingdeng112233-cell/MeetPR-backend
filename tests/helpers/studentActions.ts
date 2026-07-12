@@ -204,6 +204,13 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    CREATE TABLE student_onboarding_profiles (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      squat_1rm_kg NUMERIC(6,2),
+      bench_1rm_kg NUMERIC(6,2),
+      deadlift_1rm_kg NUMERIC(6,2)
+    );
+
     CREATE TABLE bind_requests (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -236,6 +243,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       failed BOOLEAN NOT NULL DEFAULT FALSE,
       assumed BOOLEAN NOT NULL DEFAULT FALSE,
       adhoc BOOLEAN NOT NULL DEFAULT FALSE,
+      e1rm_confidence TEXT,
       logged_date DATE NOT NULL,
       logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (student_id, plan_exercise_id, set_index),

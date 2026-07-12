@@ -973,6 +973,53 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
     }),
   );
 
+  router.delete(
+    '/:id',
+    requireRole('coach'),
+    route(async (req, res) => {
+      const user = ensureUser(req);
+      if (!user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      const params = IdParamSchema.safeParse(req.params);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+
+      const result = await deps.db.transaction().execute(async (trx) => {
+        const plan = await selectOwnedPlan(trx, params.data.id, user.id);
+        if (!plan) return { type: 'not-found' } as const;
+        if (plan.status !== 'draft') {
+          return { type: 'tree-immutable', status: plan.status } as const;
+        }
+        if (await planHistoryLocked(trx, plan.id)) {
+          return { type: 'history-immutable' } as const;
+        }
+
+        await trx.deleteFrom('plans').where('id', '=', plan.id).execute();
+        return { type: 'deleted' } as const;
+      });
+
+      if (result.type === 'not-found') {
+        res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+        return;
+      }
+      if (result.type === 'tree-immutable') {
+        res.status(409).json({ error: 'PLAN_TREE_IMMUTABLE', status: result.status });
+        return;
+      }
+      if (result.type === 'history-immutable') {
+        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+        return;
+      }
+
+      res.status(204).send();
+    }),
+  );
+
   router.post(
     '/:id/imported-history',
     route(async (req, res) => {

@@ -122,11 +122,25 @@ describe('GET /students/:id/videos (spec 007)', () => {
     expect(linked).toMatchObject({
       set_log_id: setLogId,
       content_type: 'video/mp4',
+      exercise_name: 'Competition Squat',
+      set_index: 0,
+      weight_kg: '140.00',
+      reps: 5,
     });
     expect(linked.plan_exercise_id).toEqual(expect.any(String));
     expect(linked.logged_at).toEqual(expect.any(String));
     // Metadata only: playback URLs come from GET /uploads/:id/url per item.
     expect(linked.url).toBeUndefined();
+
+    const unlinked = res.body.videos.find(
+      (video: { set_log_id: string | null }) => video.set_log_id === null,
+    );
+    expect(unlinked).toMatchObject({
+      exercise_name: null,
+      set_index: null,
+      weight_kg: null,
+      reps: null,
+    });
   });
 
   it('scopes a bonded coach to videos from their own plans plus unlinked ones', async () => {

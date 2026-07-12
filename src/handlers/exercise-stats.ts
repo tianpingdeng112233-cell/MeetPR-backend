@@ -1,0 +1,275 @@
+import type { Kysely } from 'kysely';
+
+import { E1RM_POLICY, calculateEligibleE1RM, mainLiftFamily } from '../domain/e1rm';
+import type { Database } from '../db/types';
+import { dateOnly, decimal, timestamp } from './serialization';
+
+export const EXERCISE_STATS_LIMITS = {
+  recentSessions: 5,
+  sessionsPerSetCount: 3,
+} as const;
+
+type ScopedLog = Awaited<ReturnType<typeof fetchScopedLogs>>[number];
+
+async function fetchScopedLogs(
+  db: Kysely<Database>,
+  coachId: string,
+  studentId: string,
+  exerciseId?: string,
+) {
+  let query = db
+    .selectFrom('set_logs as sl')
+    .innerJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
+    .innerJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
+    .innerJoin('plans as p', 'p.id', 'pd.plan_id')
+    .innerJoin('exercises as e', 'e.id', 'sl.exercise_id')
+    .select([
+      'sl.id as id',
+      'sl.exercise_id as exercise_id',
+      'e.name as exercise_name',
+      'sl.set_index as set_index',
+      'sl.weight_kg as weight_kg',
+      'sl.reps as reps',
+      'sl.rpe as rpe',
+      'sl.completed as completed',
+      'sl.failed as failed',
+      'sl.assumed as assumed',
+      'sl.e1rm_confidence as e1rm_confidence',
+      'sl.logged_date as logged_date',
+      'sl.logged_at as logged_at',
+    ])
+    .where('sl.student_id', '=', studentId)
+    .where('p.coach_id', '=', coachId)
+    .where('p.trainee_id', '=', studentId)
+    .where('p.status', 'in', ['published', 'paused', 'completed']);
+  if (exerciseId !== undefined) query = query.where('sl.exercise_id', '=', exerciseId);
+  return query.orderBy('sl.logged_at', 'desc').execute();
+}
+
+async function onboardingOneRm(db: Kysely<Database>, studentId: string) {
+  const row = await db
+    .selectFrom('student_onboarding_profiles')
+    .select(['squat_1rm_kg', 'bench_1rm_kg', 'deadlift_1rm_kg'])
+    .where('user_id', '=', studentId)
+    .executeTakeFirst();
+  return {
+    squat: decimal(row?.squat_1rm_kg ?? null, 2),
+    bench: decimal(row?.bench_1rm_kg ?? null, 2),
+    deadlift: decimal(row?.deadlift_1rm_kg ?? null, 2),
+  };
+}
+
+function utcDate(value: string | Date): Date {
+  return new Date(`${dateOnly(value)}T00:00:00.000Z`);
+}
+
+function plannedDate(startDate: string | Date, weekNumber: number, dayOfWeek: number): string {
+  const date = utcDate(startDate);
+  date.setUTCDate(date.getUTCDate() + (weekNumber - 1) * 7 + (dayOfWeek - 1));
+  return date.toISOString().slice(0, 10);
+}
+
+async function recentPlanDates(db: Kysely<Database>, coachId: string, studentId: string) {
+  const rows = await db
+    .selectFrom('plan_days as pd')
+    .innerJoin('plans as p', 'p.id', 'pd.plan_id')
+    .select(['p.start_date', 'pd.week_number', 'pd.day_of_week'])
+    .where('p.coach_id', '=', coachId)
+    .where('p.trainee_id', '=', studentId)
+    .where('p.status', 'in', ['published', 'paused', 'completed'])
+    .execute();
+  return rows.map((row) => plannedDate(row.start_date, row.week_number, row.day_of_week));
+}
+
+export async function fetchExerciseStatsOverview(
+  db: Kysely<Database>,
+  coachId: string,
+  studentId: string,
+) {
+  const [logs, oneRm, planDates] = await Promise.all([
+    fetchScopedLogs(db, coachId, studentId),
+    onboardingOneRm(db, studentId),
+    recentPlanDates(db, coachId, studentId),
+  ]);
+
+  const byExercise = new Map<
+    string,
+    { name: string; dates: Set<string>; lastLoggedAt: Date | string }
+  >();
+  for (const log of logs) {
+    const current = byExercise.get(log.exercise_id);
+    if (current) {
+      current.dates.add(dateOnly(log.logged_date));
+    } else {
+      byExercise.set(log.exercise_id, {
+        name: log.exercise_name,
+        dates: new Set([dateOnly(log.logged_date)]),
+        lastLoggedAt: log.logged_at,
+      });
+    }
+  }
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const windowStart = new Date(today);
+  windowStart.setUTCDate(windowStart.getUTCDate() - (E1RM_POLICY.rollingWindowDays - 1));
+  const start = windowStart.toISOString().slice(0, 10);
+  const end = today.toISOString().slice(0, 10);
+  const totalPlannedDays = new Set(planDates.filter((date) => date >= start && date <= end)).size;
+  const trainedDays = new Set(
+    logs
+      .filter(
+        (log) =>
+          !log.assumed &&
+          log.completed &&
+          dateOnly(log.logged_date) >= start &&
+          dateOnly(log.logged_date) <= end,
+      )
+      .map((log) => dateOnly(log.logged_date)),
+  ).size;
+
+  return {
+    exercises: [...byExercise.entries()].map(([exerciseId, value]) => ({
+      exercise_id: exerciseId,
+      name: value.name,
+      session_count: value.dates.size,
+      last_logged_at: timestamp(value.lastLoggedAt),
+    })),
+    one_rm: oneRm,
+    last_trained_at: logs[0] ? timestamp(logs[0].logged_at) : null,
+    recent_4w: {
+      trained_days: trainedDays,
+      total_planned_days: totalPlannedDays,
+      completion_rate:
+        totalPlannedDays === 0
+          ? 0
+          : Math.min(1, Number((trainedDays / totalPlannedDays).toFixed(4))),
+    },
+  };
+}
+
+function groupedSessions(logs: ScopedLog[]) {
+  const sessions = new Map<string, ScopedLog[]>();
+  for (const log of logs) {
+    const date = dateOnly(log.logged_date);
+    const rows = sessions.get(date) ?? [];
+    rows.push(log);
+    sessions.set(date, rows);
+  }
+  return [...sessions.entries()].map(([date, rows]) => ({ date, rows }));
+}
+
+function repPrs(logs: ScopedLog[]) {
+  const bestByReps = new Map<number, ScopedLog>();
+  for (const log of logs) {
+    if (!log.completed || log.failed || Number(log.weight_kg) <= 0) continue;
+    const current = bestByReps.get(log.reps);
+    if (!current || Number(log.weight_kg) > Number(current.weight_kg)) {
+      bestByReps.set(log.reps, log);
+    }
+  }
+  return [...bestByReps.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([reps, log]) => ({
+      reps,
+      weight_kg: Number(log.weight_kg).toFixed(2),
+      logged_at: timestamp(log.logged_at),
+      source: log.assumed ? ('imported' as const) : ('logged' as const),
+    }));
+}
+
+function currentE1rm(logs: ScopedLog[]) {
+  const points = logs.flatMap((log) => {
+    const value = calculateEligibleE1RM({
+      exerciseId: log.exercise_id,
+      weightKg: Number(log.weight_kg),
+      reps: log.reps,
+      rpe: log.rpe === null ? null : Number(log.rpe),
+      completed: log.completed,
+      failed: log.failed,
+      confidence: log.e1rm_confidence,
+    });
+    return value === null ? [] : [{ value, computedAt: log.logged_at }];
+  });
+  if (points.length === 0) return null;
+  const latest = Math.max(...points.map((point) => new Date(point.computedAt).getTime()));
+  const start = latest - E1RM_POLICY.rollingWindowDays * 24 * 60 * 60 * 1000;
+  const winner = points
+    .filter((point) => new Date(point.computedAt).getTime() >= start)
+    .reduce((best, point) => (point.value > best.value ? point : best));
+  return { value: winner.value.toFixed(2), computed_at: timestamp(winner.computedAt) };
+}
+
+export async function fetchExerciseStatsDetail(
+  db: Kysely<Database>,
+  coachId: string,
+  studentId: string,
+  exerciseId: string,
+) {
+  const [logs, oneRm] = await Promise.all([
+    fetchScopedLogs(db, coachId, studentId, exerciseId),
+    onboardingOneRm(db, studentId),
+  ]);
+  const logIds = logs.map((log) => log.id);
+  const videoRows =
+    logIds.length === 0
+      ? []
+      : await db
+          .selectFrom('attachments')
+          .select('set_log_id')
+          .where('owner_id', '=', studentId)
+          .where('kind', '=', 'set_video')
+          .where('status', '=', 'ready')
+          .where('set_log_id', 'in', logIds)
+          .execute();
+  const videoLogIds = new Set(videoRows.flatMap((row) => (row.set_log_id ? [row.set_log_id] : [])));
+  const sessions = groupedSessions(logs);
+  const recentSessions = sessions.slice(0, EXERCISE_STATS_LIMITS.recentSessions).map((session) => ({
+    date: session.date,
+    sets: [...session.rows]
+      .sort((left, right) => left.set_index - right.set_index)
+      .map((log) => ({
+        set_index: log.set_index,
+        weight_kg: Number(log.weight_kg).toFixed(2),
+        reps: log.reps,
+        rpe: log.rpe === null ? null : Number(log.rpe).toFixed(1),
+        completed: log.completed,
+        failed: log.failed,
+        assumed: log.assumed,
+        has_video: videoLogIds.has(log.id),
+      })),
+  }));
+
+  const bySetCount: Record<
+    string,
+    {
+      date: string;
+      set_count: number;
+      best_weight_kg: string;
+      total_reps: number;
+      completed_sets: number;
+    }[]
+  > = {};
+  for (const session of sessions) {
+    const key = String(session.rows.length);
+    const bucket = bySetCount[key] ?? [];
+    if (bucket.length >= EXERCISE_STATS_LIMITS.sessionsPerSetCount) continue;
+    bucket.push({
+      date: session.date,
+      set_count: session.rows.length,
+      best_weight_kg: Math.max(...session.rows.map((log) => Number(log.weight_kg))).toFixed(2),
+      total_reps: session.rows.reduce((sum, log) => sum + log.reps, 0),
+      completed_sets: session.rows.filter((log) => log.completed).length,
+    });
+    bySetCount[key] = bucket;
+  }
+
+  const family = mainLiftFamily(exerciseId);
+  return {
+    rep_prs: repPrs(logs),
+    recent_sessions: recentSessions,
+    by_set_count: bySetCount,
+    e1rm: currentE1rm(logs),
+    one_rm_reference: family === null ? null : oneRm[family],
+  };
+}
