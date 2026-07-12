@@ -111,6 +111,7 @@ export interface ExerciseResponse {
   exercise_type: ExerciseRow['exercise_type'];
   main_lift_family: ExerciseRow['main_lift_family'];
   is_competition_lift: boolean;
+  competition_stance: ExerciseRow['competition_stance'];
   muscle_groups: ExerciseRow['muscle_groups'];
   equipment: ExerciseRow['equipment'];
   movement_pattern: ExerciseRow['movement_pattern'];
@@ -224,6 +225,7 @@ export function toExercise(row: ExerciseRow): ExerciseResponse {
     exercise_type: row.exercise_type,
     main_lift_family: row.main_lift_family,
     is_competition_lift: row.is_competition_lift,
+    competition_stance: row.competition_stance ?? null,
     muscle_groups: row.muscle_groups,
     equipment: row.equipment,
     movement_pattern: row.movement_pattern,
