@@ -41,7 +41,7 @@ async function fetchScopedLogs(
     .where('sl.student_id', '=', studentId)
     .where('p.coach_id', '=', coachId)
     .where('p.trainee_id', '=', studentId)
-    .where('p.status', '=', 'published');
+    .where('p.status', 'in', ['published', 'paused', 'completed']);
   if (exerciseId !== undefined) query = query.where('sl.exercise_id', '=', exerciseId);
   return query.orderBy('sl.logged_at', 'desc').execute();
 }
@@ -76,7 +76,7 @@ async function recentPlanDates(db: Kysely<Database>, coachId: string, studentId:
     .select(['p.start_date', 'pd.week_number', 'pd.day_of_week'])
     .where('p.coach_id', '=', coachId)
     .where('p.trainee_id', '=', studentId)
-    .where('p.status', '=', 'published')
+    .where('p.status', 'in', ['published', 'paused', 'completed'])
     .execute();
   return rows.map((row) => plannedDate(row.start_date, row.week_number, row.day_of_week));
 }

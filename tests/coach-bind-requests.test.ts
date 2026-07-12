@@ -16,7 +16,7 @@ async function createPendingRequest(ctx: TestContext): Promise<string> {
 }
 
 describe('coach bind request queue', () => {
-  it('lists pending requests with onboarding null before onboarding starts', async () => {
+  it('lists pending requests with an empty backward-compatible onboarding summary', async () => {
     const ctx = await makeContext();
     const requestId = await createPendingRequest(ctx);
 
@@ -28,7 +28,30 @@ describe('coach bind request queue', () => {
     expect(item.id).toBe(requestId);
     expect(item.student_id).toBe(ids.freeStudent);
     expect(item.display_name).toBe('张三');
-    expect(item.onboarding).toBeNull();
+    expect(item.onboarding).toEqual({
+      completed: false,
+      gender: null,
+      birth_date: null,
+      height_cm: null,
+      weight_kg: null,
+      training_years: null,
+      squat_1rm_kg: null,
+      bench_1rm_kg: null,
+      deadlift_1rm_kg: null,
+      squat_stance: null,
+      deadlift_style: null,
+      bench_grip: null,
+      training_days: null,
+      injury_notes: null,
+      injury_areas: null,
+      muscle_groups_to_strengthen: null,
+      gym_tier: null,
+      is_competing: null,
+      competition_date: null,
+      target_weight_class: null,
+      note_to_coach: null,
+      upload_count: 0,
+    });
   });
 
   it('includes the plan-web onboarding snapshot while retaining the iOS summary fields', async () => {

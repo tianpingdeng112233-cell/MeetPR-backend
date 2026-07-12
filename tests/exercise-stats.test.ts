@@ -337,4 +337,77 @@ describe('GET /coach/students/:id/exercise-stats', () => {
     expect(student.status).toBe(403);
     expect(student.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
   });
+
+  it('keeps completed-plan logs in rep PRs and recent sessions', async () => {
+    const ctx = await makeContext();
+    await addExercise(ctx, COMPETITION_SQUAT_ID, '竞技深蹲', 'squat');
+    const planExerciseIds = await addPlanExercise(ctx, COMPETITION_SQUAT_ID);
+    const plan = await ctx.db
+      .selectFrom('plans as p')
+      .innerJoin('plan_days as pd', 'pd.plan_id', 'p.id')
+      .innerJoin('plan_exercises as pe', 'pe.plan_day_id', 'pd.id')
+      .select('p.id')
+      .where('pe.id', '=', itemAt(planExerciseIds, 0))
+      .executeTakeFirstOrThrow();
+    await ctx.db
+      .updateTable('plans')
+      .set({ status: 'completed' })
+      .where('id', '=', plan.id)
+      .execute();
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: itemAt(planExerciseIds, 0),
+        exercise_id: COMPETITION_SQUAT_ID,
+        logged_date: daysFromToday(-2),
+        set_index: 0,
+        weight_kg: '105.00',
+        reps: 5,
+        completed: true,
+        logged_at: atTenUtc(daysFromToday(-2)),
+      })
+      .execute();
+
+    const response = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/exercise-stats?exercise_id=${COMPETITION_SQUAT_ID}`)
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(200);
+    expect(response.body.rep_prs).toEqual([
+      expect.objectContaining({ reps: 5, weight_kg: '105.00' }),
+    ]);
+    expect(response.body.recent_sessions).toEqual([
+      expect.objectContaining({ date: daysFromToday(-2) }),
+    ]);
+  });
+
+  it('counts completed-plan days in the recent four-week denominator', async () => {
+    const ctx = await makeContext();
+    await addExercise(ctx, COMPETITION_SQUAT_ID, '竞技深蹲', 'squat');
+    const planExerciseIds = await addPlanExercise(ctx, COMPETITION_SQUAT_ID);
+    const plan = await ctx.db
+      .selectFrom('plans as p')
+      .innerJoin('plan_days as pd', 'pd.plan_id', 'p.id')
+      .innerJoin('plan_exercises as pe', 'pe.plan_day_id', 'pd.id')
+      .select('p.id')
+      .where('pe.id', '=', itemAt(planExerciseIds, 0))
+      .executeTakeFirstOrThrow();
+    await ctx.db
+      .updateTable('plans')
+      .set({ status: 'completed' })
+      .where('id', '=', plan.id)
+      .execute();
+
+    const response = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/exercise-stats`)
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(200);
+    expect(response.body.recent_4w).toEqual({
+      trained_days: 0,
+      total_planned_days: 6,
+      completion_rate: 0,
+    });
+  });
 });
