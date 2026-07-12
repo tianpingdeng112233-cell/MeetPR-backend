@@ -16,7 +16,7 @@ async function createPendingRequest(ctx: TestContext): Promise<string> {
 }
 
 describe('coach bind request queue', () => {
-  it('lists pending requests with null onboarding summary before onboarding starts', async () => {
+  it('lists pending requests with onboarding null before onboarding starts', async () => {
     const ctx = await makeContext();
     const requestId = await createPendingRequest(ctx);
 
@@ -28,13 +28,10 @@ describe('coach bind request queue', () => {
     expect(item.id).toBe(requestId);
     expect(item.student_id).toBe(ids.freeStudent);
     expect(item.display_name).toBe('张三');
-    expect(item.onboarding.completed).toBe(false);
-    expect(item.onboarding.gender).toBeNull();
-    expect(item.onboarding.squat_1rm_kg).toBeNull();
-    expect(item.onboarding.upload_count).toBe(0);
+    expect(item.onboarding).toBeNull();
   });
 
-  it('includes the 9-item onboarding summary once the student filled the wizard', async () => {
+  it('includes the plan-web onboarding snapshot while retaining the iOS summary fields', async () => {
     const ctx = await makeContext();
     await createPendingRequest(ctx);
 
@@ -44,15 +41,23 @@ describe('coach bind request queue', () => {
       .send({
         gender: 'male',
         birth_date: '2001-03-12',
+        height_cm: '178',
         weight_kg: '83',
         training_years: 3,
         squat_1rm_kg: '180',
         bench_1rm_kg: '120',
         deadlift_1rm_kg: '220',
+        squat_stance: 'low_bar',
+        deadlift_style: 'conventional',
+        bench_grip: 'standard',
+        training_days: ['mon', 'wed', 'fri'],
+        injury_notes: '右肩注意热身',
+        injury_areas: ['shoulder'],
         muscle_groups_to_strengthen: ['quad', 'hamstring', 'shoulder'],
         gym_tier: 'commercial',
         is_competing: true,
         competition_date: '2026-07-25',
+        target_weight_class: 'IPF 83kg',
         note_to_coach: '想突破 200kg 深蹲',
         upload_attachment_ids: [
           '90000000-0000-4000-8000-000000000001',
@@ -66,15 +71,23 @@ describe('coach bind request queue', () => {
     expect(onboarding.completed).toBe(false); // not yet POST /complete
     expect(onboarding.gender).toBe('male');
     expect(onboarding.birth_date).toBe('2001-03-12');
+    expect(onboarding.height_cm).toBe('178.0');
     expect(onboarding.weight_kg).toBe('83.00');
     expect(onboarding.training_years).toBe(3);
     expect(onboarding.squat_1rm_kg).toBe('180.00');
     expect(onboarding.bench_1rm_kg).toBe('120.00');
     expect(onboarding.deadlift_1rm_kg).toBe('220.00');
+    expect(onboarding.squat_stance).toBe('low_bar');
+    expect(onboarding.deadlift_style).toBe('conventional');
+    expect(onboarding.bench_grip).toBe('standard');
+    expect(onboarding.training_days).toEqual(['mon', 'wed', 'fri']);
+    expect(onboarding.injury_notes).toBe('右肩注意热身');
+    expect(onboarding.injury_areas).toEqual(['shoulder']);
     expect(onboarding.muscle_groups_to_strengthen).toEqual(['quad', 'hamstring', 'shoulder']);
     expect(onboarding.gym_tier).toBe('commercial');
     expect(onboarding.is_competing).toBe(true);
     expect(onboarding.competition_date).toBe('2026-07-25');
+    expect(onboarding.target_weight_class).toBe('IPF 83kg');
     expect(onboarding.note_to_coach).toBe('想突破 200kg 深蹲');
     expect(onboarding.upload_count).toBe(2);
   });

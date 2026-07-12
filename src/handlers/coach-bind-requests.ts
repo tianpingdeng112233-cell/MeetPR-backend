@@ -1,7 +1,17 @@
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 
-import type { Database, Gender, GymTier, MuscleGroup } from '../db/types';
+import type {
+  BenchGrip,
+  Database,
+  DeadliftStyle,
+  Gender,
+  GymTier,
+  InjuryArea,
+  MuscleGroup,
+  SquatStance,
+  TrainingDay,
+} from '../db/types';
 import { type BindRequestResponse, expireStaleBindRequests, toBindRequest } from './bind-requests';
 import { type EvaluationPeriodResponse, toEvaluationPeriod } from './evaluations';
 import { dateOnly, decimal, timestamp } from './serialization';
@@ -10,15 +20,23 @@ export interface CoachBindRequestOnboardingSummary {
   completed: boolean;
   gender: Gender | null;
   birth_date: string | null;
+  height_cm: string | null;
   weight_kg: string | null;
   training_years: number | null;
   squat_1rm_kg: string | null;
   bench_1rm_kg: string | null;
   deadlift_1rm_kg: string | null;
+  squat_stance: SquatStance | null;
+  deadlift_style: DeadliftStyle | null;
+  bench_grip: BenchGrip | null;
+  training_days: TrainingDay[] | null;
+  injury_notes: string | null;
+  injury_areas: InjuryArea[] | null;
   muscle_groups_to_strengthen: MuscleGroup[] | null;
   gym_tier: GymTier | null;
   is_competing: boolean | null;
   competition_date: string | null;
+  target_weight_class: string | null;
   note_to_coach: string | null;
   upload_count: number;
 }
@@ -29,7 +47,7 @@ export interface CoachBindRequestItem {
   display_name: string;
   submitted_at: string;
   expired_at: string;
-  onboarding: CoachBindRequestOnboardingSummary;
+  onboarding: CoachBindRequestOnboardingSummary | null;
 }
 
 /**
@@ -52,18 +70,27 @@ export async function fetchCoachBindRequestQueue(
       'br.submitted_at as submitted_at',
       'br.expired_at as expired_at',
       'sp.display_name as display_name',
+      'op.user_id as onboarding_user_id',
       'op.completed_at as onboarding_completed_at',
       'op.gender as gender',
       'op.birth_date as birth_date',
+      'op.height_cm as height_cm',
       'op.weight_kg as weight_kg',
       'op.training_years as training_years',
       'op.squat_1rm_kg as squat_1rm_kg',
       'op.bench_1rm_kg as bench_1rm_kg',
       'op.deadlift_1rm_kg as deadlift_1rm_kg',
+      'op.squat_stance as squat_stance',
+      'op.deadlift_style as deadlift_style',
+      'op.bench_grip as bench_grip',
+      'op.training_days as training_days',
+      'op.injury_notes as injury_notes',
+      'op.injury_areas as injury_areas',
       'op.muscle_groups_to_strengthen as muscle_groups_to_strengthen',
       'op.gym_tier as gym_tier',
       'op.is_competing as is_competing',
       'op.competition_date as competition_date',
+      'op.target_weight_class as target_weight_class',
       'op.note_to_coach as note_to_coach',
     ])
     .where('br.coach_id', '=', coachId)
@@ -94,22 +121,33 @@ export async function fetchCoachBindRequestQueue(
     display_name: row.display_name,
     submitted_at: timestamp(row.submitted_at),
     expired_at: timestamp(row.expired_at),
-    onboarding: {
-      completed: row.onboarding_completed_at !== null,
-      gender: row.gender,
-      birth_date: dateOnly(row.birth_date),
-      weight_kg: decimal(row.weight_kg, 2),
-      training_years: row.training_years,
-      squat_1rm_kg: decimal(row.squat_1rm_kg, 2),
-      bench_1rm_kg: decimal(row.bench_1rm_kg, 2),
-      deadlift_1rm_kg: decimal(row.deadlift_1rm_kg, 2),
-      muscle_groups_to_strengthen: row.muscle_groups_to_strengthen,
-      gym_tier: row.gym_tier,
-      is_competing: row.is_competing,
-      competition_date: dateOnly(row.competition_date),
-      note_to_coach: row.note_to_coach,
-      upload_count: uploadCounts.get(row.student_id) ?? 0,
-    },
+    onboarding:
+      row.onboarding_user_id === null
+        ? null
+        : {
+            completed: row.onboarding_completed_at !== null,
+            gender: row.gender,
+            birth_date: dateOnly(row.birth_date),
+            height_cm: decimal(row.height_cm, 1),
+            weight_kg: decimal(row.weight_kg, 2),
+            training_years: row.training_years,
+            squat_1rm_kg: decimal(row.squat_1rm_kg, 2),
+            bench_1rm_kg: decimal(row.bench_1rm_kg, 2),
+            deadlift_1rm_kg: decimal(row.deadlift_1rm_kg, 2),
+            squat_stance: row.squat_stance,
+            deadlift_style: row.deadlift_style,
+            bench_grip: row.bench_grip,
+            training_days: row.training_days,
+            injury_notes: row.injury_notes,
+            injury_areas: row.injury_areas,
+            muscle_groups_to_strengthen: row.muscle_groups_to_strengthen,
+            gym_tier: row.gym_tier,
+            is_competing: row.is_competing,
+            competition_date: dateOnly(row.competition_date),
+            target_weight_class: row.target_weight_class,
+            note_to_coach: row.note_to_coach,
+            upload_count: uploadCounts.get(row.student_id) ?? 0,
+          },
   }));
 }
 
