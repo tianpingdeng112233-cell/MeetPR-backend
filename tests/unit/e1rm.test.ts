@@ -1,16 +1,70 @@
 import { describe, expect, it } from 'vitest';
 
-import { MAIN_LIFT_EXERCISE_IDS, calculateEligibleE1RM } from '../../src/domain/e1rm';
+import { calculateEligibleE1RM, resolveCompetitionFamily } from '../../src/domain/e1rm';
+import type { CompetitionStance, DeadliftStyle, LiftFamily, SquatStance } from '../../src/db/types';
 
 const base = {
-  exerciseId: MAIN_LIFT_EXERCISE_IDS.squat,
+  family: 'squat' as const,
   weightKg: 100,
   reps: 5,
   rpe: null,
   completed: true,
   failed: false,
   confidence: null,
-} as const;
+};
+
+describe('resolveCompetitionFamily', () => {
+  const resolve = (
+    mainLiftFamily: LiftFamily | null,
+    isCompetitionLift: boolean,
+    competitionStance: CompetitionStance | null,
+    squatStance: SquatStance | null = null,
+    deadliftStyle: DeadliftStyle | null = null,
+  ) =>
+    resolveCompetitionFamily(
+      {
+        main_lift_family: mainLiftFamily,
+        is_competition_lift: isCompetitionLift,
+        competition_stance: competitionStance,
+      },
+      { squat_stance: squatStance, deadlift_style: deadliftStyle },
+    );
+
+  it.each([
+    ['low-bar student / low-bar squat', 'low_bar', 'low_bar', 'squat'],
+    ['low-bar student / high-bar squat', 'high_bar', 'low_bar', null],
+    ['high-bar student / low-bar squat', 'low_bar', 'high_bar', null],
+    ['high-bar student / high-bar squat', 'high_bar', 'high_bar', 'squat'],
+    ['unset student / low-bar squat', 'low_bar', null, 'squat'],
+    ['unset student / high-bar squat', 'high_bar', null, 'squat'],
+  ] as const)('%s', (_name, competitionStance, squatStance, expected) => {
+    expect(resolve('squat', false, competitionStance, squatStance)).toBe(expected);
+  });
+
+  it.each([
+    ['conventional / conventional', 'conventional', 'conventional', 'deadlift'],
+    ['conventional / sumo', 'sumo', 'conventional', null],
+    ['sumo / conventional', 'conventional', 'sumo', null],
+    ['sumo / sumo', 'sumo', 'sumo', 'deadlift'],
+    ['both / conventional', 'conventional', 'both', 'deadlift'],
+    ['both / sumo', 'sumo', 'both', 'deadlift'],
+    ['unset / conventional', 'conventional', null, 'deadlift'],
+    ['unset / sumo', 'sumo', null, 'deadlift'],
+  ] as const)('%s', (_name, competitionStance, deadliftStyle, expected) => {
+    expect(resolve('deadlift', true, competitionStance, null, deadliftStyle)).toBe(expected);
+  });
+
+  it('always includes generic competition squat and bench', () => {
+    expect(resolve('squat', true, null, 'high_bar', 'sumo')).toBe('squat');
+    expect(resolve('bench', true, null, 'low_bar', 'conventional')).toBe('bench');
+  });
+
+  it('rejects family-less exercises and unclassified variations', () => {
+    expect(resolve(null, true, null)).toBeNull();
+    expect(resolve('squat', false, null, 'low_bar')).toBeNull();
+    expect(resolve('deadlift', false, null, null, 'conventional')).toBeNull();
+  });
+});
 
 describe('e1RM policy', () => {
   it('uses Epley without RPE and the canonical RTS table with eligible RPE', () => {
@@ -19,13 +73,13 @@ describe('e1RM policy', () => {
   });
 
   it.each([
+    ['unresolved exercise family', { family: null }],
     ['incomplete', { completed: false }],
     ['failed', { failed: true }],
     ['RPE below 7', { rpe: 6.5 }],
     ['more than 10 reps', { reps: 11 }],
     ['low confidence', { confidence: 'low' as const }],
-    ['non-canonical exercise', { exerciseId: '70000000-0000-4000-8000-000000000001' }],
-    ['deadlift above 5 reps', { exerciseId: MAIN_LIFT_EXERCISE_IDS.conventionalDeadlift, reps: 6 }],
+    ['deadlift above 5 reps', { family: 'deadlift' as const, reps: 6 }],
   ])('excludes %s points', (_name, override) => {
     expect(calculateEligibleE1RM({ ...base, ...override })).toBeNull();
   });

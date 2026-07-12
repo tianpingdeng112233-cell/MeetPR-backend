@@ -81,6 +81,7 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       exercise_type TEXT NOT NULL,
       main_lift_family TEXT,
       is_competition_lift BOOLEAN NOT NULL DEFAULT FALSE,
+      competition_stance TEXT,
       muscle_groups TEXT[] NOT NULL,
       equipment TEXT[] NOT NULL,
       movement_pattern TEXT[] NOT NULL DEFAULT '{}',
@@ -724,11 +725,22 @@ describe('coach planning CRUD', () => {
 
   it('GET /exercises returns the 15 system exercises', async () => {
     const ctx = await makeContext();
+    await ctx.db
+      .updateTable('exercises')
+      .set({ competition_stance: 'high_bar' })
+      .where('name', '=', '高杠深蹲')
+      .execute();
 
     const response = await request(ctx.app).get('/exercises').set(auth(ctx.coachToken));
 
     expect(response.status).toBe(200);
     expect(response.body.exercises).toHaveLength(15);
+    expect(response.body.exercises).toContainEqual(
+      expect.objectContaining({ name: '高杠深蹲', competition_stance: 'high_bar' }),
+    );
+    expect(response.body.exercises).toContainEqual(
+      expect.objectContaining({ name: '竞技深蹲', competition_stance: null }),
+    );
   });
 
   it('GET /exercises applies facet filters with AND across facets', async () => {
