@@ -27,7 +27,11 @@ async function addExercise(
   ctx: TestContext,
   id: string,
   name: string,
-  family: 'squat' | 'deadlift',
+  family: 'squat' | 'bench' | 'deadlift',
+  options: {
+    isCompetitionLift?: boolean;
+    competitionStance?: 'low_bar' | 'high_bar' | 'conventional' | 'sumo' | null;
+  } = {},
 ) {
   await ctx.db
     .insertInto('exercises')
@@ -36,7 +40,8 @@ async function addExercise(
       name,
       exercise_type: 'main_lift',
       main_lift_family: family,
-      is_competition_lift: true,
+      is_competition_lift: options.isCompetitionLift ?? true,
+      competition_stance: options.competitionStance ?? null,
       muscle_groups: family === 'squat' ? ['quad'] : ['hamstring'],
       equipment: ['barbell'],
       movement_pattern: [],
@@ -91,6 +96,110 @@ async function addPlanExercise(
 }
 
 describe('GET /coach/students/:id/exercise-stats', () => {
+  it('resolves e1RM and references from the student competition stance', async () => {
+    const ctx = await makeContext();
+    const exercises = [
+      ['71000000-0000-4000-8000-000000000001', '低杠位深蹲', 'squat', false, 'low_bar'],
+      ['71000000-0000-4000-8000-000000000002', '高杠位深蹲', 'squat', false, 'high_bar'],
+      ['71000000-0000-4000-8000-000000000003', '传统硬拉', 'deadlift', true, 'conventional'],
+      ['71000000-0000-4000-8000-000000000004', '相扑硬拉', 'deadlift', true, 'sumo'],
+      ['71000000-0000-4000-8000-000000000005', '竞技深蹲', 'squat', true, null],
+      ['71000000-0000-4000-8000-000000000006', '竞技卧推', 'bench', true, null],
+      ['71000000-0000-4000-8000-000000000007', '暂停深蹲', 'squat', false, null],
+      ['71000000-0000-4000-8000-000000000008', '罗马尼亚硬拉', 'deadlift', false, null],
+    ] as const;
+
+    for (const [id, name, family, isCompetitionLift, competitionStance] of exercises) {
+      await addExercise(ctx, id, name, family, { isCompetitionLift, competitionStance });
+      const [planExerciseId] = await addPlanExercise(ctx, id);
+      if (planExerciseId === undefined) throw new Error('Missing plan exercise fixture');
+      await ctx.db
+        .insertInto('set_logs')
+        .values({
+          student_id: ids.trainee,
+          plan_exercise_id: planExerciseId,
+          exercise_id: id,
+          logged_date: daysFromToday(-1),
+          set_index: 0,
+          weight_kg: '100.00',
+          reps: 5,
+          completed: true,
+          logged_at: atTenUtc(daysFromToday(-1)),
+        })
+        .execute();
+    }
+    await ctx.db
+      .insertInto('student_onboarding_profiles')
+      .values({
+        user_id: ids.trainee,
+        squat_stance: 'low_bar',
+        deadlift_style: 'conventional',
+        squat_1rm_kg: '180.00',
+        bench_1rm_kg: '120.00',
+        deadlift_1rm_kg: '220.00',
+      })
+      .execute();
+
+    const detail = async (exerciseId: string) => {
+      const response = await request(ctx.app)
+        .get(`/coach/students/${ids.trainee}/exercise-stats?exercise_id=${exerciseId}`)
+        .set(auth(ctx.coachToken));
+      expect(response.status).toBe(200);
+      return response.body as { e1rm: unknown; one_rm_reference: string | null };
+    };
+    const expectEligible = async (exerciseId: string, reference: string) => {
+      const body = await detail(exerciseId);
+      expect(body.e1rm).not.toBeNull();
+      expect(body.one_rm_reference).toBe(reference);
+    };
+    const expectIneligible = async (exerciseId: string) => {
+      const body = await detail(exerciseId);
+      expect(body.e1rm).toBeNull();
+      expect(body.one_rm_reference).toBeNull();
+    };
+
+    await expectEligible(exercises[0][0], '180.00');
+    await expectIneligible(exercises[1][0]);
+    await ctx.db
+      .updateTable('student_onboarding_profiles')
+      .set({ squat_stance: 'high_bar' })
+      .where('user_id', '=', ids.trainee)
+      .execute();
+    await expectIneligible(exercises[0][0]);
+    await expectEligible(exercises[1][0], '180.00');
+
+    await expectEligible(exercises[2][0], '220.00');
+    await expectIneligible(exercises[3][0]);
+    await ctx.db
+      .updateTable('student_onboarding_profiles')
+      .set({ deadlift_style: 'sumo' })
+      .where('user_id', '=', ids.trainee)
+      .execute();
+    await expectIneligible(exercises[2][0]);
+    await expectEligible(exercises[3][0], '220.00');
+    await ctx.db
+      .updateTable('student_onboarding_profiles')
+      .set({ deadlift_style: 'both' })
+      .where('user_id', '=', ids.trainee)
+      .execute();
+    await expectEligible(exercises[2][0], '220.00');
+    await expectEligible(exercises[3][0], '220.00');
+
+    await ctx.db
+      .updateTable('student_onboarding_profiles')
+      .set({ squat_stance: null, deadlift_style: null })
+      .where('user_id', '=', ids.trainee)
+      .execute();
+    await expectEligible(exercises[0][0], '180.00');
+    await expectEligible(exercises[1][0], '180.00');
+    await expectEligible(exercises[2][0], '220.00');
+    await expectEligible(exercises[3][0], '220.00');
+    await expectEligible(exercises[4][0], '180.00');
+    await expectEligible(exercises[5][0], '120.00');
+    await expectIneligible(exercises[6][0]);
+    await expectIneligible(exercises[7][0]);
+  });
+
   it('returns the overview scoped to an accepted coach bond and owned plan logs', async () => {
     const ctx = await makeContext();
     await addExercise(ctx, COMPETITION_SQUAT_ID, '竞技深蹲', 'squat');

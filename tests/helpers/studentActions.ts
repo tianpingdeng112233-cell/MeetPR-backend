@@ -110,6 +110,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       exercise_type TEXT NOT NULL,
       main_lift_family TEXT,
       is_competition_lift BOOLEAN NOT NULL DEFAULT FALSE,
+      competition_stance TEXT,
       muscle_groups TEXT[] NOT NULL,
       equipment TEXT[] NOT NULL,
       movement_pattern TEXT[] NOT NULL DEFAULT '{}',
@@ -206,6 +207,8 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
 
     CREATE TABLE student_onboarding_profiles (
       user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      squat_stance TEXT,
+      deadlift_style TEXT,
       squat_1rm_kg NUMERIC(6,2),
       bench_1rm_kg NUMERIC(6,2),
       deadlift_1rm_kg NUMERIC(6,2)

@@ -1,7 +1,7 @@
 import type { Kysely } from 'kysely';
 
-import { E1RM_POLICY, calculateEligibleE1RM, mainLiftFamily } from '../domain/e1rm';
-import type { Database } from '../db/types';
+import { E1RM_POLICY, calculateEligibleE1RM, resolveCompetitionFamily } from '../domain/e1rm';
+import type { Database, LiftFamily } from '../db/types';
 import { dateOnly, decimal, timestamp } from './serialization';
 
 export const EXERCISE_STATS_LIMITS = {
@@ -27,6 +27,9 @@ async function fetchScopedLogs(
       'sl.id as id',
       'sl.exercise_id as exercise_id',
       'e.name as exercise_name',
+      'e.main_lift_family as main_lift_family',
+      'e.is_competition_lift as is_competition_lift',
+      'e.competition_stance as competition_stance',
       'sl.set_index as set_index',
       'sl.weight_kg as weight_kg',
       'sl.reps as reps',
@@ -46,16 +49,20 @@ async function fetchScopedLogs(
   return query.orderBy('sl.logged_at', 'desc').execute();
 }
 
-async function onboardingOneRm(db: Kysely<Database>, studentId: string) {
+async function onboardingSnapshot(db: Kysely<Database>, studentId: string) {
   const row = await db
     .selectFrom('student_onboarding_profiles')
-    .select(['squat_1rm_kg', 'bench_1rm_kg', 'deadlift_1rm_kg'])
+    .select(['squat_1rm_kg', 'bench_1rm_kg', 'deadlift_1rm_kg', 'squat_stance', 'deadlift_style'])
     .where('user_id', '=', studentId)
     .executeTakeFirst();
   return {
-    squat: decimal(row?.squat_1rm_kg ?? null, 2),
-    bench: decimal(row?.bench_1rm_kg ?? null, 2),
-    deadlift: decimal(row?.deadlift_1rm_kg ?? null, 2),
+    oneRm: {
+      squat: decimal(row?.squat_1rm_kg ?? null, 2),
+      bench: decimal(row?.bench_1rm_kg ?? null, 2),
+      deadlift: decimal(row?.deadlift_1rm_kg ?? null, 2),
+    },
+    squat_stance: row?.squat_stance ?? null,
+    deadlift_style: row?.deadlift_style ?? null,
   };
 }
 
@@ -86,9 +93,9 @@ export async function fetchExerciseStatsOverview(
   coachId: string,
   studentId: string,
 ) {
-  const [logs, oneRm, planDates] = await Promise.all([
+  const [logs, onboarding, planDates] = await Promise.all([
     fetchScopedLogs(db, coachId, studentId),
-    onboardingOneRm(db, studentId),
+    onboardingSnapshot(db, studentId),
     recentPlanDates(db, coachId, studentId),
   ]);
 
@@ -135,7 +142,7 @@ export async function fetchExerciseStatsOverview(
       session_count: value.dates.size,
       last_logged_at: timestamp(value.lastLoggedAt),
     })),
-    one_rm: oneRm,
+    one_rm: onboarding.oneRm,
     last_trained_at: logs[0] ? timestamp(logs[0].logged_at) : null,
     recent_4w: {
       trained_days: trainedDays,
@@ -178,10 +185,10 @@ function repPrs(logs: ScopedLog[]) {
     }));
 }
 
-function currentE1rm(logs: ScopedLog[]) {
+function currentE1rm(logs: ScopedLog[], family: LiftFamily | null) {
   const points = logs.flatMap((log) => {
     const value = calculateEligibleE1RM({
-      exerciseId: log.exercise_id,
+      family,
       weightKg: Number(log.weight_kg),
       reps: log.reps,
       rpe: log.rpe === null ? null : Number(log.rpe),
@@ -206,9 +213,9 @@ export async function fetchExerciseStatsDetail(
   studentId: string,
   exerciseId: string,
 ) {
-  const [logs, oneRm] = await Promise.all([
+  const [logs, onboarding] = await Promise.all([
     fetchScopedLogs(db, coachId, studentId, exerciseId),
-    onboardingOneRm(db, studentId),
+    onboardingSnapshot(db, studentId),
   ]);
   const logIds = logs.map((log) => log.id);
   const videoRows =
@@ -264,12 +271,22 @@ export async function fetchExerciseStatsDetail(
     bySetCount[key] = bucket;
   }
 
-  const family = mainLiftFamily(exerciseId);
+  const exercise = logs[0];
+  const family = exercise
+    ? resolveCompetitionFamily(
+        {
+          main_lift_family: exercise.main_lift_family,
+          is_competition_lift: exercise.is_competition_lift,
+          competition_stance: exercise.competition_stance,
+        },
+        onboarding,
+      )
+    : null;
   return {
     rep_prs: repPrs(logs),
     recent_sessions: recentSessions,
     by_set_count: bySetCount,
-    e1rm: currentE1rm(logs),
-    one_rm_reference: family === null ? null : oneRm[family],
+    e1rm: currentE1rm(logs, family),
+    one_rm_reference: family === null ? null : onboarding.oneRm[family],
   };
 }
