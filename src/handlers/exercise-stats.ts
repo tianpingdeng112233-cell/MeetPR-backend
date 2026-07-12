@@ -213,9 +213,14 @@ export async function fetchExerciseStatsDetail(
   studentId: string,
   exerciseId: string,
 ) {
-  const [logs, onboarding] = await Promise.all([
+  const [logs, onboarding, exercise] = await Promise.all([
     fetchScopedLogs(db, coachId, studentId, exerciseId),
     onboardingSnapshot(db, studentId),
+    db
+      .selectFrom('exercises')
+      .select(['main_lift_family', 'is_competition_lift', 'competition_stance'])
+      .where('id', '=', exerciseId)
+      .executeTakeFirst(),
   ]);
   const logIds = logs.map((log) => log.id);
   const videoRows =
@@ -271,7 +276,6 @@ export async function fetchExerciseStatsDetail(
     bySetCount[key] = bucket;
   }
 
-  const exercise = logs[0];
   const family = exercise
     ? resolveCompetitionFamily(
         {

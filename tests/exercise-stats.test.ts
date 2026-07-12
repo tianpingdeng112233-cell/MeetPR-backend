@@ -200,6 +200,46 @@ describe('GET /coach/students/:id/exercise-stats', () => {
     await expectIneligible(exercises[7][0]);
   });
 
+  it('returns a resolved 1RM reference for a competition lift with no logs', async () => {
+    const ctx = await makeContext();
+    const lowBarId = '73000000-0000-4000-8000-000000000001';
+    const pausedSquatId = '73000000-0000-4000-8000-000000000002';
+    await addExercise(ctx, lowBarId, '低杠位深蹲', 'squat', {
+      isCompetitionLift: false,
+      competitionStance: 'low_bar',
+    });
+    await addExercise(ctx, pausedSquatId, '暂停深蹲', 'squat', {
+      isCompetitionLift: false,
+      competitionStance: null,
+    });
+    await ctx.db
+      .insertInto('student_onboarding_profiles')
+      .values({
+        user_id: ids.trainee,
+        squat_stance: 'low_bar',
+        squat_1rm_kg: '180.00',
+      })
+      .execute();
+
+    const detail = async (exerciseId: string) => {
+      const response = await request(ctx.app)
+        .get(`/coach/students/${ids.trainee}/exercise-stats?exercise_id=${exerciseId}`)
+        .set(auth(ctx.coachToken));
+      expect(response.status).toBe(200);
+      return response.body as { e1rm: unknown; one_rm_reference: string | null };
+    };
+
+    expect(await detail(lowBarId)).toMatchObject({ e1rm: null, one_rm_reference: '180.00' });
+    expect(await detail(pausedSquatId)).toMatchObject({ e1rm: null, one_rm_reference: null });
+
+    await ctx.db
+      .updateTable('student_onboarding_profiles')
+      .set({ squat_stance: 'high_bar' })
+      .where('user_id', '=', ids.trainee)
+      .execute();
+    expect(await detail(lowBarId)).toMatchObject({ e1rm: null, one_rm_reference: null });
+  });
+
   it('returns the overview scoped to an accepted coach bond and owned plan logs', async () => {
     const ctx = await makeContext();
     await addExercise(ctx, COMPETITION_SQUAT_ID, '竞技深蹲', 'squat');
