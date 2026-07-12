@@ -2,6 +2,7 @@ import type { ColumnType, Generated } from 'kysely';
 
 export const USER_ROLES = ['coach', 'coached_student', 'self_train_student'] as const;
 export const LIFT_FAMILIES = ['squat', 'bench', 'deadlift'] as const;
+export const COMPETITION_STANCES = ['low_bar', 'high_bar', 'conventional', 'sumo'] as const;
 export const EXERCISE_TYPES = ['main_lift', 'main_lift_variation', 'accessory'] as const;
 export const MUSCLE_GROUPS = [
   'adductor',
@@ -120,6 +121,7 @@ export const ATTACHMENT_STATUSES = [
 
 export type UserRole = (typeof USER_ROLES)[number];
 export type LiftFamily = (typeof LIFT_FAMILIES)[number];
+export type CompetitionStance = (typeof COMPETITION_STANCES)[number];
 export type ExerciseType = (typeof EXERCISE_TYPES)[number];
 export type MuscleGroup = (typeof MUSCLE_GROUPS)[number];
 export type Equipment = (typeof EQUIPMENT)[number];
@@ -180,6 +182,7 @@ export interface ExercisesTable {
   exercise_type: ExerciseType;
   main_lift_family: NullableColumn<LiftFamily>;
   is_competition_lift: Generated<boolean>;
+  competition_stance: NullableColumn<CompetitionStance>;
   muscle_groups: MuscleGroup[];
   equipment: Equipment[];
   movement_pattern: Generated<MovementPattern[]>;
