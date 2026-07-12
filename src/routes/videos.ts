@@ -56,6 +56,7 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
       let query = db
         .selectFrom('attachments as a')
         .leftJoin('set_logs as sl', 'sl.id', 'a.set_log_id')
+        .leftJoin('exercises as e', 'e.id', 'sl.exercise_id')
         .leftJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
         .leftJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
         .leftJoin('plans as p', 'p.id', 'pd.plan_id')
@@ -63,6 +64,10 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
           'a.id as id',
           'a.set_log_id as set_log_id',
           'sl.plan_exercise_id as plan_exercise_id',
+          'e.name as exercise_name',
+          'sl.set_index as set_index',
+          'sl.weight_kg as weight_kg',
+          'sl.reps as reps',
           'a.content_type as content_type',
           'a.size_bytes as size_bytes',
           'a.filename as filename',
@@ -92,6 +97,10 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
         id: row.id,
         set_log_id: row.set_log_id,
         plan_exercise_id: row.plan_exercise_id,
+        exercise_name: row.exercise_name,
+        set_index: row.set_index,
+        weight_kg: row.weight_kg === null ? null : Number(row.weight_kg).toFixed(2),
+        reps: row.reps,
         content_type: row.content_type,
         size_bytes: Number(row.size_bytes),
         filename: row.filename,

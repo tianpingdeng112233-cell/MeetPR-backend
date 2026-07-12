@@ -18,7 +18,18 @@ async function createPendingRequest(ctx: TestContext): Promise<string> {
 describe('coach bind request queue', () => {
   it('lists pending requests with an empty backward-compatible onboarding summary', async () => {
     const ctx = await makeContext();
+    await ctx.db
+      .updateTable('users')
+      .set({ phone: '+8613800000171' })
+      .where('id', '=', ids.freeStudent)
+      .execute();
     const requestId = await createPendingRequest(ctx);
+    const inviteCode = await ctx.db
+      .selectFrom('bind_requests as br')
+      .innerJoin('invite_codes as ic', 'ic.id', 'br.invite_code_id')
+      .select('ic.code')
+      .where('br.id', '=', requestId)
+      .executeTakeFirstOrThrow();
 
     const queue = await request(ctx.app).get('/coach/bind-requests').set(auth(ctx.coachToken));
     expect(queue.status).toBe(200);
@@ -28,6 +39,8 @@ describe('coach bind request queue', () => {
     expect(item.id).toBe(requestId);
     expect(item.student_id).toBe(ids.freeStudent);
     expect(item.display_name).toBe('张三');
+    expect(item.masked_phone).toBe('138****0171');
+    expect(item.invite_code).toBe(inviteCode.code);
     expect(item.onboarding).toEqual({
       completed: false,
       gender: null,

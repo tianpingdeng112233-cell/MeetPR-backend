@@ -45,9 +45,22 @@ export interface CoachBindRequestItem {
   id: string;
   student_id: string;
   display_name: string;
+  masked_phone: string | null;
+  invite_code: string | null;
   submitted_at: string;
   expired_at: string;
   onboarding: CoachBindRequestOnboardingSummary;
+}
+
+export function maskPhone(phone: string | null): string | null {
+  if (phone === null) return null;
+  const normalized = phone.trim();
+  const chinaMobile = /^\+86\d{7,}$/.test(normalized) ? normalized.slice(3) : null;
+  if (chinaMobile !== null) {
+    return `${chinaMobile.slice(0, 3)}****${chinaMobile.slice(-4)}`;
+  }
+  if (normalized.length < 6) return null;
+  return `${normalized.slice(0, 3)}****${normalized.slice(-3)}`;
 }
 
 /**
@@ -63,6 +76,8 @@ export async function fetchCoachBindRequestQueue(
   const rows = await db
     .selectFrom('bind_requests as br')
     .innerJoin('student_profiles as sp', 'sp.user_id', 'br.student_id')
+    .leftJoin('users as u', 'u.id', 'br.student_id')
+    .leftJoin('invite_codes as ic', 'ic.id', 'br.invite_code_id')
     .leftJoin('student_onboarding_profiles as op', 'op.user_id', 'br.student_id')
     .select([
       'br.id as id',
@@ -70,6 +85,8 @@ export async function fetchCoachBindRequestQueue(
       'br.submitted_at as submitted_at',
       'br.expired_at as expired_at',
       'sp.display_name as display_name',
+      'u.phone as phone',
+      'ic.code as invite_code',
       'op.completed_at as onboarding_completed_at',
       'op.gender as gender',
       'op.birth_date as birth_date',
@@ -118,6 +135,8 @@ export async function fetchCoachBindRequestQueue(
     id: row.id,
     student_id: row.student_id,
     display_name: row.display_name,
+    masked_phone: maskPhone(row.phone),
+    invite_code: row.invite_code,
     submitted_at: timestamp(row.submitted_at),
     expired_at: timestamp(row.expired_at),
     onboarding: {
