@@ -28,16 +28,25 @@
 | 0035-attachment-lifecycle                  | ✅ 2026-07-10 手动应用(DMS)             |
 | 0036-notification-outbox                   | ✅ 2026-07-10 手动应用(DMS)             |
 | 0037-add-plan-day-shifts                   | ✅ 2026-07-10 手动应用(DMS)             |
+| 0038-whole-plan-shift                       | ✅ 2026-07-12 手动应用(DMS)             |
 
-**当前 staging schema head = 0037。**
+**当前 staging schema head = 0038。**
 
 ## 变更历史
 
 - **2026-07-10** — 补齐 0031→0037(共 7 个)根治部署漂移。应用前先做 RDS 全量快照
   (恢复点 18:07:34);逐个 DMS 执行、每个 `SET search_path TO public;`;事后 schema 校验
   (set_logs 4 新列 / 7 新表 / 6 枚举全在)+ curl 验证 `POST /sets/log` 500→201。
+- **2026-07-12** — 应用 0038-whole-plan-shift(spec 054 顺延 V2,#57)。DMS 执行成功(4 语句 9ms);
+  事后 schema 校验:`plan_day_shifts` 新增 `batch_id`/`created_at` 列 + 两个新索引
+  (`plan_day_batch_uidx` / `batch_created_idx`),旧唯一约束 `plan_day_shifts_plan_day_id_key` 已删。
+  ⚠️ 顺延 V2 的下一批(多设备会话 0039,backend PR #59)待合并后再同款应用。
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
 - 2026-07-11 — `sha-4100a00`(=staging HEAD,spec016)部署 `meetpr-backend-staging`;env 未动;
   curl 验证:/health ok、顺延/回顾端点 404→401、/sets/log 正常(此前镜像冻结于 ~2026-06-24)
+- 2026-07-12 — `sha-e87ffac`(=staging HEAD #58,含 #57 顺延 V2)部署 `meetpr-backend-staging`;
+  env 未动(FORCE_HTTPS 不开 / AUTH_ALLOW_LEGACY_TOKENS 不关);先应用 0038 迁移再滚镜像。
+  curl 五探:/health ok、`POST`+`DELETE /plans/:id/shift` 上线(403 NOT_PLAN_STUDENT,证事务写新列成功)、
+  既有端点(/students/:id/plans / /exercises / /me/password / /auth/refresh)全绿。
