@@ -447,6 +447,76 @@ describe('coach planning CRUD', () => {
     expect(response.body.name).toBe('Renamed Block');
   });
 
+  it('DELETE /plans/:id deletes an owned draft plan and cascades its tree', async () => {
+    const ctx = await makeContext();
+    const { plan } = await createCompleteDraft(ctx);
+
+    const response = await request(ctx.app)
+      .delete(`/plans/${responseId(plan)}`)
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(204);
+    expect(await ctx.db.selectFrom('plans').selectAll().execute()).toEqual([]);
+    expect(await ctx.db.selectFrom('plan_days').selectAll().execute()).toEqual([]);
+    expect(await ctx.db.selectFrom('plan_exercises').selectAll().execute()).toEqual([]);
+    expect(await ctx.db.selectFrom('plan_sets').selectAll().execute()).toEqual([]);
+  });
+
+  it('DELETE /plans/:id rejects a non-draft plan with its current status', async () => {
+    const ctx = await makeContext();
+    const { plan } = await createCompleteDraft(ctx);
+    await ctx.db
+      .updateTable('plans')
+      .set({ status: 'published' })
+      .where('id', '=', responseId(plan))
+      .execute();
+
+    const response = await request(ctx.app)
+      .delete(`/plans/${responseId(plan)}`)
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: 'PLAN_TREE_IMMUTABLE', status: 'published' });
+  });
+
+  it('DELETE /plans/:id rejects a draft plan with set-log history', async () => {
+    const ctx = await makeContext();
+    const { plan, exercise } = await createCompleteDraft(ctx);
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: traineeId,
+        plan_exercise_id: responseId(exercise),
+        exercise_id: await firstSystemExerciseId(ctx.db),
+        set_index: 0,
+        weight_kg: '180.00',
+        reps: 5,
+        completed: true,
+        logged_date: '2026-05-04',
+      })
+      .execute();
+
+    const response = await request(ctx.app)
+      .delete(`/plans/${responseId(plan)}`)
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: 'PLAN_HISTORY_IMMUTABLE' });
+    expect(await ctx.db.selectFrom('plans').selectAll().execute()).toHaveLength(1);
+  });
+
+  it('DELETE /plans/:id hides another coach plan', async () => {
+    const ctx = await makeContext();
+    const plan = await createPlan(ctx);
+
+    const response = await request(ctx.app)
+      .delete(`/plans/${responseId(plan)}`)
+      .set(auth(ctx.otherCoachToken));
+
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: 'PLAN_NOT_FOUND' });
+  });
+
   it('POST /plans/:id/publish publishes a complete draft and logs the notification stub', async () => {
     const logLines: string[] = [];
     const logger = pino(
