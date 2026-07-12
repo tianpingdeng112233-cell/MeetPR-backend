@@ -34,8 +34,10 @@
 
 ## 变更历史
 
-- **2026-07-12** — 应用 0038(plan_day_shifts 加 batch_id/created_at,唯一约束改
-  (plan_day_id, batch_id)),支撑 spec 054 整体顺延 V2 及其撤销;与 `sha-e87ffac` 镜像同日部署。
+- **2026-07-12** — 应用 0038-whole-plan-shift(spec 054 顺延 V2,#57):`plan_day_shifts` 加
+  `batch_id`/`created_at`,唯一约束改 (plan_day_id, batch_id) 支撑撤销。DMS 执行成功(4 语句 9ms);
+  事后 schema 校验:两新列 + 两新索引(`plan_day_batch_uidx` / `batch_created_idx`)在,
+  旧约束 `plan_day_shifts_plan_day_id_key` 已删。⚠️ 下一批 0039(多设备会话,PR #59)合并后同款流程。
 - **2026-07-10** — 补齐 0031→0037(共 7 个)根治部署漂移。应用前先做 RDS 全量快照
   (恢复点 18:07:34);逐个 DMS 执行、每个 `SET search_path TO public;`;事后 schema 校验
   (set_logs 4 新列 / 7 新表 / 6 枚举全在)+ curl 验证 `POST /sets/log` 500→201。
@@ -43,7 +45,9 @@
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
 - 2026-07-12 — `sha-e87ffac`(=staging HEAD,#57 顺延 V2 + #58 plan-web input-guard)部署
-  `meetpr-backend-staging`;env 未动;curl 验证:/health 200、`POST/DELETE /plans/:id/shift`
-  404→401(V2 路由生效)、旧 V1 天级端点 404(已被替代)。配套 iOS 1.0(9) 同日发布。
+  `meetpr-backend-staging`;env 未动(FORCE_HTTPS 不开 / AUTH_ALLOW_LEGACY_TOKENS 不关);
+  **先应用 0038 迁移再滚镜像**。curl 验证:/health 200、`POST/DELETE /plans/:id/shift` 404→401/403
+  (带号探测返 NOT_PLAN_STUDENT,证事务写新列成功)、旧 V1 天级端点 404(已替代)、既有端点
+  (/students/:id/plans、/exercises、/me/password、/auth/refresh)全绿。配套 iOS 1.0(9) 同日发布。
 - 2026-07-11 — `sha-4100a00`(=staging HEAD,spec016)部署 `meetpr-backend-staging`;env 未动;
   curl 验证:/health ok、顺延/回顾端点 404→401、/sets/log 正常(此前镜像冻结于 ~2026-06-24)
