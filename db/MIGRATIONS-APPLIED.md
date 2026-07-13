@@ -38,7 +38,7 @@
   events 宽表(`event_id` UNIQUE + `user_id` FK ON DELETE SET NULL + 4 索引)+ analytics_feedback
   自由文本隔离表(2 索引)。DMS 两段各带 `SET search_path TO public;` 执行成功(8 语句 5ms / 6 语句 6ms)。
   ⚠️ 号段回填:0029/0030 是补进 0028 与 0031 之间的历史空号(本仓无 runner,纯手工无碍),schema head 仍 0038。
-  ⏳ **端点尚未上线**:curl 验 `/health` 200 但 `/events/config` **404** —— SAE 镜像(`sha-2cacea6`)待手动滚动部署;滚镜像后补 curl 验证再标 ✅。
+  ✅ **端点已上线**(2026-07-13):SAE 滚 `sha-2cacea6` 后 curl 验证 `/events/config` 200 `{enabled:true,sample_rate:1}`、`POST /events`(anon app_open)204、partial-accept(含无效事件名)仍 204、`/health` 200。
 - **2026-07-12** — 应用 0038-whole-plan-shift(spec 054 顺延 V2,#57):`plan_day_shifts` 加
   `batch_id`/`created_at`,唯一约束改 (plan_day_id, batch_id) 支撑撤销。DMS 执行成功(4 语句 9ms);
   事后 schema 校验:两新列 + 两新索引(`plan_day_batch_uidx` / `batch_created_idx`)在,
@@ -49,6 +49,12 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-13 — `sha-2cacea6`(=staging HEAD,#38 埋点 spec 008:`/events` + `/events/feedback` +
+  `/events/config` + events/analytics_feedback 表 + createOptionalAuth)部署 `meetpr-backend-staging`;
+  env **未动**(analytics 4 个全走默认:`ANALYTICS_ENABLED=true` / `SAMPLE_RATE=1` / limiter 60s·600;
+  `FORCE_HTTPS` 不开 / `AUTH_ALLOW_LEGACY_TOKENS` 不关);**先应用 0029/0030 迁移再滚镜像**。
+  curl 验证:`/events/config` 200、`POST /events`(anon app_open)204、partial-accept 204、`/health` 200。
+  ⚠️ probe 写入 1 条测试事件(anon_id `aacc0000-…-000000000001`),David 可 `DELETE FROM events WHERE anon_id='aacc0000-0000-4000-8000-000000000001';` 清掉免污染首批真实数据。
 - 2026-07-12 — `sha-e87ffac`(=staging HEAD,#57 顺延 V2 + #58 plan-web input-guard)部署
   `meetpr-backend-staging`;env 未动(FORCE_HTTPS 不开 / AUTH_ALLOW_LEGACY_TOKENS 不关);
   **先应用 0038 迁移再滚镜像**。curl 验证:/health 200、`POST/DELETE /plans/:id/shift` 404→401/403
