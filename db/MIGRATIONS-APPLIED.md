@@ -49,6 +49,11 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-13 — `sha-caf7796`(=staging HEAD,#70 gym-day 宽限窗 spec 017:coached 缺省 `logged_date`
+  改 04:00 Asia/Shanghai 截断)部署 `meetpr-backend-staging`(David 手动控制台,#71 一键部署 workflow
+  尚未启用);**零迁移、env 未动**。curl 验证:`/health` 200、`POST /sets/log` 无鉴权 401 信封正确、
+  `/events/config` 200 不受影响。⚠️ 截断行为差异仅在凌晨 0-4 点窗口可外部观测,当晚 22:4x 冒烟
+  只能证「服务健康+新镜像在跑」;正确性证据=CI 内 7 条边界测试(纯函数 5 + 冻结时钟路由级 2)。
 - 2026-07-13 — `sha-2cacea6`(=staging HEAD,#38 埋点 spec 008:`/events` + `/events/feedback` +
   `/events/config` + events/analytics_feedback 表 + createOptionalAuth)部署 `meetpr-backend-staging`;
   env **未动**(analytics 4 个全走默认:`ANALYTICS_ENABLED=true` / `SAMPLE_RATE=1` / limiter 60s·600;
