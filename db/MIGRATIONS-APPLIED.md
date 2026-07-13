@@ -17,23 +17,28 @@
 
 ## staging (`meetpr-rds-v01-staging`, pgm-bp1h7t65b7if01rq, 华东1杭州) 应用状态
 
-| 迁移                                       | 应用状态                                |
-| ------------------------------------------ | --------------------------------------- |
-| 0001 → 0028（含 0002.1 / 0003.5 / 0003.6） | ✅ 漂移前已应用(库长期在 0028 稳定运行) |
-| 0029 / 0030                                | — 从不存在(重编号时跳号,无此文件)       |
-| 0031-adhoc-set-logs                        | ✅ 2026-07-10 手动应用(DMS)             |
-| 0032-init-session-reviews                  | ✅ 2026-07-10 手动应用(DMS)             |
-| 0033-algo-foundation-schema                | ✅ 2026-07-10 手动应用(DMS)             |
-| 0034-imported-history-assumed              | ✅ 2026-07-10 手动应用(DMS)             |
-| 0035-attachment-lifecycle                  | ✅ 2026-07-10 手动应用(DMS)             |
-| 0036-notification-outbox                   | ✅ 2026-07-10 手动应用(DMS)             |
-| 0037-add-plan-day-shifts                   | ✅ 2026-07-10 手动应用(DMS)             |
-| 0038-whole-plan-shift                      | ✅ 2026-07-12 手动应用(DMS,David)       |
+| 迁移                                            | 应用状态                                |
+| ----------------------------------------------- | --------------------------------------- |
+| 0001 → 0028（含 0002.1 / 0003.5 / 0003.6）      | ✅ 漂移前已应用(库长期在 0028 稳定运行) |
+| 0029-init-events / 0030-init-analytics-feedback | ✅ 2026-07-13 手动应用(DMS,David)       |
+| 0031-adhoc-set-logs                             | ✅ 2026-07-10 手动应用(DMS)             |
+| 0032-init-session-reviews                       | ✅ 2026-07-10 手动应用(DMS)             |
+| 0033-algo-foundation-schema                     | ✅ 2026-07-10 手动应用(DMS)             |
+| 0034-imported-history-assumed                   | ✅ 2026-07-10 手动应用(DMS)             |
+| 0035-attachment-lifecycle                       | ✅ 2026-07-10 手动应用(DMS)             |
+| 0036-notification-outbox                        | ✅ 2026-07-10 手动应用(DMS)             |
+| 0037-add-plan-day-shifts                        | ✅ 2026-07-10 手动应用(DMS)             |
+| 0038-whole-plan-shift                           | ✅ 2026-07-12 手动应用(DMS,David)       |
 
 **当前 staging schema head = 0038。**
 
 ## 变更历史
 
+- **2026-07-13** — 应用 0029-init-events + 0030-init-analytics-feedback(埋点 spec 008,#38 合 staging):
+  events 宽表(`event_id` UNIQUE + `user_id` FK ON DELETE SET NULL + 4 索引)+ analytics_feedback
+  自由文本隔离表(2 索引)。DMS 两段各带 `SET search_path TO public;` 执行成功(8 语句 5ms / 6 语句 6ms)。
+  ⚠️ 号段回填:0029/0030 是补进 0028 与 0031 之间的历史空号(本仓无 runner,纯手工无碍),schema head 仍 0038。
+  ⏳ **端点尚未上线**:curl 验 `/health` 200 但 `/events/config` **404** —— SAE 镜像(`sha-2cacea6`)待手动滚动部署;滚镜像后补 curl 验证再标 ✅。
 - **2026-07-12** — 应用 0038-whole-plan-shift(spec 054 顺延 V2,#57):`plan_day_shifts` 加
   `batch_id`/`created_at`,唯一约束改 (plan_day_id, batch_id) 支撑撤销。DMS 执行成功(4 语句 9ms);
   事后 schema 校验:两新列 + 两新索引(`plan_day_batch_uidx` / `batch_created_idx`)在,
