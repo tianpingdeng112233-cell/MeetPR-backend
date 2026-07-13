@@ -1,0 +1,157 @@
+name: Deploy staging image to SAE
+
+# Manual-only by design (spec 018): migrations are applied by hand (DMS), so an
+# auto-deploy on push could ship an image ahead of the DB schema — the exact
+# failure mode of the 2026-06-24 drift incident. Run this AFTER any pending
+# migrations in db/MIGRATIONS-APPLIED.md are applied:
+#   gh workflow run deploy-staging.yml -f migrations_applied=true
+# Optionally pass -f image_sha=<full sha> to deploy something other than HEAD.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: 'Full commit sha of the image to deploy (default: sha of the ref this run targets)'
+        required: false
+      migrations_applied:
+        description: 'All migrations required by this image are applied to staging RDS (db/MIGRATIONS-APPLIED.md)'
+        type: boolean
+        required: true
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+env:
+  REGISTRY: crpi-qh0hhca6eqlzbzy9.cn-hangzhou.personal.cr.aliyuncs.com
+  IMAGE_REPO: meetpr/meetpr-backend
+  STAGING_BASE_URL: http://121.40.160.241:3000
+  ALIYUN_CLI_VERSION: 3.4.6
+  ALIYUN_CLI_SHA256: 9f7c993bd1b16c530f219bc1976bf78057879db4b1bae857b2952676eb7466f6
+
+jobs:
+  deploy:
+    name: Deploy image to SAE
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Gate on migration confirmation
+        if: ${{ inputs.migrations_applied != true }}
+        run: |
+          echo "::error::migrations_applied not confirmed. Apply pending migrations (db/MIGRATIONS-APPLIED.md) first, then re-run with the box checked."
+          exit 1
+
+      - name: Resolve image tag
+        id: img
+        env:
+          IMAGE_SHA_INPUT: ${{ inputs.image_sha }}
+        run: |
+          SHA="${IMAGE_SHA_INPUT:-$GITHUB_SHA}"
+          if ! echo "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::image_sha must be a full 40-char commit sha"
+            exit 1
+          fi
+          echo "url=${REGISTRY}/${IMAGE_REPO}:sha-${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to ACR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: crpi-qh0hhca6eqlzbzy9.cn-hangzhou.personal.cr.aliyuncs.com
+          username: ${{ secrets.ALIYUN_ACR_USERNAME }}
+          password: ${{ secrets.ALIYUN_ACR_PASSWORD }}
+
+      - name: Verify image exists in ACR
+        run: |
+          if ! docker manifest inspect "${{ steps.img.outputs.url }}" > /dev/null; then
+            echo "::error::Image not found in ACR: ${{ steps.img.outputs.url }} — has build-push-staging finished for this sha?"
+            exit 1
+          fi
+
+      - name: Install aliyun CLI (pinned + checksum-verified)
+        run: |
+          curl -fsSL -o aliyun-cli.tgz \
+            "https://github.com/aliyun/aliyun-cli/releases/download/v${ALIYUN_CLI_VERSION}/aliyun-cli-linux-${ALIYUN_CLI_VERSION}-amd64.tgz"
+          echo "${ALIYUN_CLI_SHA256}  aliyun-cli.tgz" | sha256sum -c -
+          tar -xzf aliyun-cli.tgz
+          sudo install -m 0755 aliyun /usr/local/bin/aliyun
+          aliyun version
+
+      - name: Deploy to SAE
+        id: deploy
+        env:
+          ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          ALIBABA_CLOUD_REGION_ID: cn-hangzhou
+          SAE_APP_ID: ${{ vars.SAE_APP_ID }}
+        run: |
+          RESPONSE=$(aliyun sae POST /pop/v1/sam/app/deployApplication \
+            --AppId "$SAE_APP_ID" \
+            --ImageUrl "${{ steps.img.outputs.url }}")
+          echo "$RESPONSE"
+          if ! echo "$RESPONSE" | jq -e '.Success == true' > /dev/null; then
+            echo "::error::DeployApplication did not return Success=true"
+            exit 1
+          fi
+          ORDER_ID=$(echo "$RESPONSE" | jq -er '.Data.ChangeOrderId') || {
+            echo "::error::DeployApplication returned no ChangeOrderId"
+            exit 1
+          }
+          echo "order_id=$ORDER_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for change order to finish
+        env:
+          ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          ALIBABA_CLOUD_REGION_ID: cn-hangzhou
+        run: |
+          # DescribeChangeOrder Status: 0 preparing, 1 executing, 2 success,
+          # 3 failed, 6 aborted, 8/9/11/12 waiting on manual batch confirm or
+          # approval (we deploy single-batch — treat as needing a human),
+          # 10 system-terminated.
+          NULLS=0
+          for i in $(seq 1 60); do
+            RESPONSE=$(aliyun sae GET /pop/v1/sam/changeorder/DescribeChangeOrder \
+              --ChangeOrderId "${{ steps.deploy.outputs.order_id }}") || RESPONSE='{}'
+            STATUS=$(echo "$RESPONSE" | jq -r '.Data.Status // "null"')
+            echo "poll $i: change order status = $STATUS"
+            case "$STATUS" in
+              2) echo "Change order succeeded."; exit 0 ;;
+              3|6|10)
+                echo "$RESPONSE" | jq .
+                echo "::error::Change order ended in status $STATUS"
+                exit 1 ;;
+              8|9|11|12)
+                echo "::error::Change order waiting on manual confirmation/approval (status $STATUS) — finish or abort it in the SAE console."
+                exit 1 ;;
+              null)
+                NULLS=$((NULLS + 1))
+                if [ "$NULLS" -ge 5 ]; then
+                  echo "$RESPONSE" | jq . || echo "$RESPONSE"
+                  echo "::error::DescribeChangeOrder returned no status 5 times in a row"
+                  exit 1
+                fi ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Timed out waiting for change order after 10 minutes"
+          exit 1
+
+      - name: Smoke check /health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 5 "$STAGING_BASE_URL/health" > /dev/null; then
+              echo "Health check passed."
+              exit 0
+            fi
+            echo "poll $i: /health not ready yet"
+            sleep 5
+          done
+          echo "::error::/health did not return 200 within 150s of change order success"
+          exit 1
+
+      - name: Remind about the deploy ledger
+        run: |
+          echo "::notice::Deployed ${{ steps.img.outputs.url }} — append a record to db/MIGRATIONS-APPLIED.md (SAE 镜像部署记录)."
