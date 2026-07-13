@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { auth, createPublishedPlan, ids, makeContext } from './helpers/studentActions';
 
@@ -133,6 +133,52 @@ describe('POST /sets/log', () => {
     expect(rows[0]?.logged_date).not.toBeNull();
     expect(rows[0]?.exercise_id).toBe(ids.exercise);
     expect(rows[0]?.adhoc).toBe(false);
+  });
+
+  describe('gym-day cutoff for omitted logged_date', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const payload = (planExerciseId: string) => ({
+      plan_exercise_id: planExerciseId,
+      set_index: 2,
+      weight_kg: '95.00',
+      reps: 5,
+      completed: true,
+    });
+
+    it('assigns a set logged at 03:59 Shanghai to the previous training day', async () => {
+      const ctx = await makeContext();
+      const plan = await createPublishedPlan(ctx);
+      // 2026-07-13T03:59 Asia/Shanghai
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-12T19:59:00Z') });
+
+      const res = await request(ctx.app)
+        .post('/sets/log')
+        .set(auth(ctx.traineeToken))
+        .send(payload(plan.planExerciseId));
+      const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
+
+      expect(res.status).toBe(201);
+      expect(dateText(rows[0]?.logged_date)).toBe('2026-07-12');
+    });
+
+    it('assigns a set logged at 04:00 Shanghai to the new training day', async () => {
+      const ctx = await makeContext();
+      const plan = await createPublishedPlan(ctx);
+      // 2026-07-13T04:00 Asia/Shanghai
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-12T20:00:00Z') });
+
+      const res = await request(ctx.app)
+        .post('/sets/log')
+        .set(auth(ctx.traineeToken))
+        .send(payload(plan.planExerciseId));
+      const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
+
+      expect(res.status).toBe(201);
+      expect(dateText(rows[0]?.logged_date)).toBe('2026-07-13');
+    });
   });
 
   it('preserves logged_date when an old-build coached upsert edits a historical set', async () => {

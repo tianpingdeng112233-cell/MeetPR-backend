@@ -11,7 +11,11 @@ import {
   upsertSetLog,
 } from '../handlers/sets-log';
 import { requireRole } from '../middleware/auth';
-import { isIsoCalendarDate, isoCalendarDateSchemaMessage } from '../utils/date';
+import {
+  isIsoCalendarDate,
+  isoCalendarDateSchemaMessage,
+  shanghaiTrainingDay,
+} from '../utils/date';
 import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
@@ -84,11 +88,6 @@ const AdhocSetLogBodySchema = z
 
 const SetLogBodySchema = z.union([CoachedSetLogBodySchema, AdhocSetLogBodySchema]);
 
-/** Server-clock training day for old clients that do not send logged_date. */
-function shanghaiToday(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
-}
-
 const StudentIdParamSchema = z.object({
   id: UuidSchema,
 });
@@ -143,7 +142,7 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
         const result = await upsertSetLog(deps.db, req.user.id, {
           plan_exercise_id: body.data.plan_exercise_id,
           exercise_id: resolved.exerciseId,
-          logged_date: body.data.logged_date ?? shanghaiToday(),
+          logged_date: body.data.logged_date ?? shanghaiTrainingDay(),
           update_logged_date: body.data.logged_date !== undefined,
           set_index: body.data.set_index,
           weight_kg: body.data.weight_kg,

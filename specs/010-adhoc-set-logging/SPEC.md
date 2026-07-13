@@ -51,7 +51,7 @@ coached 形态(向后兼容,老 iOS build 不带 `logged_date` 照常工作):
 }
 ```
 
-- `logged_date` 可选;缺省时服务端按 Asia/Shanghai 当日填。
+- `logged_date` 可选;缺省时服务端按 Asia/Shanghai **训练日**填:凌晨 04:00 前仍算前一日(gym-day 截断,`shanghaiTrainingDay`;口径由 spec 017 于 2026-07-13 取代本节原"当日"表述)。
 - 校验链不变:`resolvePlanExercise`(原 `canLogSet` 改造,额外返回 `exercise_id` 供插入)→ 查无 → 400 `SETS_PLAN_EXERCISE_NOT_PUBLISHED`。
 - upsert 冲突目标不变 `(student_id, plan_exercise_id, set_index)`;`logged_date` 仅在客户端显式提供时随冲突更新(规则详见 §3 末)。
 
