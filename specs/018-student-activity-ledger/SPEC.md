@@ -1,6 +1,6 @@
 # 018 — 学员动态账本（student activity ledger，驾驶舱信号环 W0）
 
-- **状态**: Draft
+- **状态**: InProgress
 - **来源**: CEO plan `~/.gstack/projects/meetpr/ceo-plans/2026-07-16-coach-cockpit-signal-loop.md`（W0，David 2026-07-16 全拍板）。T2 / P1。
 - **权威口径**: 分类学与红线全文沿用 CEO plan；PR 口径 = iOS spec 050（`050-e1rm-single-source`）；gym-day 04:00 截断 = backend spec 017。
 - **迁移**: `0041-init-activity-ledger.sql`（0039 归 PR #59 缺号，永不复用）。
