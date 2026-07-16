@@ -21,6 +21,7 @@ import { plansRouter, studentPlansRouter } from './plans';
 import { studentReadinessRouter } from './readiness';
 import { studentReviewsRouter } from './reviews';
 import { setsRouter, studentSetsRouter } from './sets';
+import { coachSignalsRouter, studentSignalsRouter } from './signals';
 import { studentRouter } from './student';
 import { uploadsRouter } from './uploads';
 import type { OssService } from '../services/oss';
@@ -48,6 +49,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use('/students', deps.requireAuth, studentEvaluationsRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentOnboardingRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentVideosRouter({ db: deps.db }));
+  app.use('/students', deps.requireAuth, studentSignalsRouter({ db: deps.db }));
   app.use('/bind-requests', deps.requireAuth, studentBindRequestsRouter({ db: deps.db }));
   app.use('/exercises', deps.requireAuth, exercisesRouter({ db: deps.db }));
   app.use('/sets', deps.requireAuth, setsRouter({ db: deps.db }));
@@ -60,6 +62,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use('/coach', deps.requireAuth, coachBindRequestsRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachEvaluationsRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachOneRmRouter({ db: deps.db }));
+  app.use('/coach', deps.requireAuth, coachSignalsRouter({ db: deps.db, logger: deps.logger }));
   app.use('/student', deps.requireAuth, studentRouter());
   // Analytics ingest (SPEC 008). optional-auth (NOT requireAuth): pre-login
   // onboarding events must not 401. The whole /events surface is exempt from the
