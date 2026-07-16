@@ -388,6 +388,17 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    -- Push-pipeline card 1 schema. Keep in sync with migration 0042.
+    CREATE TABLE device_tokens (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      platform TEXT NOT NULL CHECK (platform = 'ios'),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE events (
       id BIGSERIAL PRIMARY KEY,
       event_id UUID NOT NULL UNIQUE,
