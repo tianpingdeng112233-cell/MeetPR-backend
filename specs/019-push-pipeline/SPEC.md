@@ -1,6 +1,6 @@
 # 019 — 推送管线（push pipeline，驾驶舱信号环 W1 backend 侧）
 
-- **状态**: Draft
+- **状态**: InProgress
 - **来源**: CEO plan `~/.gstack/projects/meetpr/ceo-plans/2026-07-16-coach-cockpit-signal-loop.md` W1（David 2026-07-16 拍板：推送管线从零建，W1 最大件）。T2 / P1。
 - **依赖**: spec 018（PR #73）合并部署后方可实装——账本表与 cron 基建是本 spec 的地基。**迁移号暂定 0042，开工时三源现场核实。**
 - **手动前置**: Apple APNs auth key（.p8 + Key ID + Team ID）——David 手动步，凭证只存 Bitwarden，SAE 环境变量部署时注入。
