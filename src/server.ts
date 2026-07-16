@@ -9,6 +9,7 @@ import { loadConfig } from './config';
 import { createDb } from './db/kysely';
 import { createPool } from './db/pool';
 import { createLogger } from './logger';
+import { startActivityScheduler } from './jobs/scheduler';
 import { maybeCreateOssService } from './services/oss';
 
 function main(): void {
@@ -26,9 +27,11 @@ function main(): void {
   const server = app.listen(config.PORT, () => {
     logger.info({ port: config.PORT, env: config.NODE_ENV }, 'server_listening');
   });
+  const scheduler = startActivityScheduler({ config, logger, db });
 
   const shutdown = (signal: string): void => {
     logger.info({ signal }, 'server_shutdown_start');
+    scheduler?.stop();
     server.close((closeErr) => {
       if (closeErr) {
         logger.error({ err: closeErr }, 'server_close_error');

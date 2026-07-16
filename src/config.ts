@@ -45,6 +45,10 @@ export const ConfigSchema = z
       .enum(['true', 'false'])
       .default('true')
       .transform((v) => v === 'true'),
+    SIGNALS_CRON_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
     ANALYTICS_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
     CORS_ORIGIN: z.string().default('*'),
     TRUST_PROXY: z.coerce.number().int().min(0).default(0),

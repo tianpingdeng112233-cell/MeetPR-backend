@@ -73,7 +73,7 @@
 
 - `pr_e1rm`: `{ set_log_id, exercise_id, family, e1rm, previous_best, logged_date }`
 - `session_completed/partial`: `{ session_id, plan_day_ids, duration_seconds, sets_logged }`
-- `missed_training`: `{ missed_dates: [YYYY-MM-DD...], consecutive_count, plan_id }`
+- `missed_training`: `{ missed_dates: [YYYY-MM-DD...], consecutive_count, plan_id, streak_start_date, absence_epoch }`（`absence_epoch` = 最后真实开练日或 `never`，教练级缺席去重锚——review-loop 卡 4 轮 2 增补）
 
 ## 2. 事件时钩子（set-log 旁路）
 

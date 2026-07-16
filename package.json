@@ -36,6 +36,7 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "kysely": "^0.28.17",
+    "node-cron": "^4.6.0",
     "pg": "^8.13.1",
     "pino": "^9.5.0",
     "pino-http": "^10.3.0",
