@@ -17,23 +17,40 @@
 
 ## staging (`meetpr-rds-v01-staging`, pgm-bp1h7t65b7if01rq, 华东1杭州) 应用状态
 
-| 迁移                                            | 应用状态                                |
-| ----------------------------------------------- | --------------------------------------- |
-| 0001 → 0028（含 0002.1 / 0003.5 / 0003.6）      | ✅ 漂移前已应用(库长期在 0028 稳定运行) |
-| 0029-init-events / 0030-init-analytics-feedback | ✅ 2026-07-13 手动应用(DMS,David)       |
-| 0031-adhoc-set-logs                             | ✅ 2026-07-10 手动应用(DMS)             |
-| 0032-init-session-reviews                       | ✅ 2026-07-10 手动应用(DMS)             |
-| 0033-algo-foundation-schema                     | ✅ 2026-07-10 手动应用(DMS)             |
-| 0034-imported-history-assumed                   | ✅ 2026-07-10 手动应用(DMS)             |
-| 0035-attachment-lifecycle                       | ✅ 2026-07-10 手动应用(DMS)             |
-| 0036-notification-outbox                        | ✅ 2026-07-10 手动应用(DMS)             |
-| 0037-add-plan-day-shifts                        | ✅ 2026-07-10 手动应用(DMS)             |
-| 0038-whole-plan-shift                           | ✅ 2026-07-12 手动应用(DMS,David)       |
+| 迁移                                            | 应用状态                                                        |
+| ----------------------------------------------- | --------------------------------------------------------------- |
+| 0001 → 0028（含 0002.1 / 0003.5 / 0003.6）      | ✅ 漂移前已应用(库长期在 0028 稳定运行)                         |
+| 0029-init-events / 0030-init-analytics-feedback | ✅ 2026-07-13 手动应用(DMS,David)                               |
+| 0031-adhoc-set-logs                             | ✅ 2026-07-10 手动应用(DMS)                                     |
+| 0032-init-session-reviews                       | ✅ 2026-07-10 手动应用(DMS)                                     |
+| 0033-algo-foundation-schema                     | ✅ 2026-07-10 手动应用(DMS)                                     |
+| 0034-imported-history-assumed                   | ✅ 2026-07-10 手动应用(DMS)                                     |
+| 0035-attachment-lifecycle                       | ✅ 2026-07-10 手动应用(DMS)                                     |
+| 0036-notification-outbox                        | ✅ 2026-07-10 手动应用(DMS)                                     |
+| 0037-add-plan-day-shifts                        | ✅ 2026-07-10 手动应用(DMS)                                     |
+| 0038-whole-plan-shift                           | ✅ 2026-07-12 手动应用(DMS,David)                               |
+| 0040-exercise-competition-stance                | ✅ 应用时点未见于账本(早于对账);2026-07-16 对账发现已在库并补记 |
 
-**当前 staging schema head = 0038。**
+> 号段说明:**无 0039 文件**。0039 号段被未合的 PR #59(多设备会话)占用,故 0038 直接跳到 0040,属正常。
+
+**当前 staging schema head = 0040。**
 
 ## 变更历史
 
+- **2026-07-16** — 对账 0040-exercise-competition-stance(#69 e1RM 竞技动作解析)。**发现该列早已在库,漂移只在账本**:
+  部署镜像 `sha-caf7796`(=caf7796,含 #69 代码)在 [exercise-stats.ts:32](../src/handlers/exercise-stats.ts)
+  等 4 文件约 8 处显式引用 `exercises.competition_stance`,而账本 head 停在 0038,原判「未 apply → 42703→500」。
+  DMS 实查(`SET search_path TO public;`):`information_schema.columns` 命中 `competition_stance text`(9ms);
+  `SELECT name, competition_stance FROM exercises WHERE competition_stance IS NOT NULL` 返回 **4 行齐**(5ms):
+  传统硬拉→conventional / 高杠位深蹲→high_bar / 低杠位深蹲→low_bar / 相扑硬拉→sumo,即 0040 的 ALTER+4 UPDATE
+  已完整提交。**应用时点未见于账本**(caf7796 部署行当时记「零迁移」,推测 0040 随 #69 前后手动应用但漏记本文件);
+  本次纯补账本,**无任何 DB 写操作**。curl 佐证线上健康(踩之前会 42703 的路径):`/health` 200、
+  `GET /coach/students/:id/exercise-stats`(overview,走 line 221 select) 200、同端点带 `?exercise_id=传统硬拉`
+  (detail,强制 line 32 `e.competition_stance` join select) 200——均未 500。
+  ⚠️ **验证探针在 staging 造了测试数据**:教练 `+8613900000042`(id `1237a673-0ab1-49b2-9fbe-c39e06a738aa`)、
+  学员 `+8613900000043`(id `24d0b844-051b-4e1a-9116-d44b4dc10b69`)、一枚个人永久邀请码(`XKKQM2LP8G`)、
+  一条 accepted 绑定 + 一条 accepted bind_request。均无业务数据(无 set_logs/plans),可留作测试夹具或按需清理
+  (清理顺序:bonds/bind_requests → invite_codes → users,或直接 `DELETE FROM users WHERE phone IN ('+8613900000042','+8613900000043');` 靠 FK 级联)。
 - **2026-07-13** — 应用 0029-init-events + 0030-init-analytics-feedback(埋点 spec 008,#38 合 staging):
   events 宽表(`event_id` UNIQUE + `user_id` FK ON DELETE SET NULL + 4 索引)+ analytics_feedback
   自由文本隔离表(2 索引)。DMS 两段各带 `SET search_path TO public;` 执行成功(8 语句 5ms / 6 语句 6ms)。
