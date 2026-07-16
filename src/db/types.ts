@@ -121,6 +121,11 @@ export const ATTACHMENT_STATUSES = [
 // Analytics event platform. iOS-only for the beta; the column is text for
 // forward-compat, this const is the current closed set (SPEC 008 §6).
 export const EVENT_PLATFORMS = ['ios'] as const;
+export const SESSION_STATUSES = ['in_progress', 'completed', 'partial'] as const;
+export const STUDENT_EVENT_TYPES = ['session_completed', 'session_partial', 'pr_e1rm'] as const;
+export const SIGNAL_TYPES = ['missed_training', 'pr_congrats'] as const;
+export const SIGNAL_SEVERITIES = ['red', 'yellow', 'green'] as const;
+export const SIGNAL_STATUSES = ['open', 'acked', 'auto_resolved', 'expired'] as const;
 
 export type UserRole = (typeof USER_ROLES)[number];
 export type LiftFamily = (typeof LIFT_FAMILIES)[number];
@@ -157,6 +162,11 @@ export type ReadinessMuscleGroup = (typeof READINESS_MUSCLE_GROUPS)[number];
 export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
 export type AttachmentStatus = (typeof ATTACHMENT_STATUSES)[number];
 export type EventPlatform = (typeof EVENT_PLATFORMS)[number];
+export type SessionStatus = (typeof SESSION_STATUSES)[number];
+export type StudentEventType = (typeof STUDENT_EVENT_TYPES)[number];
+export type SignalType = (typeof SIGNAL_TYPES)[number];
+export type SignalSeverity = (typeof SIGNAL_SEVERITIES)[number];
+export type SignalStatus = (typeof SIGNAL_STATUSES)[number];
 
 type NullableColumn<T> = ColumnType<T | null, T | null | undefined, T | null>;
 type TimestampColumn = ColumnType<Date, Date | undefined, Date>;
@@ -548,6 +558,56 @@ export interface NotificationOutboxTable {
   delivered_at: NullableColumn<Date>;
 }
 
+export interface TrainingSessionsTable {
+  id: Generated<string>;
+  student_id: string;
+  // DATE-as-text in production; pg-mem returns a Date in integration tests.
+  session_date: ColumnType<string | Date, string, string>;
+  status: SessionStatus;
+  started_at: TimestampColumn;
+  last_set_at: TimestampColumn;
+  completed_at: NullableColumn<Date>;
+  plan_day_ids: Generated<string[]>;
+  created_at: TimestampColumn;
+  updated_at: TimestampColumn;
+}
+
+export interface StudentEventsTable {
+  id: Generated<string>;
+  student_id: string;
+  coach_id: NullableColumn<string>;
+  event_type: StudentEventType;
+  // DATE-as-text in production; pg-mem returns a Date in integration tests.
+  session_date: ColumnType<string | Date, string, string>;
+  occurred_at: TimestampColumn;
+  payload: ColumnType<
+    Record<string, unknown> | string,
+    Record<string, unknown> | string | undefined
+  >;
+  dedup_key: string;
+  created_at: TimestampColumn;
+}
+
+export interface StudentSignalsTable {
+  id: Generated<string>;
+  student_id: string;
+  coach_id: string;
+  signal_type: SignalType;
+  severity: SignalSeverity;
+  status: SignalStatus;
+  reason: string;
+  payload: ColumnType<
+    Record<string, unknown> | string,
+    Record<string, unknown> | string | undefined
+  >;
+  opened_at: TimestampColumn;
+  acked_at: NullableColumn<Date>;
+  resolved_at: NullableColumn<Date>;
+  expires_at: NullableColumn<Date>;
+  created_at: TimestampColumn;
+  updated_at: TimestampColumn;
+}
+
 // name's authoritative enum lives in the route's zod discriminatedUnion; the
 // column is plain text for forward-compat (SPEC 008 §6).
 export interface EventsTable {
@@ -613,6 +673,9 @@ export interface Database {
   onboarding_uploads: OnboardingUploadsTable;
   attachments: AttachmentsTable;
   notification_outbox: NotificationOutboxTable;
+  training_sessions: TrainingSessionsTable;
+  student_events: StudentEventsTable;
+  student_signals: StudentSignalsTable;
   athlete_lift_state: AthleteLiftStateTable;
   wave_templates: WaveTemplatesTable;
   athlete_capacity_profiles: AthleteCapacityProfilesTable;
