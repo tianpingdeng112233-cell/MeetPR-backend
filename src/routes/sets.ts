@@ -3,6 +3,7 @@ import type { Kysely } from 'kysely';
 import { z } from 'zod';
 
 import type { Database } from '../db/types';
+import { recordSetLogActivity } from '../handlers/activity-ledger';
 import { fetchCoachSetLogs, fetchOwnSetLogs } from '../handlers/sets-fetch';
 import {
   exerciseExists,
@@ -151,6 +152,14 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
           completed: body.data.completed,
           failed: body.data.failed,
         });
+        try {
+          await recordSetLogActivity(deps.db, req.user.id, result.id);
+        } catch (error: unknown) {
+          req.log.warn(
+            { err: error, studentId: req.user.id, setLogId: result.id },
+            'activity_ledger_hook_failed',
+          );
+        }
         res.status(201).json(result);
         return;
       }
@@ -171,6 +180,14 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
         completed: body.data.completed,
         failed: body.data.failed,
       });
+      try {
+        await recordSetLogActivity(deps.db, req.user.id, result.id);
+      } catch (error: unknown) {
+        req.log.warn(
+          { err: error, studentId: req.user.id, setLogId: result.id },
+          'activity_ledger_hook_failed',
+        );
+      }
       res.status(201).json(result);
     }),
   );

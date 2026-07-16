@@ -568,6 +568,7 @@ export interface TrainingSessionsTable {
   last_set_at: TimestampColumn;
   completed_at: NullableColumn<Date>;
   plan_day_ids: Generated<string[]>;
+  archived_sets_logged: NullableColumn<number>;
   created_at: TimestampColumn;
   updated_at: TimestampColumn;
 }

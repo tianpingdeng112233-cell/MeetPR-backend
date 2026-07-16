@@ -12,6 +12,10 @@ CREATE TABLE training_sessions (
   last_set_at    TIMESTAMPTZ NOT NULL,
   completed_at   TIMESTAMPTZ,
   plan_day_ids   UUID[] NOT NULL DEFAULT '{}',
+  -- Non-assumed set count captured whenever the session reaches a terminal
+  -- state; the reopen check compares live counts against it. NULL while
+  -- in_progress (or when unknown).
+  archived_sets_logged INT,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (student_id, session_date)
@@ -93,6 +97,18 @@ FROM set_logs session_log
 WHERE NOT session_log.assumed
   AND (session_log.logged_at + INTERVAL '4 hours')::date = session_log.logged_date
 GROUP BY session_log.student_id, session_log.logged_date;
+
+CREATE TABLE backfill_day_counts (
+  student_id   UUID NOT NULL,
+  session_date DATE NOT NULL,
+  total_sets   INT NOT NULL
+);
+
+INSERT INTO backfill_day_counts (student_id, session_date, total_sets)
+SELECT student_id, logged_date, COUNT(*)
+FROM set_logs
+WHERE NOT assumed
+GROUP BY student_id, logged_date;
 
 CREATE TABLE backfill_touched_days (
   student_id   UUID NOT NULL,
@@ -178,7 +194,8 @@ INSERT INTO training_sessions (
   started_at,
   last_set_at,
   completed_at,
-  plan_day_ids
+  plan_day_ids,
+  archived_sets_logged
 )
 SELECT
   sessions.student_id,
@@ -203,8 +220,12 @@ SELECT
     ),
     ']',
     '}'
-  )::UUID[] AS plan_day_ids
+  )::UUID[] AS plan_day_ids,
+  day_counts.total_sets AS archived_sets_logged
 FROM backfill_session_timing sessions
+JOIN backfill_day_counts day_counts
+  ON day_counts.student_id = sessions.student_id
+  AND day_counts.session_date = sessions.session_date
 JOIN backfill_exercise_progress exercise_progress
   ON exercise_progress.student_id = sessions.student_id
   AND exercise_progress.session_date = sessions.session_date
@@ -212,7 +233,8 @@ GROUP BY
   sessions.student_id,
   sessions.session_date,
   sessions.started_at,
-  sessions.last_set_at
+  sessions.last_set_at,
+  day_counts.total_sets
 ON CONFLICT (student_id, session_date) DO NOTHING;
 
 INSERT INTO training_sessions (
@@ -222,7 +244,8 @@ INSERT INTO training_sessions (
   started_at,
   last_set_at,
   completed_at,
-  plan_day_ids
+  plan_day_ids,
+  archived_sets_logged
 )
 SELECT
   adhoc_sessions.student_id,
@@ -231,8 +254,12 @@ SELECT
   adhoc_sessions.started_at,
   adhoc_sessions.last_set_at,
   adhoc_sessions.last_set_at,
-  ARRAY[]::UUID[]
+  ARRAY[]::UUID[],
+  day_counts.total_sets
 FROM backfill_session_timing adhoc_sessions
+JOIN backfill_day_counts day_counts
+  ON day_counts.student_id = adhoc_sessions.student_id
+  AND day_counts.session_date = adhoc_sessions.session_date
 LEFT JOIN backfill_touched_days coached_day
   ON coached_day.student_id = adhoc_sessions.student_id
   AND coached_day.session_date = adhoc_sessions.session_date
@@ -243,6 +270,7 @@ DROP TABLE backfill_submitted_counts;
 DROP TABLE backfill_planned_counts;
 DROP TABLE backfill_touched_days;
 DROP TABLE backfill_session_timing;
+DROP TABLE backfill_day_counts;
 -- Backfill end.
 
 COMMIT;
