@@ -24,6 +24,33 @@ describe('GET /coach/students', () => {
     expect(res.body.students[0].profile.created_at).toEqual(expect.any(String));
   });
 
+  it('keeps students without a profile row on the roster with an empty name', async () => {
+    const ctx = await makeContext();
+    // No DB constraint ties accepted bonds to student_profiles (only the
+    // bind-request flow bootstraps the row), so the roster must not drop
+    // students whose profile is missing.
+    await ctx.db.deleteFrom('student_profiles').where('user_id', '=', ids.trainee).execute();
+
+    const res = await request(ctx.app).get('/coach/students').set(auth(ctx.coachToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.students).toHaveLength(1);
+    expect(res.body.students[0]).toMatchObject({
+      id: ids.trainee,
+      display_name: '',
+      profile: { user_id: ids.trainee, display_name: '' },
+      status: 'active',
+      evaluation: null,
+    });
+    // With no profile row, created_at falls back to the user's registration time.
+    const user = await ctx.db
+      .selectFrom('users')
+      .select('created_at')
+      .where('id', '=', ids.trainee)
+      .executeTakeFirstOrThrow();
+    expect(res.body.students[0].profile.created_at).toBe(user.created_at.toISOString());
+  });
+
   it('returns an empty list when the coach has no accepted bonds', async () => {
     const ctx = await makeContext();
     await ctx.db.deleteFrom('bind_requests').where('coach_id', '=', ids.coach).execute();
@@ -104,6 +131,29 @@ describe('PATCH /coach/students/:id', () => {
       .where('user_id', '=', ids.trainee)
       .executeTakeFirstOrThrow();
     expect(profile.display_name).toBe('王馨伟');
+  });
+
+  it('creates the profile row when renaming a bonded student who lacks one', async () => {
+    const ctx = await makeContext();
+    await ctx.db.deleteFrom('student_profiles').where('user_id', '=', ids.trainee).execute();
+
+    const renamed = await request(ctx.app)
+      .patch(`/coach/students/${ids.trainee}`)
+      .set(auth(ctx.coachToken))
+      .send({ display_name: '补建档案' });
+
+    expect(renamed.status).toBe(200);
+    expect(renamed.body).toMatchObject({
+      id: ids.trainee,
+      display_name: '补建档案',
+      profile: { user_id: ids.trainee, display_name: '补建档案' },
+    });
+    const profile = await ctx.db
+      .selectFrom('student_profiles')
+      .select('display_name')
+      .where('user_id', '=', ids.trainee)
+      .executeTakeFirstOrThrow();
+    expect(profile.display_name).toBe('补建档案');
   });
 
   it('rejects unbound students without revealing whether the profile exists', async () => {
