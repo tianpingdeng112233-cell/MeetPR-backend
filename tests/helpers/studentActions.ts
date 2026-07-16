@@ -26,6 +26,7 @@ export const config: Config = {
   EVENTS_RATE_LIMIT_WINDOW_MS: 60_000,
   EVENTS_RATE_LIMIT_MAX: 10_000,
   ANALYTICS_ENABLED: true,
+  SIGNALS_CRON_ENABLED: true,
   ANALYTICS_SAMPLE_RATE: 1,
   CORS_ORIGIN: '*',
   TRUST_PROXY: 0,
@@ -338,6 +339,53 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       delivered_at TIMESTAMPTZ,
       UNIQUE (event_type, aggregate_id, recipient_id)
+    );
+
+    -- Activity-ledger card 1 schema. Keep in sync with migration 0041.
+    CREATE TABLE training_sessions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      session_date DATE NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('in_progress', 'completed', 'partial')),
+      started_at TIMESTAMPTZ NOT NULL,
+      last_set_at TIMESTAMPTZ NOT NULL,
+      completed_at TIMESTAMPTZ,
+      plan_day_ids UUID[] NOT NULL DEFAULT '{}',
+      archived_sets_logged INT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (student_id, session_date)
+    );
+
+    CREATE TABLE student_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      coach_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      event_type TEXT NOT NULL CHECK (
+        event_type IN ('session_completed', 'session_partial', 'pr_e1rm')
+      ),
+      session_date DATE NOT NULL,
+      occurred_at TIMESTAMPTZ NOT NULL,
+      payload JSONB NOT NULL DEFAULT '{}',
+      dedup_key TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE student_signals (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      signal_type TEXT NOT NULL CHECK (signal_type IN ('missed_training', 'pr_congrats')),
+      severity TEXT NOT NULL CHECK (severity IN ('red', 'yellow', 'green')),
+      status TEXT NOT NULL CHECK (status IN ('open', 'acked', 'auto_resolved', 'expired')),
+      reason TEXT NOT NULL,
+      payload JSONB NOT NULL DEFAULT '{}',
+      opened_at TIMESTAMPTZ NOT NULL,
+      acked_at TIMESTAMPTZ,
+      resolved_at TIMESTAMPTZ,
+      expires_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
     CREATE TABLE events (

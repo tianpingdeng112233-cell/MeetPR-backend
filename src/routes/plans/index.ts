@@ -16,13 +16,20 @@ import type {
   PlanStatus,
   UserRole,
 } from '../../db/types';
+import {
+  effectiveDateBeforeBatch,
+  effectivePlanDays,
+  latestShiftByDay,
+  latestShiftBatch,
+  plannedDate as plannedDayDate,
+} from '../../domain/plan-calendar';
 import { hasActiveEvaluation } from '../../handlers/evaluations';
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
 import { notifyPlanPublished } from '../../services/notifications';
 import { calculateTrainingMaxKg, formatTrainingMaxKg } from '../../services/trainingMax';
 import { uuidEquals } from '../../utils/uuid';
-import { normalizeDateOnly, utcDate, utcDateOnly } from '../../utils/date';
+import { utcDate, utcDateOnly } from '../../utils/date';
 import { visibleExerciseForCoach } from '../exercises';
 import { route, validationEnvelope } from '../http';
 import {
@@ -195,16 +202,17 @@ async function getPlanWithChildren(
     exercisesByDay.set(exercise.plan_day_id, exercises);
   }
 
-  const shiftsByDay = new Map<string, string | Date>();
-  for (const shift of shiftRows) {
-    shiftsByDay.set(shift.plan_day_id, shift.shifted_to_date);
-  }
+  const shiftsByDay = latestShiftByDay(shiftRows);
 
   return {
     ...toPlan(plan),
     ...toPlanShiftSummary(shiftRows),
     days: dayRows.map((day) =>
-      toPlanDay(day, exercisesByDay.get(day.id) ?? [], shiftsByDay.get(day.id) ?? null),
+      toPlanDay(
+        day,
+        exercisesByDay.get(day.id) ?? [],
+        shiftsByDay.get(day.id)?.shifted_to_date ?? null,
+      ),
     ),
   };
 }
@@ -281,15 +289,6 @@ function normalizeTargetValue(value: string): string {
   return Number(value).toFixed(2);
 }
 
-function plannedDayDate(startDate: string | Date, weekNumber: number, dayOfWeek: number): string {
-  const start = utcDate(startDate);
-  // Positional day-date semantics (canonical per David 2026-07-10): day_of_week is the
-  // day's ordinal position within its plan week (1 = start_date itself), matching
-  // plan-web import/rendering and the iOS projection. It is NOT an ISO weekday.
-  start.setUTCDate(start.getUTCDate() + (weekNumber - 1) * 7 + (dayOfWeek - 1));
-  return utcDateOnly(start);
-}
-
 async function planDayHasLogs(db: DbExecutor, dayId: string): Promise<boolean> {
   return (await loggedExerciseIdsForDay(db, dayId)).length > 0;
 }
@@ -329,11 +328,6 @@ async function loggedExerciseIdsForDay(db: DbExecutor, dayId: string): Promise<s
   ];
 }
 
-interface EffectivePlanDay {
-  day: PlanDayRow;
-  effectiveDate: string;
-}
-
 interface ShiftedDayResponse {
   day_id: string;
   shifted_to_date: string;
@@ -351,23 +345,6 @@ function addUtcDaysToDateOnly(value: string, days: number): string {
   const date = utcDate(value);
   date.setUTCDate(date.getUTCDate() + days);
   return utcDateOnly(date);
-}
-
-function effectivePlanDays(
-  plan: PlanRow,
-  days: PlanDayRow[],
-  shifts: PlanDayShiftRow[],
-): EffectivePlanDay[] {
-  const latestShiftByDay = new Map<string, string>();
-  for (const shift of shifts) {
-    latestShiftByDay.set(shift.plan_day_id, normalizeDateOnly(shift.shifted_to_date));
-  }
-  return days.map((day) => ({
-    day,
-    effectiveDate:
-      latestShiftByDay.get(day.id) ??
-      plannedDayDate(plan.start_date, day.week_number, day.day_of_week),
-  }));
 }
 
 async function lockPlanShiftContext(
@@ -464,32 +441,6 @@ async function createWholePlanShift(
   };
 }
 
-function latestBatch(shifts: PlanDayShiftRow[]): PlanDayShiftRow[] {
-  if (shifts.length === 0) return [];
-  const latest = shifts.reduce((candidate, shift) =>
-    shift.created_at > candidate.created_at ||
-    (shift.created_at.getTime() === candidate.created_at.getTime() && shift.id > candidate.id)
-      ? shift
-      : candidate,
-  );
-  return shifts.filter((shift) => shift.batch_id === latest.batch_id);
-}
-
-function effectiveDateBeforeBatch(
-  plan: PlanRow,
-  day: PlanDayRow,
-  shifts: PlanDayShiftRow[],
-  batchId: string,
-): string {
-  let previous: PlanDayShiftRow | null = null;
-  for (const shift of shifts) {
-    if (shift.plan_day_id === day.id && shift.batch_id !== batchId) previous = shift;
-  }
-  return previous === null
-    ? plannedDayDate(plan.start_date, day.week_number, day.day_of_week)
-    : normalizeDateOnly(previous.shifted_to_date);
-}
-
 async function undoLatestWholePlanShift(
   db: Transaction<Database>,
   planId: string,
@@ -500,7 +451,7 @@ async function undoLatestWholePlanShift(
     return { type: 'error', error: 'NOT_PLAN_STUDENT' };
   }
 
-  const batchRows = latestBatch(context.shifts);
+  const batchRows = latestShiftBatch(context.shifts);
   const firstBatchRow = batchRows[0];
   if (!firstBatchRow) {
     return { type: 'error', error: 'NO_ACTIVE_SHIFT' };
