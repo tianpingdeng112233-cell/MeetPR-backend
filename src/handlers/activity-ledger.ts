@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { Database, SessionStatus, StudentEventType } from '../db/types';
 import { SIGNAL_POLICY } from '../domain/signal-policy';
 import { normalizeDateOnly, shanghaiTrainingDay } from '../utils/date';
+import { detectSetLogPr } from './pr-detection';
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
 
@@ -50,7 +51,7 @@ async function acceptedCoachId(db: DbExecutor, studentId: string): Promise<strin
  * than one accepted bond, the session belongs to the plan's author, not an
  * arbitrary bond. Bond fallback covers pure-adhoc days.
  */
-async function resolveEventCoachId(
+export async function resolveEventCoachId(
   db: DbExecutor,
   studentId: string,
   planCoachId: string | null,
@@ -290,6 +291,15 @@ export async function recordSetLogActivity(
         },
       });
     }
+  });
+
+  // PR detection runs in its own transaction AFTER the session bookkeeping has
+  // committed: a PR-side failure must never roll back the session state
+  // machine and its fact events (the route hook only warns, so that loss would
+  // be permanent for a day with no further sets). Event + signal still commit
+  // atomically with each other inside this transaction.
+  await db.transaction().execute(async (trx) => {
+    await detectSetLogPr(trx, studentId, setLogId, now);
   });
 }
 
