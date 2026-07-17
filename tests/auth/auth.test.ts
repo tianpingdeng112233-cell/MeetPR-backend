@@ -418,6 +418,43 @@ describe('auth endpoints', () => {
     expect(db.getByPhone('+8613800000001')?.refresh_token_jti).not.toBe(oldJti);
   });
 
+  it('accepts the snake_case refresh_token key sent by the shipped iOS client', async () => {
+    const { app, db, response: registerResponse } = await registerUser();
+    const oldRefreshToken = registerResponse.body.refreshToken as string;
+    const oldJti = refreshJti(oldRefreshToken);
+
+    const response = await request(app).post('/auth/refresh').send({
+      refresh_token: oldRefreshToken,
+    });
+
+    expect(response.status).toBe(200);
+    expect(typeof response.body.accessToken).toBe('string');
+    expect(typeof response.body.refreshToken).toBe('string');
+    expect(refreshJti(response.body.refreshToken as string)).not.toBe(oldJti);
+    expect(db.getByPhone('+8613800000001')?.refresh_token_jti).not.toBe(oldJti);
+  });
+
+  it('prefers refreshToken when both key spellings are present', async () => {
+    const { app, response: registerResponse } = await registerUser();
+    const validRefreshToken = registerResponse.body.refreshToken as string;
+
+    const response = await request(app).post('/auth/refresh').send({
+      refreshToken: validRefreshToken,
+      refresh_token: 'garbage',
+    });
+
+    expect(response.status).toBe(200);
+    expect(typeof response.body.accessToken).toBe('string');
+  });
+
+  it('rejects a refresh body with neither refreshToken nor refresh_token', async () => {
+    const { app } = makeApp();
+    const response = await request(app).post('/auth/refresh').send({});
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+  });
+
   it('detects refresh token reuse and clears the stored jti', async () => {
     const { app, db, response: registerResponse } = await registerUser();
     const oldRefreshToken = registerResponse.body.refreshToken as string;
