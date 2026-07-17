@@ -8,7 +8,7 @@ import {
   type Router as ExpressRouter,
 } from 'express';
 import jwt, { type SignOptions } from 'jsonwebtoken';
-import type { Kysely, Selectable } from 'kysely';
+import type { Kysely, Selectable, Transaction } from 'kysely';
 import { sql } from 'kysely';
 import type { ZodError } from 'zod';
 
@@ -31,6 +31,8 @@ import {
 } from './schemas';
 
 const BCRYPT_COST = 10;
+const MAX_ACTIVE_SESSIONS = 5;
+const PREVIOUS_JTI_GRACE_SECONDS = 60;
 
 type AuthConfig = Pick<
   Config,
@@ -65,6 +67,19 @@ interface TokenPair {
   accessToken: string;
   refreshToken: string;
 }
+
+type RefreshResult =
+  | {
+      status: 'success';
+      userId: string;
+      role: UserRole;
+      jti: string;
+    }
+  | {
+      status: 'invalid';
+      reuseDetected: boolean;
+      sessionId: string | null;
+    };
 
 function toClientUser(row: ClientUserRow): ClientUser {
   return {
@@ -103,6 +118,54 @@ function signTokenPair(config: AuthConfig, userId: string, role: UserRole, jti: 
       refreshOptions,
     ),
   };
+}
+
+async function revokeExcessSessions(trx: Transaction<Database>, userId: string): Promise<void> {
+  const activeSessions = await trx
+    .selectFrom('sessions')
+    .select(['id'])
+    .where('user_id', '=', userId)
+    .where('revoked_at', 'is', null)
+    .orderBy('last_used_at', 'asc')
+    .orderBy('created_at', 'asc')
+    .orderBy('id', 'asc')
+    .execute();
+  const excessCount = activeSessions.length - MAX_ACTIVE_SESSIONS;
+  if (excessCount <= 0) return;
+
+  await trx
+    .updateTable('sessions')
+    .set({ revoked_at: sql<Date>`now()` })
+    .where(
+      'id',
+      'in',
+      activeSessions.slice(0, excessCount).map((session) => session.id),
+    )
+    .execute();
+}
+
+async function createSession(
+  trx: Transaction<Database>,
+  userId: string,
+  refreshTokenJti: string,
+  previousJti: string | null = null,
+): Promise<void> {
+  await trx
+    .insertInto('sessions')
+    .values(
+      previousJti === null
+        ? { user_id: userId, refresh_token_jti: refreshTokenJti }
+        : {
+            user_id: userId,
+            refresh_token_jti: refreshTokenJti,
+            prev_jti: previousJti,
+            prev_jti_valid_until: sql<Date>`now() + interval '${sql.raw(
+              String(PREVIOUS_JTI_GRACE_SECONDS),
+            )} seconds'`,
+          },
+    )
+    .execute();
+  await revokeExcessSessions(trx, userId);
 }
 
 function registrationRejection(
@@ -167,17 +230,22 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
 
       const passwordHash = await bcrypt.hash(body.data.password, BCRYPT_COST);
 
-      let user: ClientUserRow;
+      let registration: { user: ClientUserRow; jti: string };
       try {
-        user = await deps.db
-          .insertInto('users')
-          .values({
-            phone: body.data.phone,
-            password_hash: passwordHash,
-            role: body.data.role,
-          })
-          .returning(['id', 'phone', 'role', 'created_at'])
-          .executeTakeFirstOrThrow();
+        registration = await deps.db.transaction().execute(async (trx) => {
+          const user = await trx
+            .insertInto('users')
+            .values({
+              phone: body.data.phone,
+              password_hash: passwordHash,
+              role: body.data.role,
+            })
+            .returning(['id', 'phone', 'role', 'created_at'])
+            .executeTakeFirstOrThrow();
+          const jti = randomUUID();
+          await createSession(trx, user.id, jti);
+          return { user, jti };
+        });
       } catch (error: unknown) {
         if (isUsersPhoneUniqueViolation(error)) {
           res.status(409).json({ error: 'AUTH_PHONE_TAKEN' });
@@ -186,13 +254,7 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
         throw error;
       }
 
-      const jti = randomUUID();
-      await deps.db
-        .updateTable('users')
-        .set({ refresh_token_jti: jti, updated_at: sql<Date>`now()` })
-        .where('id', '=', user.id)
-        .execute();
-
+      const { user, jti } = registration;
       const tokens = signTokenPair(deps.config, user.id, user.role, jti);
       deps.logger.info({ userId: user.id, role: user.role }, 'auth_register_success');
 
@@ -209,35 +271,32 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
         return;
       }
 
-      const user = await deps.db
-        .selectFrom('users')
-        .select(['id', 'phone', 'password_hash', 'role', 'created_at'])
-        .where('phone', '=', body.data.phone)
-        .executeTakeFirst();
+      const login = await deps.db.transaction().execute(async (trx) => {
+        const lockedUser = await trx
+          .selectFrom('users')
+          .select(['id', 'phone', 'password_hash', 'role', 'created_at'])
+          .where('phone', '=', body.data.phone)
+          .forUpdate()
+          .executeTakeFirst();
+        if (!lockedUser) return null;
 
-      if (!user) {
+        const passwordMatches = await bcrypt.compare(body.data.password, lockedUser.password_hash);
+        if (!passwordMatches) return null;
+
+        const jti = randomUUID();
+        await createSession(trx, lockedUser.id, jti);
+        return { user: lockedUser, jti };
+      });
+      if (!login) {
         res.status(401).json({ error: 'AUTH_INVALID_CREDENTIALS' });
         return;
       }
 
-      const passwordMatches = await bcrypt.compare(body.data.password, user.password_hash);
-      if (!passwordMatches) {
-        res.status(401).json({ error: 'AUTH_INVALID_CREDENTIALS' });
-        return;
-      }
-
-      const jti = randomUUID();
-      await deps.db
-        .updateTable('users')
-        .set({ refresh_token_jti: jti, updated_at: sql<Date>`now()` })
-        .where('id', '=', user.id)
-        .execute();
-
-      const tokens = signTokenPair(deps.config, user.id, user.role, jti);
-      deps.logger.info({ userId: user.id, role: user.role }, 'auth_login_success');
+      const tokens = signTokenPair(deps.config, login.user.id, login.user.role, login.jti);
+      deps.logger.info({ userId: login.user.id, role: login.user.role }, 'auth_login_success');
 
       res.status(200).json({
-        user: toClientUser(user),
+        user: toClientUser(login.user),
         ...tokens,
       });
     }),
@@ -292,37 +351,139 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
         return;
       }
 
-      const newJti = randomUUID();
-      const rotatedUser = await deps.db
-        .updateTable('users')
-        .set({ refresh_token_jti: newJti, updated_at: sql<Date>`now()` })
-        .where('id', '=', payload.data.sub)
-        .where('refresh_token_jti', '=', payload.data.jti)
-        .returning(['id', 'role'])
-        .executeTakeFirst();
+      const result = await deps.db.transaction().execute(async (trx): Promise<RefreshResult> => {
+        const legacyUser = legacyRefresh
+          ? await trx
+              .selectFrom('users')
+              .select(['id', 'role', 'refresh_token_jti'])
+              .where('id', '=', payload.data.sub)
+              .forUpdate()
+              .executeTakeFirst()
+          : undefined;
 
-      if (!rotatedUser) {
-        const existingUser = await deps.db
-          .selectFrom('users')
-          .select(['id'])
-          .where('id', '=', payload.data.sub)
+        const currentSession = await trx
+          .selectFrom('sessions')
+          .innerJoin('users', 'users.id', 'sessions.user_id')
+          .select([
+            'sessions.id as session_id',
+            'sessions.refresh_token_jti',
+            'users.id as user_id',
+            'users.role',
+          ])
+          .where('sessions.user_id', '=', payload.data.sub)
+          .where('sessions.refresh_token_jti', '=', payload.data.jti)
+          .where('sessions.revoked_at', 'is', null)
+          .forUpdate()
           .executeTakeFirst();
 
-        if (existingUser) {
-          await deps.db
-            .updateTable('users')
-            .set({ refresh_token_jti: null, updated_at: sql<Date>`now()` })
-            .where('id', '=', payload.data.sub)
+        if (currentSession) {
+          const newJti = randomUUID();
+          await trx
+            .updateTable('sessions')
+            .set({
+              refresh_token_jti: newJti,
+              prev_jti: currentSession.refresh_token_jti,
+              prev_jti_valid_until: sql<Date>`now() + interval '${sql.raw(
+                String(PREVIOUS_JTI_GRACE_SECONDS),
+              )} seconds'`,
+              last_used_at: sql<Date>`now()`,
+            })
+            .where('id', '=', currentSession.session_id)
             .execute();
-          deps.logger.warn({ userId: payload.data.sub }, 'auth_refresh_reuse_detected');
+          return {
+            status: 'success',
+            userId: currentSession.user_id,
+            role: currentSession.role,
+            jti: newJti,
+          };
         }
 
+        const graceSession = await trx
+          .selectFrom('sessions')
+          .innerJoin('users', 'users.id', 'sessions.user_id')
+          .select([
+            'sessions.id as session_id',
+            'sessions.refresh_token_jti',
+            'users.id as user_id',
+            'users.role',
+          ])
+          .where('sessions.user_id', '=', payload.data.sub)
+          .where('sessions.prev_jti', '=', payload.data.jti)
+          .where('sessions.prev_jti_valid_until', '>', sql<Date>`now()`)
+          .where('sessions.revoked_at', 'is', null)
+          .forUpdate()
+          .executeTakeFirst();
+
+        if (graceSession) {
+          return {
+            status: 'success',
+            userId: graceSession.user_id,
+            role: graceSession.role,
+            jti: graceSession.refresh_token_jti,
+          };
+        }
+
+        const staleSession = await trx
+          .selectFrom('sessions')
+          .select(['id'])
+          .where('user_id', '=', payload.data.sub)
+          .where('prev_jti', '=', payload.data.jti)
+          .where('revoked_at', 'is', null)
+          .forUpdate()
+          .executeTakeFirst();
+        if (staleSession) {
+          await trx
+            .updateTable('sessions')
+            .set({ revoked_at: sql<Date>`now()` })
+            .where('id', '=', staleSession.id)
+            .execute();
+          return { status: 'invalid', reuseDetected: true, sessionId: staleSession.id };
+        }
+
+        if (legacyRefresh) {
+          const knownSession = await trx
+            .selectFrom('sessions')
+            .select(['id'])
+            .where('user_id', '=', payload.data.sub)
+            .where((eb) =>
+              eb.or([
+                eb('refresh_token_jti', '=', payload.data.jti),
+                eb('prev_jti', '=', payload.data.jti),
+              ]),
+            )
+            .executeTakeFirst();
+          if (knownSession) {
+            return { status: 'invalid', reuseDetected: false, sessionId: knownSession.id };
+          }
+
+          if (legacyUser?.refresh_token_jti === payload.data.jti) {
+            const newJti = randomUUID();
+            await createSession(trx, legacyUser.id, newJti, payload.data.jti);
+            return {
+              status: 'success',
+              userId: legacyUser.id,
+              role: legacyUser.role,
+              jti: newJti,
+            };
+          }
+        }
+
+        return { status: 'invalid', reuseDetected: false, sessionId: null };
+      });
+
+      if (result.status === 'invalid') {
+        if (result.reuseDetected) {
+          deps.logger.warn(
+            { userId: payload.data.sub, sessionId: result.sessionId },
+            'auth_refresh_reuse_detected',
+          );
+        }
         res.status(401).json({ error: 'AUTH_INVALID_REFRESH' });
         return;
       }
 
-      const tokens = signTokenPair(deps.config, rotatedUser.id, rotatedUser.role, newJti);
-      deps.logger.info({ userId: rotatedUser.id, role: rotatedUser.role }, 'auth_refresh_success');
+      const tokens = signTokenPair(deps.config, result.userId, result.role, result.jti);
+      deps.logger.info({ userId: result.userId, role: result.role }, 'auth_refresh_success');
 
       res.status(200).json(tokens);
     }),

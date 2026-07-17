@@ -70,19 +70,29 @@ export function meRouter(deps: MeRouterDeps): ExpressRouter {
         return;
       }
 
-      // Rotate the password and clear the single refresh slot in one write —
-      // any outstanding refresh token dies on its jti mismatch (logout idiom).
+      // Rotate the password and revoke every device session atomically.
       const passwordHash = await bcrypt.hash(body.data.new_password, BCRYPT_COST);
-      await deps.db
-        .updateTable('users')
-        .set({
-          password_hash: passwordHash,
-          refresh_token_jti: null,
-          updated_at: sql<Date>`now()`,
-        })
-        .where('id', '=', req.user.id)
-        .execute();
-      deps.logger.info({ userId: req.user.id }, 'password_changed');
+      const userId = req.user.id;
+      await deps.db.transaction().execute(async (trx) => {
+        await trx
+          .updateTable('users')
+          .set({
+            password_hash: passwordHash,
+            // The legacy column doubles as a session-backfill credential in
+            // /auth/refresh; clear it so pre-migration tokens die here too.
+            refresh_token_jti: null,
+            updated_at: sql<Date>`now()`,
+          })
+          .where('id', '=', userId)
+          .execute();
+        await trx
+          .updateTable('sessions')
+          .set({ revoked_at: sql<Date>`now()` })
+          .where('user_id', '=', userId)
+          .where('revoked_at', 'is', null)
+          .execute();
+      });
+      deps.logger.info({ userId }, 'password_changed');
       res.status(204).end();
     }),
   );
