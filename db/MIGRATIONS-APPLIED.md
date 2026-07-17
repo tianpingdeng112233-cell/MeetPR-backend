@@ -7,7 +7,10 @@
 
 ## 机制备忘（下次手动跑迁移前必读）
 
-- CI 只 build+push 镜像到 ACR(tag `v0.1-staging` / `sha-<sha>`);**迁移和 SAE 部署要人手做**。
+- CI 自动 build+push 镜像到 ACR(tag `v0.1-staging` / `sha-<sha>`);**迁移仍要人手做(DMS)**。
+- SAE 滚镜像自 spec 018 起一键化:`gh workflow run deploy-staging.yml -f migrations_applied=true`
+  (手动 dispatch,不随 push 自动——"先迁移后滚镜像"顺序不变,`migrations_applied` 不勾会直接红);
+  可选 `-f image_sha=<full sha>` 指定非 HEAD 镜像。控制台手点仅作 fallback。
 - 迁移文件自带 `BEGIN/COMMIT`,失败自动回滚该文件;逐个跑逐个看返回。
 - **DMS 控制台跑迁移的坑**:DMS 默认连接 schema 是 `information_schema`,不带前缀的
   `CREATE TABLE/TYPE` 会试图建进系统库 → `permission denied for schema information_schema`。
