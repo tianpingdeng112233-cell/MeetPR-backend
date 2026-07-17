@@ -22,9 +22,26 @@ export const LoginBodySchema = z.object({
   password: PasswordSchema,
 });
 
-export const RefreshBodySchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required'),
-});
+// The shipped iOS client encodes bodies with a snake_case strategy and sends
+// `refresh_token`; plan-web sends `refreshToken`. Accept both spellings and
+// normalize to `refreshToken` so live clients keep working (hard rule #8).
+export const RefreshBodySchema = z.preprocess(
+  (value) => {
+    if (
+      value !== null &&
+      typeof value === 'object' &&
+      !('refreshToken' in value) &&
+      'refresh_token' in value
+    ) {
+      const { refresh_token: refreshToken, ...rest } = value as Record<string, unknown>;
+      return { ...rest, refreshToken };
+    }
+    return value;
+  },
+  z.object({
+    refreshToken: z.string().min(1, 'Refresh token is required'),
+  }),
+);
 
 /** PUT /me/password (spec 011): new password reuses the register rule. */
 export const ChangePasswordBodySchema = z
