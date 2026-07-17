@@ -267,7 +267,7 @@ describe('GET /coach/students/:id/exercise-stats', () => {
           reps: 5,
           completed: true,
           failed: false,
-          assumed: false,
+          assumed: true,
           logged_at: atTenUtc(daysFromToday(-2)),
         },
         {
@@ -280,7 +280,7 @@ describe('GET /coach/students/:id/exercise-stats', () => {
           reps: 5,
           completed: true,
           failed: false,
-          assumed: true,
+          assumed: false,
           logged_at: atTenUtc(daysFromToday(-7)),
         },
         {

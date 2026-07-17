@@ -4,7 +4,10 @@ import { z } from 'zod';
 
 import type { Database } from '../db/types';
 import { listCoachStudents, renameCoachStudent } from '../handlers/coach-students';
+import { aggregateCoachDigest, dailyDigestBody } from '../jobs/daily-digest';
+import { justClosedGymDay } from '../jobs/scheduler';
 import { requireRole } from '../middleware/auth';
+import { isIsoCalendarDate, isoCalendarDateSchemaMessage } from '../utils/date';
 import { notImplemented } from '../utils/notImplemented';
 import { route, validationEnvelope } from './http';
 
@@ -13,6 +16,10 @@ interface CoachRouterDeps {
 }
 
 const StudentIdParamsSchema = z.object({ id: z.string().uuid() });
+const DateSchema = z
+  .string()
+  .refine(isIsoCalendarDate, { message: isoCalendarDateSchemaMessage() });
+const DailyDigestQuerySchema = z.object({ date: DateSchema.optional() }).strict();
 const RenameStudentBodySchema = z
   .object({
     display_name: z.string().trim().min(1).max(100),
@@ -25,6 +32,30 @@ export function coachRouter(deps: CoachRouterDeps): Router {
   router.get('/dashboard', (_req, res) => {
     notImplemented(res, 'GET /coach/dashboard');
   });
+
+  router.get(
+    '/daily-digest',
+    requireRole('coach'),
+    route(async (req, res) => {
+      if (!req.user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      const query = DailyDigestQuerySchema.safeParse(req.query);
+      if (!query.success) {
+        res.status(400).json(validationEnvelope(query.error));
+        return;
+      }
+
+      const gymDay = query.data.date ?? justClosedGymDay(new Date());
+      const counts = await aggregateCoachDigest(deps.db, req.user.id, gymDay);
+      res.status(200).json({
+        gym_day: gymDay,
+        counts,
+        body: dailyDigestBody(counts),
+      });
+    }),
+  );
 
   router.get(
     '/students',

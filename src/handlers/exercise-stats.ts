@@ -2,6 +2,7 @@ import type { Kysely } from 'kysely';
 
 import { E1RM_POLICY, calculateEligibleE1RM, resolveCompetitionFamily } from '../domain/e1rm';
 import type { Database, LiftFamily } from '../db/types';
+import { fetchRecentFourWeekActivity, totalRecentFourWeekActivity } from './recent-training';
 import { dateOnly, decimal, timestamp } from './serialization';
 
 export const EXERCISE_STATS_LIMITS = {
@@ -66,37 +67,16 @@ async function onboardingSnapshot(db: Kysely<Database>, studentId: string) {
   };
 }
 
-function utcDate(value: string | Date): Date {
-  return new Date(`${dateOnly(value)}T00:00:00.000Z`);
-}
-
-function plannedDate(startDate: string | Date, weekNumber: number, dayOfWeek: number): string {
-  const date = utcDate(startDate);
-  date.setUTCDate(date.getUTCDate() + (weekNumber - 1) * 7 + (dayOfWeek - 1));
-  return date.toISOString().slice(0, 10);
-}
-
-async function recentPlanDates(db: Kysely<Database>, coachId: string, studentId: string) {
-  const rows = await db
-    .selectFrom('plan_days as pd')
-    .innerJoin('plans as p', 'p.id', 'pd.plan_id')
-    .select(['p.start_date', 'pd.week_number', 'pd.day_of_week'])
-    .where('p.coach_id', '=', coachId)
-    .where('p.trainee_id', '=', studentId)
-    .where('p.status', 'in', ['published', 'paused', 'completed'])
-    .execute();
-  return rows.map((row) => plannedDate(row.start_date, row.week_number, row.day_of_week));
-}
-
 export async function fetchExerciseStatsOverview(
   db: Kysely<Database>,
   coachId: string,
   studentId: string,
+  now: Date = new Date(),
 ) {
-  const [logs, onboarding, planDates] = await Promise.all([
+  const [logs, onboarding, recentByStudent] = await Promise.all([
     fetchScopedLogs(db, coachId, studentId),
     onboardingSnapshot(db, studentId),
-    recentPlanDates(db, coachId, studentId),
+    fetchRecentFourWeekActivity(db, coachId, [studentId], now),
   ]);
 
   const byExercise = new Map<
@@ -116,24 +96,7 @@ export async function fetchExerciseStatsOverview(
     }
   }
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const windowStart = new Date(today);
-  windowStart.setUTCDate(windowStart.getUTCDate() - (E1RM_POLICY.rollingWindowDays - 1));
-  const start = windowStart.toISOString().slice(0, 10);
-  const end = today.toISOString().slice(0, 10);
-  const totalPlannedDays = new Set(planDates.filter((date) => date >= start && date <= end)).size;
-  const trainedDays = new Set(
-    logs
-      .filter(
-        (log) =>
-          !log.assumed &&
-          log.completed &&
-          dateOnly(log.logged_date) >= start &&
-          dateOnly(log.logged_date) <= end,
-      )
-      .map((log) => dateOnly(log.logged_date)),
-  ).size;
+  const recent = totalRecentFourWeekActivity(recentByStudent.get(studentId) ?? []);
 
   return {
     exercises: [...byExercise.entries()].map(([exerciseId, value]) => ({
@@ -145,12 +108,12 @@ export async function fetchExerciseStatsOverview(
     one_rm: onboarding.oneRm,
     last_trained_at: logs[0] ? timestamp(logs[0].logged_at) : null,
     recent_4w: {
-      trained_days: trainedDays,
-      total_planned_days: totalPlannedDays,
+      trained_days: recent.trainedDays,
+      total_planned_days: recent.plannedDays,
       completion_rate:
-        totalPlannedDays === 0
+        recent.plannedDays === 0
           ? 0
-          : Math.min(1, Number((trainedDays / totalPlannedDays).toFixed(4))),
+          : Math.min(1, Number((recent.trainedDays / recent.plannedDays).toFixed(4))),
     },
   };
 }

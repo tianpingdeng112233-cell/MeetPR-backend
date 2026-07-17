@@ -217,7 +217,8 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       deadlift_style TEXT,
       squat_1rm_kg NUMERIC(6,2),
       bench_1rm_kg NUMERIC(6,2),
-      deadlift_1rm_kg NUMERIC(6,2)
+      deadlift_1rm_kg NUMERIC(6,2),
+      competition_date DATE
     );
 
     CREATE TABLE bind_requests (
