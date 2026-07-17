@@ -299,6 +299,42 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       PRIMARY KEY (user_id, attachment_id)
     );
 
+    -- Cockpit read extras (spec 021): the roster now batches recent-4w
+    -- activity, which reads set_logs and plan_day_shifts. Keep in sync with
+    -- studentActions.ts.
+    CREATE TABLE set_logs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      plan_exercise_id UUID REFERENCES plan_exercises(id) ON DELETE RESTRICT,
+      exercise_id UUID NOT NULL REFERENCES exercises(id),
+      set_index INT NOT NULL,
+      weight_kg NUMERIC(6,2) NOT NULL,
+      reps INT NOT NULL,
+      rpe NUMERIC(3,1),
+      completed BOOLEAN NOT NULL DEFAULT FALSE,
+      failed BOOLEAN NOT NULL DEFAULT FALSE,
+      assumed BOOLEAN NOT NULL DEFAULT FALSE,
+      adhoc BOOLEAN NOT NULL DEFAULT FALSE,
+      e1rm_confidence TEXT,
+      logged_date DATE NOT NULL,
+      logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (student_id, plan_exercise_id, set_index),
+      CONSTRAINT set_logs_adhoc_no_plan_check CHECK (NOT adhoc OR plan_exercise_id IS NULL)
+    );
+
+    CREATE UNIQUE INDEX set_logs_adhoc_unique_idx
+      ON set_logs (student_id, exercise_id, logged_date, set_index) WHERE adhoc;
+
+    CREATE TABLE plan_day_shifts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      plan_day_id UUID NOT NULL REFERENCES plan_days(id) ON DELETE CASCADE,
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      batch_id UUID NOT NULL,
+      shifted_to_date DATE NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (plan_day_id, batch_id)
+    );
+
     CREATE TABLE notification_outbox (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       event_type TEXT NOT NULL,

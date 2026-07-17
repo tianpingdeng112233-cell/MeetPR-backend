@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely, Selectable } from 'kysely';
 import { sql } from 'kysely';
@@ -9,6 +11,7 @@ import {
   type Database,
   type StudentEventsTable,
   type StudentSignalsTable,
+  type TrainingSessionsTable,
 } from '../db/types';
 import { timestamp } from '../handlers/serialization';
 import type { Logger } from '../logger';
@@ -44,6 +47,11 @@ type SignalRow = Pick<
 type EventRow = Pick<
   Selectable<StudentEventsTable>,
   'id' | 'event_type' | 'session_date' | 'occurred_at' | 'payload'
+>;
+
+type SessionRow = Pick<
+  Selectable<TrainingSessionsTable>,
+  'status' | 'started_at' | 'last_set_at' | 'completed_at'
 >;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -97,6 +105,21 @@ function eventResponse(row: EventRow) {
     session_date: normalizeDateOnly(row.session_date),
     occurred_at: timestamp(row.occurred_at),
     payload: payload(row.payload),
+  };
+}
+
+function sessionResponse(row: SessionRow) {
+  return {
+    session: {
+      status: row.status,
+      started_at: timestamp(row.started_at),
+      last_set_at: timestamp(row.last_set_at),
+      completed_at: row.completed_at === null ? null : timestamp(row.completed_at),
+      duration_seconds: Math.max(
+        0,
+        Math.floor((row.last_set_at.getTime() - row.started_at.getTime()) / 1000),
+      ),
+    },
   };
 }
 
@@ -339,24 +362,66 @@ export function studentSignalsRouter(deps: Pick<SignalsRouterDeps, 'db'>): Expre
         .where('session_date', '=', sessionDate)
         .executeTakeFirst();
 
+      // gym_day is returned even for the null case: the client's stale-state
+      // guard compares against it instead of computing "today" locally — the
+      // 04:00 Shanghai cutoff has exactly one implementation, here.
       if (!row) {
-        res.status(200).json({ session: null });
+        res.status(200).json({ session: null, gym_day: sessionDate });
         return;
       }
 
-      const durationSeconds = Math.max(
-        0,
-        Math.floor((row.last_set_at.getTime() - row.started_at.getTime()) / 1000),
-      );
-      res.status(200).json({
-        session: {
-          status: row.status,
-          started_at: timestamp(row.started_at),
-          last_set_at: timestamp(row.last_set_at),
-          completed_at: row.completed_at === null ? null : timestamp(row.completed_at),
-          duration_seconds: durationSeconds,
-        },
+      res.status(200).json({ ...sessionResponse(row), gym_day: sessionDate });
+    }),
+  );
+
+  router.post(
+    '/me/session/start',
+    requireRole('coached_student', 'self_train_student'),
+    route(async (req, res) => {
+      if (!req.user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      const studentId = req.user.id;
+      const now = new Date();
+      const sessionDate = shanghaiTrainingDay(now);
+      // Pre-generated candidate id: ON CONFLICT DO NOTHING RETURNING cannot
+      // signal created-vs-existing portably (pg-mem incorrectly returns the
+      // existing row), so creation is judged by whether the row we read back
+      // carries OUR id. Race-free under the unique constraint.
+      const candidateId = randomUUID();
+      const result = await deps.db.transaction().execute(async (trx) => {
+        // Seed before locking, matching the set-log hook: concurrent first
+        // starts serialize on the unique session row instead of racing it.
+        await trx
+          .insertInto('training_sessions')
+          .values({
+            id: candidateId,
+            student_id: studentId,
+            session_date: sessionDate,
+            status: 'in_progress',
+            started_at: now,
+            last_set_at: now,
+            plan_day_ids: [],
+          })
+          .onConflict((oc) => oc.columns(['student_id', 'session_date']).doNothing())
+          .execute();
+
+        const session = await trx
+          .selectFrom('training_sessions')
+          .select(['id', 'status', 'started_at', 'last_set_at', 'completed_at'])
+          .where('student_id', '=', studentId)
+          .where('session_date', '=', sessionDate)
+          .forUpdate()
+          .executeTakeFirstOrThrow();
+
+        return { created: session.id === candidateId, session };
       });
+
+      res
+        .status(result.created ? 201 : 200)
+        .json({ ...sessionResponse(result.session), gym_day: sessionDate });
     }),
   );
 

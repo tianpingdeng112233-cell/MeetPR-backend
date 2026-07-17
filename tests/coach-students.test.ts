@@ -20,6 +20,13 @@ describe('GET /coach/students', () => {
       },
       status: 'active',
       evaluation: null,
+      competition_date: null,
+      recent_4w: [
+        { trained_days: 0, planned_days: 0 },
+        { trained_days: 0, planned_days: 0 },
+        { trained_days: 0, planned_days: 0 },
+        { trained_days: 0, planned_days: 0 },
+      ],
     });
     expect(res.body.students[0].profile.created_at).toEqual(expect.any(String));
   });

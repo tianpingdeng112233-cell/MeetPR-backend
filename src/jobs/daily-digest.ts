@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Kysely } from 'kysely';
 
-import type { Database } from '../db/types';
+import type { Database, StudentEventType } from '../db/types';
 import type { Logger } from '../logger';
 
 const DIGEST_EVENT_TYPE = 'coach_daily_digest';
@@ -11,16 +11,36 @@ export interface DailyDigestCounts {
   session_completed: number;
   session_partial: number;
   missed_training: number;
+  weight_failed: number;
   pr_e1rm: number;
 }
 
 type DailyDigestLogger = Pick<Logger, 'info'>;
+
+interface DailyDigestEvent {
+  student_id: string;
+  coach_id: string | null;
+  event_type: StudentEventType;
+  dedup_key: string;
+}
+
+interface DailyDigestSignal {
+  student_id: string;
+  coach_id: string;
+  payload: Record<string, unknown> | string;
+}
+
+interface DailyDigestSnapshot {
+  events: DailyDigestEvent[];
+  signals: DailyDigestSignal[];
+}
 
 function emptyCounts(): DailyDigestCounts {
   return {
     session_completed: 0,
     session_partial: 0,
     missed_training: 0,
+    weight_failed: 0,
     pr_e1rm: 0,
   };
 }
@@ -81,9 +101,78 @@ export function dailyDigestBody(counts: DailyDigestCounts): string | null {
     counts.session_completed > 0 ? `${String(counts.session_completed)} 练完` : null,
     counts.session_partial > 0 ? `${String(counts.session_partial)} 部分完成` : null,
     counts.missed_training > 0 ? `${String(counts.missed_training)} 缺练` : null,
+    counts.weight_failed > 0 ? `${String(counts.weight_failed)} 被压` : null,
     counts.pr_e1rm > 0 ? `${String(counts.pr_e1rm)} 破 PR` : null,
   ].filter((segment): segment is string => segment !== null);
   return segments.length === 0 ? null : `昨天：${segments.join(' · ')}`;
+}
+
+async function loadDailyDigestSnapshot(
+  db: Kysely<Database>,
+  gymDay: string,
+  coachIds: readonly string[],
+): Promise<DailyDigestSnapshot> {
+  const [events, signals] = await Promise.all([
+    db
+      .selectFrom('student_events')
+      .select(['student_id', 'coach_id', 'event_type', 'dedup_key'])
+      .where('session_date', '=', gymDay)
+      .execute(),
+    db
+      .selectFrom('student_signals')
+      .select(['student_id', 'coach_id', 'payload'])
+      .where('coach_id', 'in', coachIds)
+      .where('signal_type', '=', 'missed_training')
+      .where('status', '=', 'open')
+      .execute(),
+  ]);
+  return { events, signals };
+}
+
+/**
+ * Read-only single-coach digest aggregation shared by the push job and the
+ * cockpit endpoint. Completed-session supersession intentionally reads every
+ * coach's events for the gym day: ownership must not let an older partial
+ * survive when any completed event exists for the same student/day.
+ */
+export async function aggregateCoachDigest(
+  db: Kysely<Database>,
+  coachId: string,
+  gymDay: string,
+  snapshot?: DailyDigestSnapshot,
+): Promise<DailyDigestCounts> {
+  const source = snapshot ?? (await loadDailyDigestSnapshot(db, gymDay, [coachId]));
+
+  const completedSuffixes = new Set(
+    source.events.flatMap((event) => {
+      if (event.event_type !== 'session_completed') return [];
+      const suffix = eventSuffix(event.dedup_key, 'session_completed');
+      return suffix === null ? [] : [suffix];
+    }),
+  );
+  const counts = emptyCounts();
+  for (const event of source.events) {
+    if (event.coach_id !== coachId) continue;
+    if (event.event_type === 'session_completed') counts.session_completed += 1;
+    if (event.event_type === 'pr_e1rm') counts.pr_e1rm += 1;
+    if (event.event_type === 'session_partial') {
+      const suffix = eventSuffix(event.dedup_key, 'session_partial');
+      if (suffix !== null && !completedSuffixes.has(suffix)) counts.session_partial += 1;
+    }
+  }
+
+  counts.weight_failed = new Set(
+    source.events
+      .filter((event) => event.coach_id === coachId && event.event_type === 'set_failed')
+      .map((event) => event.student_id),
+  ).size;
+
+  counts.missed_training = new Set(
+    source.signals
+      .filter((signal) => signal.coach_id === coachId && includesGymDay(signal.payload, gymDay))
+      .map((signal) => signal.student_id),
+  ).size;
+  return counts;
 }
 
 // Demo/DemoStudent hard-ban (CEO plan red line #4): the iOS demo builds are
@@ -111,61 +200,10 @@ export async function runDailyDigest(
     return;
   }
 
-  const [events, signals] = await Promise.all([
-    db
-      .selectFrom('student_events')
-      .select(['student_id', 'coach_id', 'event_type', 'dedup_key'])
-      .where('session_date', '=', gymDay)
-      .execute(),
-    db
-      .selectFrom('student_signals')
-      .select(['id', 'student_id', 'coach_id', 'payload'])
-      .where('coach_id', 'in', coachIds)
-      .where('signal_type', '=', 'missed_training')
-      .where('status', '=', 'open')
-      .execute(),
-  ]);
-
-  // Dedup set is ownership-blind: a partial superseded by ANY completed event
-  // for the same student and day must not count, even when the completed
-  // event's coach attribution is null or belongs to a different coach.
-  const completedSuffixes = new Set(
-    events.flatMap((event) => {
-      if (event.event_type !== 'session_completed') return [];
-      const suffix = eventSuffix(event.dedup_key, 'session_completed');
-      return suffix === null ? [] : [suffix];
-    }),
-  );
-  const countsByCoach = new Map(coachIds.map((coachId) => [coachId, emptyCounts()]));
-
-  for (const event of events) {
-    if (event.coach_id === null || !countsByCoach.has(event.coach_id)) {
-      continue;
-    }
-    const counts = countsByCoach.get(event.coach_id);
-    if (counts === undefined) continue;
-    if (event.event_type === 'session_completed') counts.session_completed += 1;
-    if (event.event_type === 'pr_e1rm') counts.pr_e1rm += 1;
-    if (event.event_type === 'session_partial') {
-      const suffix = eventSuffix(event.dedup_key, 'session_partial');
-      if (suffix !== null && !completedSuffixes.has(suffix)) counts.session_partial += 1;
-    }
-  }
-
-  const missedStudentsByCoach = new Map<string, Set<string>>();
-  for (const signal of signals) {
-    if (!includesGymDay(signal.payload, gymDay)) continue;
-    const students = missedStudentsByCoach.get(signal.coach_id) ?? new Set<string>();
-    students.add(signal.student_id);
-    missedStudentsByCoach.set(signal.coach_id, students);
-  }
-  for (const [coachId, students] of missedStudentsByCoach) {
-    const counts = countsByCoach.get(coachId);
-    if (counts !== undefined) counts.missed_training = students.size;
-  }
-
   let inserted = 0;
-  for (const [coachId, counts] of countsByCoach) {
+  const snapshot = await loadDailyDigestSnapshot(db, gymDay, coachIds);
+  for (const coachId of coachIds) {
+    const counts = await aggregateCoachDigest(db, coachId, gymDay, snapshot);
     const body = dailyDigestBody(counts);
     if (body === null) continue;
     const result = await db

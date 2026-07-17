@@ -1,6 +1,8 @@
 import type { Kysely } from 'kysely';
 
 import type { Database } from '../db/types';
+import { normalizeDateOnly } from '../utils/date';
+import { fetchRecentFourWeekActivity, type RecentWeekActivity } from './recent-training';
 import { timestamp } from './serialization';
 
 export interface CoachStudentEvaluation {
@@ -21,11 +23,14 @@ export interface CoachStudentSummary {
   // iOS derives the remaining-time badge from evaluation.expected_end_at.
   status: 'active' | 'in_evaluation';
   evaluation: CoachStudentEvaluation | null;
+  competition_date: string | null;
+  recent_4w: RecentWeekActivity[];
 }
 
 export async function listCoachStudents(
   db: Kysely<Database>,
   coachId: string,
+  now: Date = new Date(),
 ): Promise<CoachStudentSummary[]> {
   // student_profiles is LEFT-joined: nothing at the DB level guarantees an
   // accepted bond has a profile row (only the bind-request flow bootstraps
@@ -34,6 +39,7 @@ export async function listCoachStudents(
     .selectFrom('bind_requests as br')
     .innerJoin('users as u', 'u.id', 'br.student_id')
     .leftJoin('student_profiles as sp', 'sp.user_id', 'u.id')
+    .leftJoin('student_onboarding_profiles as sop', 'sop.user_id', 'u.id')
     .leftJoin('evaluation_periods as ep', (join) =>
       join
         .onRef('ep.student_id', '=', 'br.student_id')
@@ -45,6 +51,7 @@ export async function listCoachStudents(
       'u.created_at as user_created_at',
       'sp.display_name as display_name',
       'sp.created_at as profile_created_at',
+      'sop.competition_date as competition_date',
       'ep.id as evaluation_id',
       'ep.expected_end_at as evaluation_expected_end_at',
     ])
@@ -52,6 +59,12 @@ export async function listCoachStudents(
     .where('br.status', '=', 'accepted')
     .orderBy('u.created_at', 'desc')
     .execute();
+  const recentByStudent = await fetchRecentFourWeekActivity(
+    db,
+    coachId,
+    rows.map((row) => row.id),
+    now,
+  );
 
   return rows.map((row) => {
     // Read-time derived flag, same rule as toEvaluationPeriod (spec 005 D7):
@@ -61,7 +74,7 @@ export async function listCoachStudents(
         ? {
             id: row.evaluation_id,
             expected_end_at: timestamp(row.evaluation_expected_end_at),
-            overdue: new Date(row.evaluation_expected_end_at) < new Date(),
+            overdue: new Date(row.evaluation_expected_end_at) < now,
           }
         : null;
     // Profile-less fallback mirrors the signals API ruling (spec 018 card 5):
@@ -77,6 +90,14 @@ export async function listCoachStudents(
       },
       status: evaluation === null ? ('active' as const) : ('in_evaluation' as const),
       evaluation,
+      competition_date:
+        row.competition_date === null ? null : normalizeDateOnly(row.competition_date),
+      recent_4w: recentByStudent.get(row.id) ?? [
+        { trained_days: 0, planned_days: 0 },
+        { trained_days: 0, planned_days: 0 },
+        { trained_days: 0, planned_days: 0 },
+        { trained_days: 0, planned_days: 0 },
+      ],
     };
   });
 }
