@@ -34,11 +34,24 @@
 | 0038-whole-plan-shift                           | ✅ 2026-07-12 手动应用(DMS,David)                               |
 | 0040-exercise-competition-stance                | ✅ 应用时点未见于账本(早于对账);2026-07-16 对账发现已在库并补记 |
 
-> 号段说明:**无 0039 文件**。0039 号段被未合的 PR #59(多设备会话)占用,故 0038 直接跳到 0040,属正常。
+| 0039-multi-device-sessions | ✅ 2026-07-17 手动应用(psql,Claude) |
+| 0041-init-activity-ledger | ✅ 2026-07-17 手动应用(psql,Claude) |
+| 0042-init-device-tokens | ✅ 2026-07-17 手动应用(psql,Claude) |
 
-**当前 staging schema head = 0040。**
+> 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。
+
+**当前 staging schema head = 0042。**
 
 ## 变更历史
+
+- **2026-07-17(晚)** — 应用 **0039-multi-device-sessions**(PR #59,多设备会话):建 `sessions` 表
+  (每设备一行,60s 轮换宽限治丢包竞态,上限 5 活跃会话),backfill `INSERT 0 124`——124 个在用
+  refresh token 全部平移,**零登出**;legacy 回退路径保证「迁移后、滚镜像前」窗口内旧代码继续轮换
+  `users.refresh_token_jti` 的 token 也能在新代码下换入 session。同批补应用 **0041-init-activity-ledger**
+  (`training_sessions`/`student_events`/`student_signals` 3 永久表 + backfill 临时表自建自删)与
+  **0042-init-device-tokens**(`device_tokens`),两者代码(spec 018 账本 / #75 push pipeline)早已合入
+  staging,属「合了未应用」补账。工具:本机 psql 直连(默认 search_path=public,无 DMS 坑);
+  三文件逐个 ON_ERROR_STOP 执行,均 COMMIT;事后校验 5 张新表全在、`sessions` 计 124 行。
 
 - **2026-07-17** — 滚镜像 `sha-0c16428`(#76 auth refresh 接受 snake_case `refresh_token`,治 iOS 全员 15 分钟 token 刷新 400/BindGate 死锁;**零迁移**,schema head 仍 0040)。本次为**一键部署 workflow(#71,spec 018)首跑**,凭证已配,此后部署 `gh workflow run deploy-staging.yml`。同日 OSS 开**传输加速**,SAE env `OSS_ENDPOINT` 改 `https://oss-accelerate.aliyuncs.com` 并再滚一次生效(治海外上传 ~20KB/s 卡 0%)。curl 验证三绿:refresh 探针 400→401、`/uploads/initiate` 签名域名=`meetpr-videos-prod.oss-accelerate.aliyuncs.com`、5MB 分片 PUT 1.7s(~3MB/s)。⚠️ 探针残留:一次性测试号 `+8613900008871`~`8875`(self_train_student,无业务数据)+ 数条 1KB/5MB `uploading` 状态 attachments,可按需清理。
 
