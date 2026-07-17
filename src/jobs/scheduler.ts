@@ -9,6 +9,7 @@ import type { Logger } from '../logger';
 import type { ApnsClient } from '../services/apns';
 import { shanghaiTrainingDay, utcDate, utcDateOnly } from '../utils/date';
 import { runDailySettlement, runSessionSweep } from './activity-settlement';
+import { runDailyDigest } from './daily-digest';
 import { consumePushOutbox } from './push-consumer';
 
 const SHANGHAI_TIME_ZONE = 'Asia/Shanghai';
@@ -85,6 +86,22 @@ export function startActivityScheduler(
 }
 
 export function createPushConsumerScheduler(deps: PushSchedulerDeps): ActivityScheduler {
+  const digestTask = cron.schedule(
+    PUSH_POLICY.dailyDigestCron,
+    async () => {
+      const now = new Date();
+      const gymDay = justClosedGymDay(now);
+      try {
+        await runDailyDigest(deps.db, gymDay, now, deps.logger);
+      } catch (err) {
+        // Ops note: 08:00 digest assumes the 04:05 settlement finished. If a
+        // settlement failure alert fired earlier, treat this run's missed
+        // counts as suspect — the idempotent outbox row cannot be rewritten.
+        deps.logger.error({ err, gymDay }, 'coach_daily_digest_failed');
+      }
+    },
+    { timezone: SHANGHAI_TIME_ZONE, noOverlap: true },
+  );
   const consumerTask = cron.schedule(
     PUSH_POLICY.consumerCron,
     async () => {
@@ -102,6 +119,7 @@ export function createPushConsumerScheduler(deps: PushSchedulerDeps): ActivitySc
 
   return {
     stop(): void {
+      void digestTask.stop();
       void consumerTask.stop();
     },
   };

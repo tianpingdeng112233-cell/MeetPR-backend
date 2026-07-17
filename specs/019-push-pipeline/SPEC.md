@@ -28,7 +28,7 @@
 ## 3. 每日聚合 job（复用 spec 018 cron 基建）
 
 - 触发：`PUSH_POLICY.dailyDigestCron = '0 8 * * *'` Asia/Shanghai（常量可调，与 gym-day 同锚沪时区）。
-- 对象：有 accepted bond 的教练；**Demo/DemoStudent 账号硬禁用**（对齐埋点先例的账号识别机制，实装时现场核对该先例落点）。
+- 对象：有 accepted bond 的教练。**Demo/DemoStudent 硬禁用的执行点在 iOS 端**（实装时核实：Demo build 是纯客户端内存仓，无后端账号、不注册 device token，服务端天然无可排除对象；严禁为此读 0029 埋点表——业务表红线。iOS W1 卡承担「Demo build 不注册 token」的保证）。
 - 聚合昨 gym-day（既然 04:00 关账，08:00 时账本已收完）：
   - 练完 = `session_completed` 事件数（`session_date = 昨`，按 coach_id 归属）；
   - 部分完成 = `session_partial` 事件数，**排除同学生同日已补 completed 的**（dedup_key 前缀去重，spec 018 §8 口径）；
@@ -51,7 +51,7 @@
 ## 6. 测试
 
 - 迁移 0042 DDL + token upsert 归属迁移；端点 supertest（角色/校验/幂等）。
-- 聚合组装纯函数：四段计数口径（partial 去重）、零段省略、全零不发、Demo 排除。
+- 聚合组装纯函数：四段计数口径（partial 去重，含 completed 归属为 null/异教练时仍去重）、零段省略、全零不发。（Demo 排除无服务端路径，见 §3。）
 - worker：幂等重跑、重试计数、410 回收 token、白名单外事件不动；APNs 网络层 mock（网络边界 mock 惯例）。
 - sandbox 实测（卡 4，需 push key + 真机/模拟器 token）。
 

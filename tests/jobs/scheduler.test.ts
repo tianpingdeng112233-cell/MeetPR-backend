@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ConfigSchema } from '../../src/config';
 import type { Database } from '../../src/db/types';
+import { PUSH_POLICY } from '../../src/domain/push-policy';
 import {
   justClosedGymDay,
   startActivityScheduler,
@@ -46,7 +47,7 @@ describe('activity scheduler gate', () => {
 });
 
 describe('push consumer cron registration', () => {
-  it('registers the consumer with noOverlap so slow batches skip the next tick', async () => {
+  it('registers digest and consumer with Shanghai timezone and noOverlap', async () => {
     vi.resetModules();
     const schedule = vi.fn(() => ({ stop: vi.fn() }));
     vi.doMock('node-cron', () => ({ default: { schedule } }));
@@ -59,10 +60,18 @@ describe('push consumer cron registration', () => {
       apnsClient: { send: vi.fn() },
     });
 
-    expect(schedule).toHaveBeenCalledWith(
-      expect.any(String),
+    expect(schedule).toHaveBeenCalledTimes(2);
+    expect(schedule).toHaveBeenNthCalledWith(
+      1,
+      PUSH_POLICY.dailyDigestCron,
       expect.any(Function),
-      expect.objectContaining({ noOverlap: true }),
+      expect.objectContaining({ timezone: 'Asia/Shanghai', noOverlap: true }),
+    );
+    expect(schedule).toHaveBeenNthCalledWith(
+      2,
+      PUSH_POLICY.consumerCron,
+      expect.any(Function),
+      expect.objectContaining({ timezone: 'Asia/Shanghai', noOverlap: true }),
     );
     vi.doUnmock('node-cron');
     vi.resetModules();
