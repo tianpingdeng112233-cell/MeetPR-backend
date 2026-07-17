@@ -64,9 +64,19 @@ describe('POST /devices/token', () => {
     // Regression guards: a conflict update must move last_seen_at forward but
     // never rewrite the original registration time.
     expect(row.last_seen_at.getTime()).toBeGreaterThanOrEqual(row.created_at.getTime());
-    expect(row.created_at.getTime()).toBeLessThanOrEqual(
-      new Date(first.headers.date).getTime() + 2000,
-    );
+    // The registration instant predates the conflict update: re-reading by id
+    // must yield the same created_at the first insert produced.
+    const secondMigration = await request(ctx.app)
+      .post('/devices/token')
+      .set(auth(ctx.traineeToken))
+      .send(validBody);
+    expect(secondMigration.status).toBe(201);
+    const afterSecond = await ctx.db
+      .selectFrom('device_tokens')
+      .select('created_at')
+      .where('id', '=', first.body.id)
+      .executeTakeFirstOrThrow();
+    expect(afterSecond.created_at).toEqual(row.created_at);
   });
 
   it.each(roleCases)('allows the %s role to register', async (_role, token, tokenFor) => {

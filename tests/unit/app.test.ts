@@ -24,6 +24,7 @@ function makeDeps() {
     EVENTS_RATE_LIMIT_MAX: 10_000,
     ANALYTICS_ENABLED: true,
     SIGNALS_CRON_ENABLED: true,
+    PUSH_ENABLED: false,
     ANALYTICS_SAMPLE_RATE: 1,
     TRUST_PROXY: 0,
   };

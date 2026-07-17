@@ -7,6 +7,8 @@ import type { Database } from '../../src/db/types';
 import {
   justClosedGymDay,
   startActivityScheduler,
+  startPushConsumerScheduler,
+  type PushSchedulerDeps,
   type SchedulerDeps,
 } from '../../src/jobs/scheduler';
 
@@ -40,5 +42,53 @@ describe('activity scheduler gate', () => {
 
   it('targets the gym-day that closed immediately before the Shanghai 04:05 run', () => {
     expect(justClosedGymDay(new Date('2026-07-15T20:05:00Z'))).toBe('2026-07-15');
+  });
+});
+
+describe('push consumer cron registration', () => {
+  it('registers the consumer with noOverlap so slow batches skip the next tick', async () => {
+    vi.resetModules();
+    const schedule = vi.fn(() => ({ stop: vi.fn() }));
+    vi.doMock('node-cron', () => ({ default: { schedule } }));
+    const { createPushConsumerScheduler } = await import('../../src/jobs/scheduler');
+
+    createPushConsumerScheduler({
+      db: {} as Kysely<Database>,
+      logger: {} as Logger,
+      config: { PUSH_ENABLED: true },
+      apnsClient: { send: vi.fn() },
+    });
+
+    expect(schedule).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Function),
+      expect.objectContaining({ noOverlap: true }),
+    );
+    vi.doUnmock('node-cron');
+    vi.resetModules();
+  });
+});
+
+describe('push consumer scheduler gate', () => {
+  function pushDeps(enabled: boolean): PushSchedulerDeps {
+    return {
+      db: {} as Kysely<Database>,
+      logger: {} as Logger,
+      config: { PUSH_ENABLED: enabled },
+      apnsClient: { send: vi.fn() },
+    };
+  }
+
+  it('does not mount the consumer cron while push is disabled', () => {
+    const factory = vi.fn(() => ({ stop: vi.fn() }));
+    expect(startPushConsumerScheduler(pushDeps(false), factory)).toBeNull();
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it('mounts independently when push is enabled', () => {
+    const task = { stop: vi.fn() };
+    const factory = vi.fn(() => task);
+    expect(startPushConsumerScheduler(pushDeps(true), factory)).toBe(task);
+    expect(factory).toHaveBeenCalledOnce();
   });
 });
