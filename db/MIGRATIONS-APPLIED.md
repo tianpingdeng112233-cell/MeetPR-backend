@@ -83,6 +83,11 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-17(夜) — `sha-cea74fa`(=staging HEAD,#78 plan-web 训练日分节 web/ 换装,零迁移零后端代码)
+  经一键部署 workflow 部署 `meetpr-backend-staging`(`gh workflow run deploy-staging.yml -f migrations_applied=true`,
+  Claude 触发)。curl 验证:`GET /`→SPA 入口已换 `index-BNfGRD33.js` 且 bundle 含「主项及变式」文案、
+  assets 200、`POST /auth/login` 空体 400(服务健康)。前两次 dispatch 失败=迁移确认闸未带参 + 镜像未出好,
+  非服务事故;教训已记 workflow 用法(先等 build-push 出 sha 镜像、必带 `-f migrations_applied=true`)。
 - 2026-07-17(晚) — `sha-01eb47a`(=staging HEAD,#59 多设备会话 + 账本 docs)经一键部署 workflow
   部署 `meetpr-backend-staging`(`gh workflow run deploy-staging.yml`,Claude 触发);
   **先应用 0039/0041/0042 再滚镜像**;env 未动(FORCE_HTTPS 不开 / AUTH_ALLOW_LEGACY_TOKENS 不关)。
