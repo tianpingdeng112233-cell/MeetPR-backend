@@ -33,10 +33,9 @@
 | 0037-add-plan-day-shifts                        | ✅ 2026-07-10 手动应用(DMS)                                     |
 | 0038-whole-plan-shift                           | ✅ 2026-07-12 手动应用(DMS,David)                               |
 | 0040-exercise-competition-stance                | ✅ 应用时点未见于账本(早于对账);2026-07-16 对账发现已在库并补记 |
-
-| 0039-multi-device-sessions | ✅ 2026-07-17 手动应用(psql,Claude) |
-| 0041-init-activity-ledger | ✅ 2026-07-17 手动应用(psql,Claude) |
-| 0042-init-device-tokens | ✅ 2026-07-17 手动应用(psql,Claude) |
+| 0039-multi-device-sessions                      | ✅ 2026-07-17 手动应用(psql,Claude)                             |
+| 0041-init-activity-ledger                       | ✅ 2026-07-17 手动应用(psql,Claude)                             |
+| 0042-init-device-tokens                         | ✅ 2026-07-17 手动应用(psql,Claude)                             |
 
 > 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。
 
