@@ -83,6 +83,13 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-17(晚) — `sha-01eb47a`(=staging HEAD,#59 多设备会话 + 账本 docs)经一键部署 workflow
+  部署 `meetpr-backend-staging`(`gh workflow run deploy-staging.yml`,Claude 触发);
+  **先应用 0039/0041/0042 再滚镜像**;env 未动(FORCE_HTTPS 不开 / AUTH_ALLOW_LEGACY_TOKENS 不关)。
+  curl 验证五绿:/health 200、register 201、refresh(snake_case)200、**二次 login 后原设备 refresh 仍 200**
+  (多设备不互踢实锤,旧模型此处必 401)、同 token 宽限窗重放 200(丢包重试幂等)。
+  探针号 `+8613900008876` 已即时 DELETE(FK 级联清 sessions,孤儿会话 0)。
+
 - 2026-07-13 — `sha-caf7796`(=staging HEAD,#70 gym-day 宽限窗 spec 017:coached 缺省 `logged_date`
   改 04:00 Asia/Shanghai 截断)部署 `meetpr-backend-staging`(David 手动控制台,#71 一键部署 workflow
   尚未启用);**零迁移、env 未动**。curl 验证:`/health` 200、`POST /sets/log` 无鉴权 401 信封正确、
