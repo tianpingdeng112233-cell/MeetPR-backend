@@ -27,6 +27,7 @@ export const config: Config = {
   EVENTS_RATE_LIMIT_MAX: 10_000,
   ANALYTICS_ENABLED: true,
   SIGNALS_CRON_ENABLED: true,
+  PUSH_ENABLED: false,
   ANALYTICS_SAMPLE_RATE: 1,
   CORS_ORIGIN: '*',
   TRUST_PROXY: 0,
@@ -388,6 +389,17 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    -- Push-pipeline card 1 schema. Keep in sync with migration 0042.
+    CREATE TABLE device_tokens (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      platform TEXT NOT NULL CHECK (platform = 'ios'),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE events (
       id BIGSERIAL PRIMARY KEY,
       event_id UUID NOT NULL UNIQUE,
@@ -434,6 +446,41 @@ export async function makeContext(
 
   const { Pool } = mem.adapters.createPg();
   const pool = new Pool();
+  {
+    // pg-mem cannot execute FOR UPDATE SKIP LOCKED (planner limitation).
+    // Strip the clause at the adapter boundary so production SQL keeps real
+    // multi-instance semantics while tests still exercise the same code path;
+    // the lock shape itself is pinned by a compile assertion in
+    // tests/jobs/push-consumer.test.ts.
+    const connect = pool.connect.bind(pool) as () => Promise<PoolClient>;
+    const rewritten = new WeakSet();
+    (pool as { connect: () => Promise<PoolClient> }).connect = async () => {
+      const client = await connect();
+      if (!rewritten.has(client)) {
+        rewritten.add(client);
+        const query = client.query.bind(client);
+        (client as { query: unknown }).query = new Proxy(query, {
+          apply: (target, thisArg, args: unknown[]) => {
+            const first = args[0];
+            if (typeof first === 'string') {
+              args[0] = first.replace(/\s+skip\s+locked/gi, '');
+            } else if (
+              typeof first === 'object' &&
+              first !== null &&
+              typeof (first as { text?: unknown }).text === 'string'
+            ) {
+              (first as { text: string }).text = (first as { text: string }).text.replace(
+                /\s+skip\s+locked/gi,
+                '',
+              );
+            }
+            return Reflect.apply(target, thisArg, args) as unknown;
+          },
+        });
+      }
+      return client;
+    };
+  }
   if (extras.afterQuery) {
     // pg-mem's adapter Pool never emits 'connect', so instrument checkout itself:
     // wrap each client's query as it leaves pool.connect().

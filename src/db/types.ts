@@ -558,6 +558,16 @@ export interface NotificationOutboxTable {
   delivered_at: NullableColumn<Date>;
 }
 
+export interface DeviceTokensTable {
+  id: Generated<string>;
+  user_id: string;
+  token: string;
+  platform: 'ios';
+  created_at: TimestampColumn;
+  updated_at: TimestampColumn;
+  last_seen_at: TimestampColumn;
+}
+
 export interface TrainingSessionsTable {
   id: Generated<string>;
   student_id: string;
@@ -674,6 +684,7 @@ export interface Database {
   onboarding_uploads: OnboardingUploadsTable;
   attachments: AttachmentsTable;
   notification_outbox: NotificationOutboxTable;
+  device_tokens: DeviceTokensTable;
   training_sessions: TrainingSessionsTable;
   student_events: StudentEventsTable;
   student_signals: StudentSignalsTable;

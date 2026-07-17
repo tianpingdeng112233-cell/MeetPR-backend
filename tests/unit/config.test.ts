@@ -19,6 +19,7 @@ describe('config', () => {
     expect(config.JWT_REFRESH_TTL).toBe('30d');
     expect(config.RATE_LIMIT_MAX).toBe(100);
     expect(config.LOG_LEVEL).toBe('info');
+    expect(config.PUSH_ENABLED).toBe(false);
   });
 
   it('throws when DATABASE_URL is missing', () => {
@@ -81,6 +82,33 @@ describe('config', () => {
     const config = loadConfig({ ...validEnv, PORT: '4000', RATE_LIMIT_MAX: '50' });
     expect(config.PORT).toBe(4000);
     expect(config.RATE_LIMIT_MAX).toBe(50);
+  });
+
+  it('requires every APNs setting when push is enabled', () => {
+    const result = ConfigSchema.safeParse({ ...validEnv, PUSH_ENABLED: 'true' });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.flatten().fieldErrors).toMatchObject({
+      APNS_KEY: expect.any(Array),
+      APNS_KEY_ID: expect.any(Array),
+      APNS_TEAM_ID: expect.any(Array),
+      APNS_BUNDLE_ID: expect.any(Array),
+      APNS_ENV: expect.any(Array),
+    });
+  });
+
+  it('accepts a complete APNs configuration when push is enabled', () => {
+    const config = loadConfig({
+      ...validEnv,
+      PUSH_ENABLED: 'true',
+      APNS_KEY: 'pem-content',
+      APNS_KEY_ID: 'key-id',
+      APNS_TEAM_ID: 'team-id',
+      APNS_BUNDLE_ID: 'com.example.meetpr',
+      APNS_ENV: 'sandbox',
+    });
+    expect(config.PUSH_ENABLED).toBe(true);
+    expect(config.APNS_ENV).toBe('sandbox');
   });
 
   it('exposes the schema as a named export', () => {

@@ -49,6 +49,15 @@ export const ConfigSchema = z
       .enum(['true', 'false'])
       .default('true')
       .transform((v) => v === 'true'),
+    PUSH_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    APNS_KEY: z.string().min(1).optional(),
+    APNS_KEY_ID: z.string().min(1).optional(),
+    APNS_TEAM_ID: z.string().min(1).optional(),
+    APNS_BUNDLE_ID: z.string().min(1).optional(),
+    APNS_ENV: z.enum(['sandbox', 'production']).optional(),
     ANALYTICS_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
     CORS_ORIGIN: z.string().default('*'),
     TRUST_PROXY: z.coerce.number().int().min(0).default(0),
@@ -78,6 +87,25 @@ export const ConfigSchema = z
         path: ['JWT_REFRESH_SECRET'],
         message: 'JWT_REFRESH_SECRET must differ from JWT_ACCESS_SECRET',
       });
+    }
+
+    if (config.PUSH_ENABLED) {
+      const requiredApnsFields = [
+        'APNS_KEY',
+        'APNS_KEY_ID',
+        'APNS_TEAM_ID',
+        'APNS_BUNDLE_ID',
+        'APNS_ENV',
+      ] as const;
+      for (const field of requiredApnsFields) {
+        if (config[field] === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: `${field} is required when PUSH_ENABLED=true`,
+          });
+        }
+      }
     }
 
     if (config.NODE_ENV !== 'production') return;

@@ -9,8 +9,9 @@ import { loadConfig } from './config';
 import { createDb } from './db/kysely';
 import { createPool } from './db/pool';
 import { createLogger } from './logger';
-import { startActivityScheduler } from './jobs/scheduler';
+import { startActivityScheduler, startPushConsumerScheduler } from './jobs/scheduler';
 import { maybeCreateOssService } from './services/oss';
+import { createApnsClient } from './services/apns';
 
 function main(): void {
   const config = loadConfig();
@@ -28,10 +29,19 @@ function main(): void {
     logger.info({ port: config.PORT, env: config.NODE_ENV }, 'server_listening');
   });
   const scheduler = startActivityScheduler({ config, logger, db });
+  const pushScheduler = config.PUSH_ENABLED
+    ? startPushConsumerScheduler({
+        config,
+        logger,
+        db,
+        apnsClient: createApnsClient(config),
+      })
+    : null;
 
   const shutdown = (signal: string): void => {
     logger.info({ signal }, 'server_shutdown_start');
     scheduler?.stop();
+    pushScheduler?.stop();
     server.close((closeErr) => {
       if (closeErr) {
         logger.error({ err: closeErr }, 'server_close_error');
