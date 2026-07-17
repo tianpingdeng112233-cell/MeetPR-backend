@@ -34,6 +34,7 @@ async function insertAdhocLog(
   input: {
     studentId?: string;
     loggedDate: string;
+    loggedAt?: Date;
     assumed?: boolean;
     failed?: boolean;
   },
@@ -53,7 +54,7 @@ async function insertAdhocLog(
       assumed: input.assumed ?? false,
       adhoc: true,
       logged_date: input.loggedDate,
-      logged_at: new Date(`${input.loggedDate}T12:00:00Z`),
+      logged_at: input.loggedAt ?? new Date(`${input.loggedDate}T12:00:00Z`),
     })
     .execute();
 }
@@ -393,6 +394,13 @@ describe('session sweep job', () => {
         last_set_at: new Date('2026-04-30T20:00:00Z'),
       })
       .execute();
+    // A real adhoc set backs the session: zero-set sessions are now deleted
+    // by the sweep (spec 020 §2), which a dedicated test covers.
+    await insertAdhocLog(ctx, {
+      studentId: ids.selfTrainStudent,
+      loggedDate: '2026-05-01',
+      loggedAt: new Date('2026-04-30T20:00:00Z'),
+    });
     const now = new Date('2026-05-01T01:00:01Z');
 
     await runSessionSweep(ctx.db, now);

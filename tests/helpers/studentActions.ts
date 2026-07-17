@@ -342,7 +342,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       UNIQUE (event_type, aggregate_id, recipient_id)
     );
 
-    -- Activity-ledger card 1 schema. Keep in sync with migration 0041.
+    -- Activity-ledger schema. Keep in sync with migrations 0041 and 0043.
     CREATE TABLE training_sessions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -363,7 +363,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       coach_id UUID REFERENCES users(id) ON DELETE SET NULL,
       event_type TEXT NOT NULL CHECK (
-        event_type IN ('session_completed', 'session_partial', 'pr_e1rm')
+        event_type IN ('session_completed', 'session_partial', 'pr_e1rm', 'set_failed')
       ),
       session_date DATE NOT NULL,
       occurred_at TIMESTAMPTZ NOT NULL,
@@ -376,7 +376,9 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      signal_type TEXT NOT NULL CHECK (signal_type IN ('missed_training', 'pr_congrats')),
+      signal_type TEXT NOT NULL CHECK (
+        signal_type IN ('missed_training', 'pr_congrats', 'weight_failed')
+      ),
       severity TEXT NOT NULL CHECK (severity IN ('red', 'yellow', 'green')),
       status TEXT NOT NULL CHECK (status IN ('open', 'acked', 'auto_resolved', 'expired')),
       reason TEXT NOT NULL,

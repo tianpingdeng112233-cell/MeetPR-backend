@@ -344,6 +344,19 @@ export async function sweepTimedOutSessions(db: Kysely<Database>, now: Date): Pr
       const lastSetAt = new Date(Math.max(session.last_set_at.getTime(), windowMax));
       if (now.getTime() - lastSetAt.getTime() <= timeoutMs) return;
 
+      if (logs.length === 0) {
+        // Explicit session starts can legitimately have no sets. Timing one
+        // out means "started but did not train": remove the provisional row
+        // and emit no fact event. This also fixes the legacy empty-plan-day
+        // branch that incorrectly archived such rows as completed.
+        await trx
+          .deleteFrom('training_sessions')
+          .where('id', '=', session.id)
+          .where('status', '=', 'in_progress')
+          .execute();
+        return;
+      }
+
       const progress = await sessionProgress(trx, logs);
       const status: Extract<SessionStatus, 'completed' | 'partial'> =
         progress.plannedComplete || progress.planDayIds.length === 0 ? 'completed' : 'partial';
