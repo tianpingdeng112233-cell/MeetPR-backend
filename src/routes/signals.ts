@@ -362,12 +362,15 @@ export function studentSignalsRouter(deps: Pick<SignalsRouterDeps, 'db'>): Expre
         .where('session_date', '=', sessionDate)
         .executeTakeFirst();
 
+      // gym_day is returned even for the null case: the client's stale-state
+      // guard compares against it instead of computing "today" locally — the
+      // 04:00 Shanghai cutoff has exactly one implementation, here.
       if (!row) {
-        res.status(200).json({ session: null });
+        res.status(200).json({ session: null, gym_day: sessionDate });
         return;
       }
 
-      res.status(200).json(sessionResponse(row));
+      res.status(200).json({ ...sessionResponse(row), gym_day: sessionDate });
     }),
   );
 
@@ -416,7 +419,9 @@ export function studentSignalsRouter(deps: Pick<SignalsRouterDeps, 'db'>): Expre
         return { created: session.id === candidateId, session };
       });
 
-      res.status(result.created ? 201 : 200).json(sessionResponse(result.session));
+      res
+        .status(result.created ? 201 : 200)
+        .json({ ...sessionResponse(result.session), gym_day: sessionDate });
     }),
   );
 

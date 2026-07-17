@@ -423,7 +423,7 @@ describe('GET /students/me/session', () => {
       .set(auth(ctx.traineeToken));
 
     expect(empty.status).toBe(200);
-    expect(empty.body).toEqual({ session: null });
+    expect(empty.body).toEqual({ session: null, gym_day: expect.any(String) });
     expect(invalid.status).toBe(400);
     expect(invalid.body.error).toBe('VALIDATION_ERROR');
   });
@@ -453,6 +453,7 @@ describe('GET /students/me/session', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
+      gym_day: expect.any(String),
       session: {
         status: 'completed',
         started_at: timestamp(startedAt),
@@ -479,6 +480,7 @@ describe('POST /students/me/session/start', () => {
 
     expect(created.status).toBe(201);
     expect(created.body).toEqual({
+      gym_day: expect.any(String),
       session: {
         status: 'in_progress',
         started_at: expect.any(String),
@@ -534,6 +536,7 @@ describe('POST /students/me/session/start', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
+      gym_day: expect.any(String),
       session: {
         status: 'completed',
         started_at: timestamp(startedAt),

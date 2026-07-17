@@ -15,6 +15,10 @@
 - `competition_date`：来自 `onboarding_profiles.competition_date`（可 null）。
 - `recent_4w`：近 4 个完整周（周一起算，与 exercise-stats overview `recent_4w` 同口径复用其逻辑，抽共享而非复制）每周 `{ trained_days, planned_days }` 数组（长度恒 4，旧→新）。**单批量查询**（roster 全员一次算齐，禁逐学员 N+1——参照 spec 016 has_logs 聚合先例）。
 
+## 2.5 会话响应补 `gym_day`（附带，iOS 跨日守卫需要）
+
+- `GET /students/me/session`（含 session=null 时）与 `POST /students/me/session/start` 响应顶层补 `gym_day`（服务端解析出的当日 gym-day）。additive；客户端以此做本地态跨日失效判断，**不得**在客户端计算「今天」——04:00 口径唯一实现在服务端。
+
 ## 3. 测试
 
 - digest 端点：口径与 job 完全一致（同 fixture 双跑对比）、date 参数校验、零值 body null、越权 403。
