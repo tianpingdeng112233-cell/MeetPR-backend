@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { Database, SessionStatus, StudentEventType } from '../db/types';
 import { SIGNAL_POLICY } from '../domain/signal-policy';
 import { normalizeDateOnly, shanghaiTrainingDay } from '../utils/date';
+import { detectSetLogFailure } from './failure-detection';
 import { detectSetLogPr } from './pr-detection';
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
@@ -300,6 +301,13 @@ export async function recordSetLogActivity(
   // atomically with each other inside this transaction.
   await db.transaction().execute(async (trx) => {
     await detectSetLogPr(trx, studentId, setLogId, now);
+  });
+
+  // Failure detection is isolated after PR detection for the same reason: a
+  // yellow-signal failure must not roll back either the session ledger or a
+  // PR fact that already committed. Its event + signal remain atomic.
+  await db.transaction().execute(async (trx) => {
+    await detectSetLogFailure(trx, studentId, setLogId, now);
   });
 }
 

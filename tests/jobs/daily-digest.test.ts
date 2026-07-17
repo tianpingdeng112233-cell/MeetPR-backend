@@ -10,7 +10,7 @@ const now = new Date('2026-07-17T00:00:00.000Z');
 const logger = pino({ level: 'silent' });
 
 type Context = Awaited<ReturnType<typeof makeContext>>;
-type LedgerEventType = 'session_completed' | 'session_partial' | 'pr_e1rm';
+type LedgerEventType = 'session_completed' | 'session_partial' | 'pr_e1rm' | 'set_failed';
 
 async function addBond(ctx: Context, studentId: string, coachId: string): Promise<void> {
   await ctx.db
@@ -45,7 +45,9 @@ async function addEvent(
       dedup_key:
         input.eventType === 'pr_e1rm'
           ? `pr:${studentId}:squat:${randomUUID()}`
-          : `${input.eventType}:${studentId}:${gymDay}`,
+          : input.eventType === 'set_failed'
+            ? `fail:${studentId}:${randomUUID()}`
+            : `${input.eventType}:${studentId}:${gymDay}`,
     })
     .execute();
 }
@@ -84,7 +86,7 @@ async function outbox(ctx: Context) {
 }
 
 describe('runDailyDigest', () => {
-  it('counts all four segments and excludes a partial followed by completed', async () => {
+  it('counts all five segments, distinct failed students, and excludes a superseded partial', async () => {
     const ctx = await makeContext();
     await addBond(ctx, ids.otherStudent, ids.coach);
     await addEvent(ctx, { eventType: 'session_partial' });
@@ -94,6 +96,8 @@ describe('runDailyDigest', () => {
       studentId: ids.otherStudent,
     });
     await addEvent(ctx, { eventType: 'pr_e1rm' });
+    await addEvent(ctx, { eventType: 'set_failed' });
+    await addEvent(ctx, { eventType: 'set_failed' });
     await addMissedSignal(ctx, ids.otherStudent, ids.coach);
 
     await runDailyDigest(ctx.db, gymDay, now, logger);
@@ -105,12 +109,13 @@ describe('runDailyDigest', () => {
       session_completed: 1,
       session_partial: 1,
       missed_training: 1,
+      weight_failed: 1,
       pr_e1rm: 1,
     });
     expect(payload.aps).toEqual({
       alert: {
         title: '昨日训练摘要',
-        body: '昨天：1 练完 · 1 部分完成 · 1 缺练 · 1 破 PR',
+        body: '昨天：1 练完 · 1 部分完成 · 1 缺练 · 1 被压 · 1 破 PR',
       },
     });
     expect(payload.gym_day).toBe(gymDay);
@@ -175,6 +180,7 @@ describe('runDailyDigest', () => {
       session_completed: 0,
       session_partial: 0,
       missed_training: 0,
+      weight_failed: 0,
       pr_e1rm: 1,
     });
   });
@@ -198,12 +204,14 @@ describe('runDailyDigest', () => {
       session_completed: 1,
       session_partial: 0,
       missed_training: 0,
+      weight_failed: 0,
       pr_e1rm: 0,
     });
     expect(byCoach.get(ids.otherCoach)?.counts).toEqual({
       session_completed: 0,
       session_partial: 1,
       missed_training: 0,
+      weight_failed: 0,
       pr_e1rm: 0,
     });
   });

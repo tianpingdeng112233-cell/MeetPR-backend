@@ -59,7 +59,104 @@ async function insertAdhocLog(
     .execute();
 }
 
+async function insertCompletedEvent(ctx: TestContext, gymDay: string): Promise<void> {
+  await ctx.db
+    .insertInto('student_events')
+    .values({
+      student_id: ids.trainee,
+      coach_id: ids.coach,
+      event_type: 'session_completed',
+      session_date: gymDay,
+      occurred_at: new Date(`${gymDay}T12:00:00.000Z`),
+      payload: JSON.stringify({}),
+      dedup_key: `session_completed:${ids.trainee}:${gymDay}`,
+    })
+    .execute();
+}
+
+async function insertWeightFailedSignal(
+  ctx: TestContext,
+  input: { gymDay: string; openedAt: Date },
+): Promise<string> {
+  const row = await ctx.db
+    .insertInto('student_signals')
+    .values({
+      student_id: ids.trainee,
+      coach_id: ids.coach,
+      signal_type: 'weight_failed',
+      severity: 'yellow',
+      status: 'open',
+      reason: 'failed set',
+      payload: JSON.stringify({ gym_day: input.gymDay, failed_count: 1 }),
+      opened_at: input.openedAt,
+      expires_at: new Date('2026-06-01T00:00:00.000Z'),
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  return row.id;
+}
+
 describe('daily activity settlement', () => {
+  it('auto-resolves open weight-failed signals after that gym-day completes', async () => {
+    const ctx = await makeContext();
+    const gymDay = '2026-05-04';
+    const signalId = await insertWeightFailedSignal(ctx, {
+      gymDay,
+      openedAt: new Date('2026-05-04T19:59:59.999Z'),
+    });
+    await insertCompletedEvent(ctx, gymDay);
+    const now = new Date('2026-05-04T20:05:00.000Z');
+
+    await runDailySettlement(ctx.db, gymDay, now);
+
+    expect(
+      await ctx.db
+        .selectFrom('student_signals')
+        .select(['status', 'resolved_at'])
+        .where('id', '=', signalId)
+        .executeTakeFirstOrThrow(),
+    ).toEqual({ status: 'auto_resolved', resolved_at: now });
+  });
+
+  it('keeps weight-failed signals open when the gym-day did not complete', async () => {
+    const ctx = await makeContext();
+    const signalId = await insertWeightFailedSignal(ctx, {
+      gymDay: '2026-05-04',
+      openedAt: new Date('2026-05-04T19:00:00.000Z'),
+    });
+
+    await runDailySettlement(ctx.db, '2026-05-04', new Date('2026-05-04T20:05:00.000Z'));
+
+    expect(
+      await ctx.db
+        .selectFrom('student_signals')
+        .select('status')
+        .where('id', '=', signalId)
+        .executeTakeFirstOrThrow(),
+    ).toEqual({ status: 'open' });
+  });
+
+  it('does not close a newer weight-failed epoch during a historical rerun', async () => {
+    const ctx = await makeContext();
+    const signalId = await insertWeightFailedSignal(ctx, {
+      gymDay: '2026-05-05',
+      // Deliberately before the older cutoff so the payload watermark, not
+      // only opened_at, proves the historical-rerun guard.
+      openedAt: new Date('2026-05-04T19:00:00.000Z'),
+    });
+    await insertCompletedEvent(ctx, '2026-05-04');
+
+    await runDailySettlement(ctx.db, '2026-05-04', new Date('2026-05-06T20:05:00.000Z'));
+
+    expect(
+      await ctx.db
+        .selectFrom('student_signals')
+        .select('status')
+        .where('id', '=', signalId)
+        .executeTakeFirstOrThrow(),
+    ).toEqual({ status: 'open' });
+  });
+
   it('opens one missed-training signal, grows the same streak, and never reopens a closed streak', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
@@ -291,7 +388,7 @@ describe('daily activity settlement', () => {
     expect(await ctx.db.selectFrom('student_signals').selectAll().execute()).toHaveLength(0);
   });
 
-  it('expires both signal types while auto-resolving a current missed-training signal', async () => {
+  it('expires PR and weight-failed signals while resolving current missed training', async () => {
     const ctx = await makeContext();
     const now = new Date('2026-05-04T20:05:00Z');
     await insertAdhocLog(ctx, { loggedDate: '2026-05-04' });
@@ -325,6 +422,17 @@ describe('daily activity settlement', () => {
           opened_at: new Date('2026-04-01T00:00:00Z'),
           expires_at: new Date('2026-05-01T00:00:00Z'),
         },
+        {
+          student_id: ids.selfTrainStudent,
+          coach_id: ids.coach,
+          signal_type: 'weight_failed',
+          severity: 'yellow',
+          status: 'open',
+          reason: 'old failure',
+          payload: JSON.stringify({ gym_day: '2026-04-30', failed_count: 1 }),
+          opened_at: new Date('2026-04-30T00:00:00Z'),
+          expires_at: new Date('2026-05-01T00:00:00Z'),
+        },
       ])
       .execute();
 
@@ -337,6 +445,7 @@ describe('daily activity settlement', () => {
     expect(signals).toEqual([
       { signal_type: 'missed_training', status: 'auto_resolved', resolved_at: now },
       { signal_type: 'pr_congrats', status: 'expired', resolved_at: null },
+      { signal_type: 'weight_failed', status: 'expired', resolved_at: null },
     ]);
   });
 
