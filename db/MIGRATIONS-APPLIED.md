@@ -106,6 +106,9 @@
   `FORCE_HTTPS` 不开 / `AUTH_ALLOW_LEGACY_TOKENS` 不关);**先应用 0029/0030 迁移再滚镜像**。
   curl 验证:`/events/config` 200、`POST /events`(anon app_open)204、partial-accept 204、`/health` 200。
   ⚠️ probe 写入 1 条测试事件(anon_id `aacc0000-…-000000000001`),David 可 `DELETE FROM events WHERE anon_id='aacc0000-0000-4000-8000-000000000001';` 清掉免污染首批真实数据。
+- 2026-07-18 — `sha-6ed383e`(#86 纯 web/ 换装:朴素容量汇总,bundle 3d5e805/入口 index-BCjeNeGw.js——
+  周头汇总挪至标题后(主项/辅项/总重)+日分节组数吨位+JTS 参考层删除+David 直驱分节加动作 fe47c5f)
+  经 deploy-staging.yml 部署;curl 验证入口已换。当日第六次部署(xty 汇总反馈闭环)。
 - 2026-07-18 — `sha-a3fea63`(=staging HEAD,#85 纯 web/ 换装:批量保存客户端,bundle 3b08bc7/入口
   index-D5RVOwPq.js——整份计划保存几百请求→1-2 个批量事务)经 deploy-staging.yml 部署;curl 验证:
   GET / 回新入口、/auth/login 200。当日第五次部署(autosave 整体翻新收官)。
