@@ -39,7 +39,14 @@ async function main(): Promise<void> {
     });
     console.log(`ADMIN_${result.action.toUpperCase()}`);
   } catch (error: unknown) {
-    console.error(error instanceof AdminProvisioningError ? error.code : 'ADMIN_CREATE_FAILED');
+    if (error instanceof AdminProvisioningError) {
+      console.error(error.code);
+    } else {
+      // Operator-run script: surface the underlying failure (pg error messages
+      // do not contain credentials) instead of a blind generic code.
+      console.error('ADMIN_CREATE_FAILED');
+      console.error(error instanceof Error ? `${error.name}: ${error.message}` : String(error));
+    }
     process.exitCode = 1;
   } finally {
     await db.destroy();
