@@ -36,10 +36,11 @@
 | 0039-multi-device-sessions                      | ✅ 2026-07-17 手动应用(psql,Claude)                             |
 | 0041-init-activity-ledger                       | ✅ 2026-07-17 手动应用(psql,Claude)                             |
 | 0042-init-device-tokens                         | ✅ 2026-07-17 手动应用(psql,Claude)                             |
+| 0044-add-admin-role                             | ✅ 2026-07-18 手动应用(DMS,David;执行成功 5 条语句)             |
 
-> 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。
+> 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。0043 现由 open PR #77/#79(账本扩展)占号,0044 先行落库,库内号段暂跳 0043——#77/#79 合并应用后回续。
 
-**当前 staging schema head = 0042。**
+**当前 staging schema head = 0044（0043 缺位,被 open PR 占号,见上）。**
 
 ## 变更历史
 
@@ -83,6 +84,10 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-18(夜) — `sha-c6d2805`(=staging HEAD,#89 admin 只读波 spec 022)经一键部署 workflow 部署
+  `meetpr-backend-staging`;env 未动;**0044 已先应用**(DMS,David,执行成功)。curl 验证:/health 200、
+  `/admin/{overview,users,bindings,plans}` 匿名 401 `AUTH_INVALID_TOKEN`(403/200 分支由 602 项测试
+  覆盖,admin 造号后浏览器走查复验)。配套 plan-web PR #25 待走查后合并。
 - 2026-07-17(夜) — `sha-cea74fa`(=staging HEAD,#78 plan-web 训练日分节 web/ 换装,零迁移零后端代码)
   经一键部署 workflow 部署 `meetpr-backend-staging`(`gh workflow run deploy-staging.yml -f migrations_applied=true`,
   Claude 触发)。curl 验证:`GET /`→SPA 入口已换 `index-BNfGRD33.js` 且 bundle 含「主项及变式」文案、
