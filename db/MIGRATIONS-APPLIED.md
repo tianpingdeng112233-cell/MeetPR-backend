@@ -84,6 +84,11 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-19(凌晨) — `sha-297e775`(=staging HEAD,plan-web #25 admin 工作台 web/ 换装,bundle
+  index-DPKOSAff/入口 index-g1Q3cMef,零迁移零后端代码)经一键部署 workflow 部署
+  `meetpr-backend-staging`;env 未动。curl 验证:/health 200、新 bundle 200。admin 全流程已在部署前
+  以 dev 预览对同一 staging 后端逐屏走查(admin 登录/四 tab/用户与计划详情/无 DANGER 区/真动作名)。
+  admin 账号已由 David 手跑 create-admin 创建(`ADMIN_CREATED`,2026-07-18)。
 - 2026-07-18(夜) — `sha-c6d2805`(=staging HEAD,#89 admin 只读波 spec 022)经一键部署 workflow 部署
   `meetpr-backend-staging`;env 未动;**0044 已先应用**(DMS,David,执行成功)。curl 验证:/health 200、
   `/admin/{overview,users,bindings,plans}` 匿名 401 `AUTH_INVALID_TOKEN`(403/200 分支由 602 项测试
