@@ -106,6 +106,9 @@
   `FORCE_HTTPS` 不开 / `AUTH_ALLOW_LEGACY_TOKENS` 不关);**先应用 0029/0030 迁移再滚镜像**。
   curl 验证:`/events/config` 200、`POST /events`(anon app_open)204、partial-accept 204、`/health` 200。
   ⚠️ probe 写入 1 条测试事件(anon_id `aacc0000-…-000000000001`),David 可 `DELETE FROM events WHERE anon_id='aacc0000-0000-4000-8000-000000000001';` 清掉免污染首批真实数据。
+- 2026-07-18 — `sha-157a316`(=staging HEAD,#81 纯 web/ 换装:plan-web 整列拖拽搬日 #15+周容量汇总 #16,
+  bundle 20c28b2/入口 index-CKYW81yE.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
+  `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口、/auth/login 200。同日第二次 web 换装(首次 sha-a5bbdb9)。
 - 2026-07-18 — `sha-a5bbdb9`(=staging HEAD,#80 纯 web/ 换装:plan-web autosave 切视图丢内容修复,
   bundle cbf7203/入口 index-DUUesC1M.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
   `meetpr-backend-staging`;env 未动。curl 验证:GET / 已回新入口 index-DUUesC1M.js、/auth/login 200。
