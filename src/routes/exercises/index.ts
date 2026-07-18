@@ -65,6 +65,19 @@ export async function visibleExerciseForCoach(
   return visibleExerciseQuery(db, coachId, 'coach').where('id', '=', exerciseId).executeTakeFirst();
 }
 
+export async function visibleExercisesForCoach(
+  db: Kysely<Database>,
+  exerciseIds: string[],
+  coachId: string,
+): Promise<Set<string>> {
+  if (exerciseIds.length === 0) return new Set();
+  const rows = await visibleExerciseQuery(db, coachId, 'coach')
+    .select('id')
+    .where('id', 'in', exerciseIds)
+    .execute();
+  return new Set(rows.map((row) => row.id));
+}
+
 export function exercisesRouter(deps: ExerciseRouterDeps): ExpressRouter {
   const router = Router();
 

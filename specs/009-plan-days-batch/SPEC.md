@@ -1,6 +1,6 @@
 # 009 — plan days 批量写端点（`POST /plans/:id/days/batch`）+ plan-web reconcile 单请求化
 
-- **状态**: Draft
+- **状态**: InProgress（2026-07-18 实装开工；David 2026-07-02 拍板轻量 spec 先行、0.2 已按 016 修订）
 - **来源**: web 教练计划 xlsx 导入的速率限制风暴。`meetpr-plan-web` 保存时把一张计划 reconcile 成几百个逐条写请求（`POST /plans/:id/days`、`/days/:id/exercises`、`/exercises/:id/sets`），撞穿全局限流（`RATE_LIMIT_MAX` 默认 100/min，`createGlobalRateLimit` in `src/middleware/rateLimit.ts`）。一张 12 周计划 ~200–300 个写 → 429。现有 stopgap：`meetpr-plan-web/src/api/client.ts` 对 429 做有界 backoff 重试（commit 3e19e71），能过但大计划要几分钟。
 - **批准语境**: David 2026-07-02 选「轻量 spec 先行」。端点形状已在会话中锁定：**批量「变化的天」**，不是整盘 replace（见下警示框）。限流不动。
 
