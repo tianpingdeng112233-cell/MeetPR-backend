@@ -1,6 +1,7 @@
 import type { ColumnType, Generated } from 'kysely';
 
-export const USER_ROLES = ['coach', 'coached_student', 'self_train_student'] as const;
+export const USER_ROLES = ['coach', 'coached_student', 'self_train_student', 'admin'] as const;
+export const REGISTERABLE_ROLES = ['coach', 'coached_student', 'self_train_student'] as const;
 export const LIFT_FAMILIES = ['squat', 'bench', 'deadlift'] as const;
 export const COMPETITION_STANCES = ['low_bar', 'high_bar', 'conventional', 'sumo'] as const;
 export const EXERCISE_TYPES = ['main_lift', 'main_lift_variation', 'accessory'] as const;

@@ -136,7 +136,7 @@ async function selectOwnedPlan(
     .executeTakeFirst();
 }
 
-async function getPlanWithChildren(
+export async function getPlanWithChildren(
   db: Kysely<Database>,
   plan: PlanRow,
 ): Promise<PlanWithChildrenResponse> {

@@ -5,6 +5,7 @@ import type { Config } from '../config';
 import type { Database } from '../db/types';
 import type { Logger } from '../logger';
 import { createOptionalAuth } from '../middleware/auth';
+import { adminRouter } from './admin';
 import { authRouter } from './auth';
 import { coachBindRequestsRouter, studentBindRequestsRouter } from './bind-requests';
 import { coachRouter } from './coach';
@@ -41,6 +42,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   });
 
   app.use('/auth', authRouter({ config: deps.config, db: deps.db, logger: deps.logger }));
+  app.use('/admin', deps.requireAuth, adminRouter({ db: deps.db }));
   app.use('/plans', deps.requireAuth, plansRouter({ db: deps.db, logger: deps.logger }));
   app.use('/students', deps.requireAuth, studentPlansRouter({ db: deps.db, logger: deps.logger }));
   app.use('/students', deps.requireAuth, studentSetsRouter({ db: deps.db }));

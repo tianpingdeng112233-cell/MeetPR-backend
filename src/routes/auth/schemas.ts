@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { USER_ROLES } from '../../db/types';
+import { REGISTERABLE_ROLES, USER_ROLES } from '../../db/types';
 
 const PhoneSchema = z.string().regex(/^\+[1-9]\d{7,14}$/, 'Phone must be E.164 format');
 
@@ -14,7 +14,7 @@ const PasswordSchema = z
 export const RegisterBodySchema = z.object({
   phone: PhoneSchema,
   password: PasswordSchema,
-  role: z.enum(USER_ROLES),
+  role: z.enum(REGISTERABLE_ROLES),
 });
 
 export const LoginBodySchema = z.object({
