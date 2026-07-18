@@ -198,6 +198,44 @@ export const CreatePlanSetBodySchema = PlanSetBodySchema.superRefine(validateSet
 
 export const PatchPlanSetBodySchema = PlanSetBodySchema.partial().superRefine(validateSetBody);
 
+const MAX_UPSERT_DAYS = 100;
+const MAX_DELETE_IDS = 400;
+const MAX_EXERCISES_PER_DAY = 30;
+const MAX_SETS_PER_EXERCISE = 30;
+
+const BatchExerciseSchema = z.object({
+  exercise_id: UuidSchema,
+  is_main_lift: z.boolean(),
+  sort_order: SortOrderSchema,
+  notes: z.string().max(500).nullable().optional(),
+  sets: z.array(CreatePlanSetBodySchema).max(MAX_SETS_PER_EXERCISE),
+});
+
+const BatchDaySchema = z.object({
+  week_number: WeekNumberSchema,
+  day_of_week: DayOfWeekSchema,
+  sort_order: SortOrderSchema,
+  exercises: z.array(BatchExerciseSchema).max(MAX_EXERCISES_PER_DAY),
+});
+
+const BatchPlanPatchSchema = z
+  .object({
+    name: NameSchema.optional(),
+    start_date: DateSchema.optional(),
+    end_date: DateSchema.optional(),
+    plan_weeks: PlanWeeksSchema.optional(),
+  })
+  .strict()
+  .superRefine(validateDateOrder);
+
+export const BatchDaysBodySchema = z
+  .object({
+    plan_patch: BatchPlanPatchSchema.optional(),
+    delete_day_ids: z.array(UuidSchema).max(MAX_DELETE_IDS).default([]),
+    upsert_days: z.array(BatchDaySchema).max(MAX_UPSERT_DAYS).default([]),
+  })
+  .strict();
+
 /** Explicit confirmation prevents a normal plan load from inventing history. */
 export const ImportedHistoryBodySchema = z.object({ confirm: z.literal(true) }).strict();
 
@@ -252,4 +290,5 @@ export type CreatePlanExerciseBody = z.infer<typeof CreatePlanExerciseBodySchema
 export type PatchPlanExerciseBody = z.infer<typeof PatchPlanExerciseBodySchema>;
 export type CreatePlanSetBody = z.infer<typeof CreatePlanSetBodySchema>;
 export type PatchPlanSetBody = z.infer<typeof PatchPlanSetBodySchema>;
+export type BatchDaysBody = z.infer<typeof BatchDaysBodySchema>;
 export type ImportedHistoryBody = z.infer<typeof ImportedHistoryBodySchema>;

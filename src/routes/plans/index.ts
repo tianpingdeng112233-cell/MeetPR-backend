@@ -29,11 +29,12 @@ import { requireRole } from '../../middleware/auth';
 import { notifyPlanPublished } from '../../services/notifications';
 import { calculateTrainingMaxKg, formatTrainingMaxKg } from '../../services/trainingMax';
 import { uuidEquals } from '../../utils/uuid';
-import { utcDate, utcDateOnly } from '../../utils/date';
-import { visibleExerciseForCoach } from '../exercises';
+import { normalizeDateOnly, utcDate, utcDateOnly } from '../../utils/date';
+import { visibleExerciseForCoach, visibleExercisesForCoach } from '../exercises';
 import { route, validationEnvelope } from '../http';
 import {
   ExerciseIdParamSchema,
+  BatchDaysBodySchema,
   CreatePlanBodySchema,
   CreatePlanDayBodySchema,
   CreatePlanExerciseBodySchema,
@@ -1181,6 +1182,227 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       }
 
       res.status(200).json(toPlan(result.plan));
+    }),
+  );
+
+  router.post(
+    '/:id/days/batch',
+    requireRole('coach'),
+    route(async (req, res) => {
+      const user = ensureUser(req);
+      if (!user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      const params = IdParamSchema.safeParse(req.params);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+
+      const plan = await selectOwnedPlan(deps.db, params.data.id, user.id);
+      if (!plan) {
+        res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+        return;
+      }
+
+      const body = BatchDaysBodySchema.safeParse(req.body);
+      if (!body.success) {
+        res.status(400).json(validationEnvelope(body.error));
+        return;
+      }
+
+      const exerciseIds = [
+        ...new Set(
+          body.data.upsert_days.flatMap((day) =>
+            day.exercises.map((exercise) => exercise.exercise_id),
+          ),
+        ),
+      ];
+      const visibleExerciseIds = await visibleExercisesForCoach(deps.db, exerciseIds, user.id);
+      const missingExerciseIds = exerciseIds.filter(
+        (exerciseId) => !visibleExerciseIds.has(exerciseId),
+      );
+      if (missingExerciseIds.length > 0) {
+        res.status(400).json({
+          error: 'EXERCISE_NOT_FOUND_OR_HIDDEN',
+          details: { exercise_ids: missingExerciseIds },
+        });
+        return;
+      }
+
+      const hasCalendarMetadataMutation =
+        body.data.plan_patch?.start_date !== undefined ||
+        body.data.plan_patch?.end_date !== undefined ||
+        body.data.plan_patch?.plan_weeks !== undefined;
+
+      const result = await deps.db.transaction().execute(async (trx) => {
+        let currentPlan = plan;
+
+        if (hasCalendarMetadataMutation) {
+          const lockedTree = await lockOwnedPlanTree(trx, plan.id, user.id);
+          if (!lockedTree) return { type: 'not-found' } as const;
+          currentPlan = lockedTree.plan;
+          if (await planHistoryLocked(trx, plan.id, lockedTree.exerciseIds)) {
+            return { type: 'plan-history-immutable' } as const;
+          }
+        }
+
+        const ownedDeleteDays =
+          body.data.delete_day_ids.length === 0
+            ? []
+            : await trx
+                .selectFrom('plan_days')
+                .select('id')
+                .where('plan_id', '=', plan.id)
+                .where('id', 'in', body.data.delete_day_ids)
+                .orderBy('id', 'asc')
+                .execute();
+        const immutableDayIds: string[] = [];
+        for (const deleteDay of ownedDeleteDays) {
+          const lockedDay = await lockPlanDayTree(trx, deleteDay.id);
+          if (lockedDay && (await planExercisesWithLogs(trx, lockedDay.exerciseIds)).size > 0) {
+            immutableDayIds.push(deleteDay.id);
+          }
+        }
+        if (immutableDayIds.length > 0) {
+          return { type: 'day-history-immutable', dayIds: immutableDayIds } as const;
+        }
+
+        if (body.data.plan_patch) {
+          const mergedStartDate = normalizeDateOnly(
+            body.data.plan_patch.start_date ?? currentPlan.start_date,
+          );
+          const mergedEndDate = normalizeDateOnly(
+            body.data.plan_patch.end_date ?? currentPlan.end_date,
+          );
+          if (mergedEndDate < mergedStartDate) {
+            return { type: 'invalid-date-order' } as const;
+          }
+
+          const patch: Record<string, unknown> = { updated_at: sql<Date>`now()` };
+          if (body.data.plan_patch.name !== undefined) patch.name = body.data.plan_patch.name;
+          if (body.data.plan_patch.start_date !== undefined) {
+            patch.start_date = body.data.plan_patch.start_date;
+          }
+          if (body.data.plan_patch.end_date !== undefined) {
+            patch.end_date = body.data.plan_patch.end_date;
+          }
+          if (body.data.plan_patch.plan_weeks !== undefined) {
+            patch.plan_weeks = body.data.plan_patch.plan_weeks;
+          }
+          currentPlan = await trx
+            .updateTable('plans')
+            .set(patch)
+            .where('id', '=', plan.id)
+            .returningAll()
+            .executeTakeFirstOrThrow();
+        }
+
+        const deletedDays =
+          body.data.delete_day_ids.length === 0
+            ? []
+            : await trx
+                .deleteFrom('plan_days')
+                .where('plan_id', '=', plan.id)
+                .where('id', 'in', body.data.delete_day_ids)
+                .returning('id')
+                .execute();
+
+        let exercisesCreated = 0;
+        let setsCreated = 0;
+        for (const day of body.data.upsert_days) {
+          const createdDay = await trx
+            .insertInto('plan_days')
+            .values({
+              plan_id: plan.id,
+              week_number: day.week_number,
+              day_of_week: day.day_of_week,
+              sort_order: day.sort_order,
+            })
+            .returning('id')
+            .executeTakeFirstOrThrow();
+
+          for (const exercise of day.exercises) {
+            const createdExercise = await trx
+              .insertInto('plan_exercises')
+              .values({
+                plan_day_id: createdDay.id,
+                exercise_id: exercise.exercise_id,
+                is_main_lift: exercise.is_main_lift,
+                sort_order: exercise.sort_order,
+                notes: exercise.notes ?? null,
+              })
+              .returning('id')
+              .executeTakeFirstOrThrow();
+            exercisesCreated += 1;
+
+            if (exercise.sets.length > 0) {
+              await trx
+                .insertInto('plan_sets')
+                .values(
+                  exercise.sets.map((set) => ({
+                    plan_exercise_id: createdExercise.id,
+                    set_number: set.set_number,
+                    target_reps: set.target_reps,
+                    target_reps_max: set.target_reps_max ?? null,
+                    intensity_mode: set.intensity_mode,
+                    target_value: normalizeTargetValue(set.target_value),
+                    set_type: set.set_type,
+                    rest_seconds: set.rest_seconds ?? null,
+                    coach_note: set.coach_note ?? null,
+                  })),
+                )
+                .execute();
+              setsCreated += exercise.sets.length;
+            }
+          }
+        }
+
+        return {
+          type: 'batched',
+          plan: currentPlan,
+          daysDeleted: deletedDays.length,
+          daysUpserted: body.data.upsert_days.length,
+          exercisesCreated,
+          setsCreated,
+        } as const;
+      });
+
+      if (result.type === 'not-found') {
+        res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+        return;
+      }
+      if (result.type === 'plan-history-immutable') {
+        res.status(409).json({ error: 'PLAN_HISTORY_IMMUTABLE' });
+        return;
+      }
+      if (result.type === 'day-history-immutable') {
+        res.status(409).json({
+          error: 'DAY_HISTORY_IMMUTABLE',
+          details: { day_ids: result.dayIds },
+        });
+        return;
+      }
+      if (result.type === 'invalid-date-order') {
+        res
+          .status(400)
+          .json(validationIssue(['end_date'], 'end_date must be on or after start_date'));
+        return;
+      }
+
+      deps.logger.info(
+        {
+          planId: plan.id,
+          daysDeleted: result.daysDeleted,
+          daysUpserted: result.daysUpserted,
+          exercisesCreated: result.exercisesCreated,
+          setsCreated: result.setsCreated,
+        },
+        'plan_days_batched',
+      );
+      res.status(200).json(await getPlanWithChildren(deps.db, result.plan));
     }),
   );
 
