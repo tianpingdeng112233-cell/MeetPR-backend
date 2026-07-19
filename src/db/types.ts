@@ -119,9 +119,10 @@ export const ATTACHMENT_STATUSES = [
   'failed',
   'deleting',
 ] as const;
-// Analytics event platform. iOS-only for the beta; the column is text for
-// forward-compat, this const is the current closed set (SPEC 008 §6).
-export const EVENT_PLATFORMS = ['ios'] as const;
+// Analytics event platform. The column is text for forward-compat; this const
+// is the current closed set (SPEC 008 §6). 'android' added 2026-07-19 for the
+// RN Android client (meetpr-rn W0).
+export const EVENT_PLATFORMS = ['ios', 'android'] as const;
 export const SESSION_STATUSES = ['in_progress', 'completed', 'partial'] as const;
 export const STUDENT_EVENT_TYPES = ['session_completed', 'session_partial', 'pr_e1rm'] as const;
 export const SIGNAL_TYPES = ['missed_training', 'pr_congrats'] as const;
