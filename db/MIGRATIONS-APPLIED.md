@@ -84,6 +84,11 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-19 — `sha-4686586`(=staging HEAD,spec 023 动作使用频次 #90 + plan-web #26 picker
+  键盘化/频次排序/admin 动作库 tab 的 web/ 换装,bundle 入口 index-CLVL278Y,零迁移)经一键部署
+  workflow 部署 `meetpr-backend-staging`;env 未动。curl 验证:新端点 /exercises/usage-stats 与
+  /admin/exercise-usage 均 401(路由在线、鉴权拦截,404 即未上);站点已 serve 新 bundle。
+  含同车合入的 #91(events 平台枚举加 android,纯校验放宽)。
 - 2026-07-19(凌晨) — `sha-297e775`(=staging HEAD,plan-web #25 admin 工作台 web/ 换装,bundle
   index-DPKOSAff/入口 index-g1Q3cMef,零迁移零后端代码)经一键部署 workflow 部署
   `meetpr-backend-staging`;env 未动。curl 验证:/health 200、新 bundle 200。admin 全流程已在部署前
