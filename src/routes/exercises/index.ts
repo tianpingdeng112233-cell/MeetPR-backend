@@ -3,6 +3,7 @@ import type { Kysely, Selectable } from 'kysely';
 import { sql } from 'kysely';
 
 import type { Database, ExercisesTable } from '../../db/types';
+import { getCoachExerciseUsage } from '../../handlers/exercise-usage';
 import { requireRole } from '../../middleware/auth';
 import { route, validationEnvelope } from '../http';
 import { toExercise } from '../plans/serialization';
@@ -80,6 +81,19 @@ export async function visibleExercisesForCoach(
 
 export function exercisesRouter(deps: ExerciseRouterDeps): ExpressRouter {
   const router = Router();
+
+  router.get(
+    '/usage-stats',
+    requireRole('coach'),
+    route(async (req, res) => {
+      if (!req.user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      res.status(200).json(await getCoachExerciseUsage(deps.db, req.user.id));
+    }),
+  );
 
   router.get(
     '/',
