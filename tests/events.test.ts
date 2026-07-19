@@ -52,6 +52,18 @@ describe('POST /events', () => {
     expect(await countEvents(ctx.db)).toBe(1);
   });
 
+  it('accepts an android batch and persists platform=android', async () => {
+    const ctx = await makeContext();
+
+    const res = await request(ctx.app)
+      .post('/events')
+      .send(batch([evt()], { platform: 'android' }));
+
+    expect(res.status).toBe(204);
+    const rows = await ctx.db.selectFrom('events').select('platform').execute();
+    expect(rows).toEqual([{ platform: 'android' }]);
+  });
+
   it('returns 204 with 0 rows when every event is invalid', async () => {
     const ctx = await makeContext();
 
