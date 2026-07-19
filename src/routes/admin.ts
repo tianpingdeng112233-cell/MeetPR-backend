@@ -7,6 +7,7 @@ import {
   getAdminOverview,
   getAdminPlan,
   getAdminUser,
+  listAdminExerciseUsage,
   listAdminBindings,
   listAdminPlans,
   listAdminUsers,
@@ -45,6 +46,13 @@ export function adminRouter(deps: AdminRouterDeps): ExpressRouter {
       next();
     })().catch(next);
   });
+
+  router.get(
+    '/exercise-usage',
+    route(async (_req, res) => {
+      res.status(200).json(await listAdminExerciseUsage(deps.db));
+    }),
+  );
 
   router.get(
     '/overview',

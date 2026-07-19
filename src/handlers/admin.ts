@@ -352,6 +352,35 @@ export async function listAdminPlans(db: Kysely<Database>) {
   return { plans: rows.map(toAdminPlan) };
 }
 
+export async function listAdminExerciseUsage(db: Kysely<Database>) {
+  const rows = await db
+    .selectFrom('exercises as e')
+    .leftJoin('plan_exercises as pe', 'pe.exercise_id', 'e.id')
+    .leftJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
+    .leftJoin('plans as p', 'p.id', 'pd.plan_id')
+    .select([
+      'e.id as exercise_id',
+      'e.name as name',
+      'e.exercise_type as exercise_type',
+      sql<string>`count(pe.id)`.as('plan_count'),
+      sql<string>`count(distinct p.coach_id)`.as('coach_count'),
+    ])
+    .groupBy(['e.id', 'e.name', 'e.exercise_type'])
+    .orderBy('plan_count', 'desc')
+    .orderBy('e.name', 'asc')
+    .execute();
+
+  return {
+    exercises: rows.map((row) => ({
+      exercise_id: row.exercise_id,
+      name: row.name,
+      exercise_type: row.exercise_type,
+      plan_count: toCount(row.plan_count),
+      coach_count: toCount(row.coach_count),
+    })),
+  };
+}
+
 export async function getAdminPlan(db: Kysely<Database>, planId: string) {
   const plan = await db.selectFrom('plans').selectAll().where('id', '=', planId).executeTakeFirst();
   if (!plan) return null;

@@ -15,6 +15,7 @@ import {
   getAdminOverview,
   getAdminPlan,
   getAdminUser,
+  listAdminExerciseUsage,
   listAdminBindings,
   listAdminPlans,
   listAdminUsers,
@@ -34,6 +35,9 @@ const ids = {
   day: '40000000-0000-4000-8000-000000004411',
   exercise: '50000000-0000-4000-8000-000000004411',
   set: '60000000-0000-4000-8000-000000004411',
+  usedExercise: '80000000-0000-4000-8000-000000004411',
+  unusedExerciseA: '80000000-0000-4000-8000-000000004412',
+  unusedExerciseZ: '80000000-0000-4000-8000-000000004413',
 };
 
 const config: Config = {
@@ -177,10 +181,13 @@ function makeContext(): TestContext {
     );
     CREATE TABLE exercises (
       id UUID PRIMARY KEY,
-      name TEXT NOT NULL
+      name TEXT NOT NULL,
+      exercise_type TEXT NOT NULL
     );
-    INSERT INTO exercises (id, name) VALUES
-      ('80000000-0000-4000-8000-000000004411', '竞技深蹲');
+    INSERT INTO exercises (id, name, exercise_type) VALUES
+      ('${ids.usedExercise}', '竞技深蹲', 'main_lift'),
+      ('${ids.unusedExerciseA}', 'Alpha Zero', 'accessory'),
+      ('${ids.unusedExerciseZ}', 'Zulu Zero', 'main_lift_variation');
 
     INSERT INTO users (
       id, phone, apple_user_id, password_hash, role, refresh_token_jti, created_at
@@ -215,7 +222,7 @@ function makeContext(): TestContext {
     INSERT INTO plan_exercises (
       id, plan_day_id, exercise_id, is_main_lift, sort_order, notes
     ) VALUES (
-      '${ids.exercise}', '${ids.day}', '80000000-0000-4000-8000-000000004411', TRUE, 0, 'Keep tight'
+      '${ids.exercise}', '${ids.day}', '${ids.usedExercise}', TRUE, 0, 'Keep tight'
     );
     INSERT INTO plan_sets (
       id, plan_exercise_id, set_number, target_reps, intensity_mode,
@@ -239,6 +246,92 @@ function makeContext(): TestContext {
   };
 }
 
+async function addDuplicateOtherCoachUsage(ctx: TestContext): Promise<void> {
+  const otherPlan = await ctx.db
+    .insertInto('plans')
+    .values({
+      coach_id: ids.otherCoach,
+      trainee_id: ids.student,
+      name: 'Other Coach Block',
+      start_date: '2026-07-01',
+      end_date: '2026-07-28',
+      plan_weeks: 4,
+      source: 'coach',
+      status: 'completed',
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  const otherDay = await ctx.db
+    .insertInto('plan_days')
+    .values({ plan_id: otherPlan.id, day_of_week: 2, week_number: 1 })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  await ctx.db
+    .insertInto('plan_exercises')
+    .values([
+      { plan_day_id: otherDay.id, exercise_id: ids.usedExercise },
+      { plan_day_id: otherDay.id, exercise_id: ids.usedExercise },
+    ])
+    .execute();
+  // Draft and paused plans must count too — the aggregate has no status filter.
+  for (const extra of [
+    { coach_id: ids.coach, status: 'draft' as const, name: 'Draft Block' },
+    { coach_id: ids.otherCoach, status: 'paused' as const, name: 'Paused Block' },
+  ]) {
+    const plan = await ctx.db
+      .insertInto('plans')
+      .values({
+        coach_id: extra.coach_id,
+        trainee_id: ids.student,
+        name: extra.name,
+        start_date: '2026-07-01',
+        end_date: '2026-07-28',
+        plan_weeks: 4,
+        source: 'coach',
+        status: extra.status,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const day = await ctx.db
+      .insertInto('plan_days')
+      .values({ plan_id: plan.id, day_of_week: 3, week_number: 1 })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    await ctx.db
+      .insertInto('plan_exercises')
+      .values({ plan_day_id: day.id, exercise_id: ids.usedExercise })
+      .execute();
+  }
+}
+
+function expectedDuplicateUsage() {
+  return {
+    exercises: [
+      {
+        exercise_id: ids.usedExercise,
+        name: '竞技深蹲',
+        exercise_type: 'main_lift',
+        plan_count: 5,
+        coach_count: 2,
+      },
+      {
+        exercise_id: ids.unusedExerciseA,
+        name: 'Alpha Zero',
+        exercise_type: 'accessory',
+        plan_count: 0,
+        coach_count: 0,
+      },
+      {
+        exercise_id: ids.unusedExerciseZ,
+        name: 'Zulu Zero',
+        exercise_type: 'main_lift_variation',
+        plan_count: 0,
+        coach_count: 0,
+      },
+    ],
+  };
+}
+
 function expectNoSensitiveFields(value: unknown): void {
   const json = JSON.stringify(value);
   expect(json).not.toContain('password_hash');
@@ -251,6 +344,7 @@ function expectNoSensitiveFields(value: unknown): void {
 describe('admin read-only API', () => {
   const protectedPaths = [
     '/admin/overview',
+    '/admin/exercise-usage',
     '/admin/users',
     `/admin/users/${ids.coach}`,
     '/admin/bindings',
@@ -260,8 +354,9 @@ describe('admin read-only API', () => {
 
   it('queries every admin read model from the seeded fixtures without N+1 lookups', async () => {
     const ctx = makeContext();
-    const [overview, users, user, bindings, plans, plan] = await Promise.all([
+    const [overview, exerciseUsage, users, user, bindings, plans, plan] = await Promise.all([
       getAdminOverview(ctx.db),
+      listAdminExerciseUsage(ctx.db),
       listAdminUsers(ctx.db),
       getAdminUser(ctx.db, ids.coach),
       listAdminBindings(ctx.db),
@@ -276,6 +371,29 @@ describe('admin read-only API', () => {
       activeBonds: 1,
       publishedPlans: 1,
     });
+    expect(exerciseUsage.exercises).toEqual([
+      {
+        exercise_id: ids.usedExercise,
+        name: '竞技深蹲',
+        exercise_type: 'main_lift',
+        plan_count: 1,
+        coach_count: 1,
+      },
+      {
+        exercise_id: ids.unusedExerciseA,
+        name: 'Alpha Zero',
+        exercise_type: 'accessory',
+        plan_count: 0,
+        coach_count: 0,
+      },
+      {
+        exercise_id: ids.unusedExerciseZ,
+        name: 'Zulu Zero',
+        exercise_type: 'main_lift_variation',
+        plan_count: 0,
+        coach_count: 0,
+      },
+    ]);
     expect(users.users).toHaveLength(5);
     expect(user?.relations).toHaveLength(1);
     expect(bindings.bindings).toHaveLength(2);
@@ -306,7 +424,9 @@ describe('admin read-only API', () => {
   it('rejects a stale admin access token once the DB role is no longer admin', async () => {
     const ctx = makeContext();
     await ctx.db.updateTable('users').set({ role: 'coach' }).where('id', '=', ids.admin).execute();
-    const response = await request(ctx.app).get('/admin/overview').set(auth(ctx.tokens.admin));
+    const response = await request(ctx.app)
+      .get('/admin/exercise-usage')
+      .set(auth(ctx.tokens.admin));
     expect(response.status).toBe(403);
     expect(response.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
     await ctx.db.destroy();
@@ -340,6 +460,27 @@ describe('admin read-only API', () => {
       }),
     ]);
     expectNoSensitiveFields(response.body);
+    await ctx.db.destroy();
+  });
+
+  it('counts repeated rows while deduplicating coaches in the exercise usage read model', async () => {
+    const ctx = makeContext();
+    await addDuplicateOtherCoachUsage(ctx);
+
+    expect(await listAdminExerciseUsage(ctx.db)).toEqual(expectedDuplicateUsage());
+    await ctx.db.destroy();
+  });
+
+  it('returns every exercise with row counts and distinct coach counts', async () => {
+    const ctx = makeContext();
+    await addDuplicateOtherCoachUsage(ctx);
+
+    const response = await request(ctx.app)
+      .get('/admin/exercise-usage')
+      .set(auth(ctx.tokens.admin));
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(expectedDuplicateUsage());
     await ctx.db.destroy();
   });
 
