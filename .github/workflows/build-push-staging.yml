@@ -27,6 +27,30 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test
       - run: pnpm build
+      # 2026-07-20 incident gate: two shipped plan-web bundles were built without
+      # VITE_API_BASE='', baking the dev-only '/api' proxy base into the entry —
+      # every API call on the deployed same-origin site 404'd (login showed
+      # not_found). A bad bundle must never become an image.
+      - name: Verify bundled plan-web uses same-origin API base
+        run: |
+          if [ ! -f web/index.html ]; then
+            echo "web/ absent — nothing to verify"
+            exit 0
+          fi
+          ENTRY=$(grep -o 'assets/index[^"]*\.js' web/index.html | head -1)
+          if [ -z "$ENTRY" ] || [ ! -f "web/$ENTRY" ]; then
+            echo "::error::web/index.html references no existing entry bundle"
+            exit 1
+          fi
+          if grep -qF '="/api";if(/^http' "web/$ENTRY"; then
+            echo "::error::web/$ENTRY was built with the dev '/api' base — rebuild plan-web with VITE_API_BASE='' (see README)."
+            exit 1
+          fi
+          if ! grep -qF '="";if(/^http' "web/$ENTRY"; then
+            echo "::error::web/$ENTRY carries no recognizable same-origin base marker — either a bad build or client.ts changed shape; update this gate alongside it."
+            exit 1
+          fi
+          echo "OK: web/$ENTRY carries same-origin base ''"
 
   build-push:
     name: Build & push linux/amd64 image

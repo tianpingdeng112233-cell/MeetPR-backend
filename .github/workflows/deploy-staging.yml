@@ -139,6 +139,42 @@ jobs:
           echo "::error::Timed out waiting for change order after 10 minutes"
           exit 1
 
+      # 2026-07-20 incident gate: after the rollout, prove the deployed site can
+      # actually be used — health up, login route answering with auth semantics
+      # (a 404 here is how the '/api'-base bundle incident surfaced), and the
+      # served entry bundle carrying the same-origin base.
+      - name: Post-deploy smoke (health + login route + web bundle)
+        run: |
+          for i in $(seq 1 8); do
+            if curl -fsS -m 15 "$STAGING_BASE_URL/health" > /dev/null; then
+              echo "health OK (attempt $i)"
+              break
+            fi
+            [ "$i" -eq 8 ] && { echo "::error::/health unreachable after rollout"; exit 1; }
+            sleep 10
+          done
+
+          BODY=$(curl -sS -m 15 -X POST "$STAGING_BASE_URL/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d '{"phone":"+8600000000000","password":"smoke-invalid-1"}')
+          echo "login smoke response: $BODY"
+          if ! echo "$BODY" | jq -e '.error == "AUTH_INVALID_CREDENTIALS" or .error == "VALIDATION_ERROR"' > /dev/null; then
+            echo "::error::/auth/login smoke failed — expected auth/validation error, got: $BODY"
+            exit 1
+          fi
+
+          HTML=$(curl -sS -m 15 -H 'Accept: text/html' "$STAGING_BASE_URL/")
+          ENTRY=$(echo "$HTML" | grep -o '/assets/index[^"]*\.js' | head -1)
+          if [ -z "$ENTRY" ]; then
+            echo "::error::GET / served no entry bundle — SPA missing?"
+            exit 1
+          fi
+          if ! curl -sS -m 15 "$STAGING_BASE_URL$ENTRY" | grep -qF '="";if(/^http'; then
+            echo "::error::Deployed bundle $ENTRY lacks the same-origin base marker — dev '/api' base shipped again?"
+            exit 1
+          fi
+          echo "OK: site serves $ENTRY with same-origin base; login route live"
+
       - name: Smoke check /health
         run: |
           for i in $(seq 1 30); do
