@@ -84,6 +84,11 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-20(二) — `sha-468ec61`(=staging HEAD,纯 web/ 换装:plan-web「组」数量格 delete 修复——
+  最后一位数字现可退格删空(编辑中显空、失焦提交为 0 组),不再弹回旧值;需全选覆盖才能改的坑消除。
+  新入口 index-DdUYwqtJ.js,源自 plan-web main f36c7a5,零后端代码/零迁移)经 deploy-staging.yml
+  (migrations_applied=true)部署 `meetpr-backend-staging`;env 未动。deploy smoke 闸全绿 + curl 验证:
+  GET / 已 serve 新入口 index-DdUYwqtJ.js、bundle 内同源 base marker 在。
 - 2026-07-20(二) — `sha-fd674dc`(=staging HEAD,纯 workflow/docs:build 期 web bundle base 闸
   与 deploy 后 smoke 闸,零运行时代码/零迁移)部署 `meetpr-backend-staging`;env 未动。本次部署
   兼作 smoke 闸首航:health OK / login 回 AUTH_INVALID_CREDENTIALS / 线上 bundle 同源 marker 全过
