@@ -85,9 +85,9 @@
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
 - 2026-07-20(二) — `sha-fd674dc`(=staging HEAD,纯 workflow/docs:build 期 web bundle base 闸
-  - deploy 后 smoke 闸,零运行时代码/零迁移)部署 `meetpr-backend-staging`;env 未动。本次部署
-    兼作 smoke 闸首航:health OK / login 回 AUTH_INVALID_CREDENTIALS / 线上 bundle 同源 marker 全过
-    ——此后每次 deploy 自动跑这三验,挂了 workflow 直接红。
+  与 deploy 后 smoke 闸,零运行时代码/零迁移)部署 `meetpr-backend-staging`;env 未动。本次部署
+  兼作 smoke 闸首航:health OK / login 回 AUTH_INVALID_CREDENTIALS / 线上 bundle 同源 marker 全过
+  ——此后每次 deploy 自动跑这三验,挂了 workflow 直接红。
 - 2026-07-20 — `sha-c7deaf8`(=staging HEAD,P0:plan-web web/ 重打——297e775/4686586 两版 bundle
   构建时漏 `VITE_API_BASE=''`,base 烤成 dev 专用 `/api`,线上同源站点全部 API 404,登录表现为
   not_found;新入口 index-fkz63PIQ 源自 plan-web main 842fcda,零后端代码/零迁移)经一键部署
