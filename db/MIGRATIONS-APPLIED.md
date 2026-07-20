@@ -84,6 +84,11 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-20 — `sha-c7deaf8`(=staging HEAD,P0:plan-web web/ 重打——297e775/4686586 两版 bundle
+  构建时漏 `VITE_API_BASE=''`,base 烤成 dev 专用 `/api`,线上同源站点全部 API 404,登录表现为
+  not_found;新入口 index-fkz63PIQ 源自 plan-web main 842fcda,零后端代码/零迁移)经一键部署
+  workflow 部署 `meetpr-backend-staging`;env 未动。curl 验证:GET / 已 serve 新入口、bundle 内
+  `const e=""`、`POST /auth/login` 回 AUTH_INVALID_CREDENTIALS(路由通,不再 404)。
 - 2026-07-19 — `sha-4686586`(=staging HEAD,spec 023 动作使用频次 #90 + plan-web #26 picker
   键盘化/频次排序/admin 动作库 tab 的 web/ 换装,bundle 入口 index-CLVL278Y,零迁移)经一键部署
   workflow 部署 `meetpr-backend-staging`;env 未动。curl 验证:新端点 /exercises/usage-stats 与
