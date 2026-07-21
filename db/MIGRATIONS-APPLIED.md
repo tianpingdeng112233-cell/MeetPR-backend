@@ -84,6 +84,18 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-21(二) — `sha-bd4da5a`(=staging HEAD,纯 web/ 换装:教练端网页**改密码**上线——顶栏
+  「退出」旁加「改密码」;会话收尾按 review-loop 定案:未保存守卫**前置**到发 PUT 之前(还能存时
+  让教练退出/保存)、204 后**立即**拆会话(清 token+draft mirror、卸编辑器,不等确认)、成功提示由
+  登录页一次性 sessionStorage notice 承载(peek/clear 拆分扛 StrictMode 双跑)、中途 401 走同一
+  会话失效出口。弹窗 portal 到 body 以逃出顶栏 stacking context。新入口 index-BzlfDfdK.js,
+  源自 plan-web main db43488(PR #28,同车带上 f5978c9 技术风格枚举中文化),零后端代码/零迁移)
+  经 deploy-staging.yml(migrations_applied=true, image_sha=全 40 位)部署 `meetpr-backend-staging`;
+  env 未动。⚠️gotcha:`-f image_sha` **必须全 40 位 sha**,传短 sha 直接红("image_sha must be a
+  full 40-char commit sha")。验证:CI bundle base 闸绿 + deploy smoke 绿 + curl 四验(GET / 回新
+  入口、线上 bundle `const e=""` 且零 `/api` 残留、登录红线教练/学员双端 200、错误密码 401、
+  PUT /me/password 回 401 鉴权)+ 浏览器在**线上站点**跑完整改密链路(改密→踢回登录页→提示条
+  显示→token 清空;服务端复核新密码 200/旧密码 401)。
 - 2026-07-20(二) — `sha-468ec61`(=staging HEAD,纯 web/ 换装:plan-web「组」数量格 delete 修复——
   最后一位数字现可退格删空(编辑中显空、失焦提交为 0 组),不再弹回旧值;需全选覆盖才能改的坑消除。
   新入口 index-DdUYwqtJ.js,源自 plan-web main f36c7a5,零后端代码/零迁移)经 deploy-staging.yml
