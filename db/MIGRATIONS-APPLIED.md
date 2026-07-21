@@ -37,12 +37,24 @@
 | 0041-init-activity-ledger                       | ✅ 2026-07-17 手动应用(psql,Claude)                             |
 | 0042-init-device-tokens                         | ✅ 2026-07-17 手动应用(psql,Claude)                             |
 | 0044-add-admin-role                             | ✅ 2026-07-18 手动应用(DMS,David;执行成功 5 条语句)             |
+| 0046-add-feedback-video-id                      | ✅ 2026-07-22 手动应用(DMS,David;执行成功 4 条语句)             |
 
 > 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。0043 现由 open PR #77/#79(账本扩展)占号,0044 先行落库,库内号段暂跳 0043——#77/#79 合并应用后回续。
 
-**当前 staging schema head = 0044（0043 缺位,被 open PR 占号,见上）。**
+**当前 staging schema head = 0046（0043 / 0045 缺位,均被 open PR 占号,见上）。**
 
 ## 变更历史
+
+- **2026-07-22** — 应用 **0046-add-feedback-video-id**(PR #93,spec 025 视频级教练反馈):`feedback`
+  加可空 `video_id → attachments(id) ON DELETE SET NULL`,纯 additive。工具:DMS 控制台(David),
+  执行成功 4 条语句(`BEGIN` / `SET search_path` / `ALTER TABLE` / `COMMIT`)。schema head 0044 → **0046**
+  (0043 仍被 open PR #77/#79 占号、0045 被聊天波 #92 占号,两处待各自合并后回续)。
+  同批滚镜像 `sha-cc1ba36`(= #93 后端改动 + plan-web 视频弹窗新 bundle 的 `web/` swap)。
+  **⚠️ 本次差点重演 2026-07-20 全站 404**:裸 `npm run build` 会把 `/api` 烘进 bundle
+  (`client.ts` 的 `VITE_API_BASE ?? '/api'` 是 dev 代理默认值),同源部署**必须** `VITE_API_BASE=''`。
+  首次构建确实中招,靠 `bd4da5a` commit message 记的那条验证发现并重建。上线后已 curl 线上 chunk
+  实证:`const e=""`、`"/api"` 出现 **0** 次;`/coach/students` 未认证回 401(非 404/502)。
+  建议把这条闸机械化(ship 专用 npm script 或 CI grep 断言),别再靠人记。
 
 - **2026-07-17(晚)** — 应用 **0039-multi-device-sessions**(PR #59,多设备会话):建 `sessions` 表
   (每设备一行,60s 轮换宽限治丢包竞态,上限 5 活跃会话),backfill `INSERT 0 124`——124 个在用
