@@ -94,6 +94,27 @@ function registerPgMemFunctions(mem: ReturnType<typeof newDb>): void {
     returns: DataType.text,
     implementation: (value: string) => value.trim(),
   });
+  mem.public.registerFunction({
+    name: 'clock_timestamp',
+    returns: DataType.timestamptz,
+    impure: true,
+    implementation: () => new Date(),
+  });
+  // pg-mem has no built-in GREATEST; the chat send path uses it to advance
+  // conversations.last_message_at without letting a later-committing transaction
+  // move it backwards (spec 024 D1). Postgres semantics: ignore NULLs, return
+  // NULL only when every argument is NULL.
+  mem.public.registerFunction({
+    name: 'greatest',
+    args: [DataType.timestamptz, DataType.timestamptz],
+    returns: DataType.timestamptz,
+    allowNullArguments: true,
+    implementation: (left: Date | null, right: Date | null) => {
+      if (left === null) return right;
+      if (right === null) return left;
+      return left.getTime() >= right.getTime() ? left : right;
+    },
+  });
 }
 
 function createSchema(mem: ReturnType<typeof newDb>): void {
@@ -317,6 +338,42 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       status TEXT NOT NULL DEFAULT 'uploading',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE conversations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      coach_id UUID NOT NULL REFERENCES users(id),
+      student_id UUID NOT NULL REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+      last_message_at TIMESTAMPTZ,
+      UNIQUE (coach_id, student_id)
+    );
+
+    CREATE TABLE messages (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      seq INTEGER NOT NULL,
+      sender_id UUID NOT NULL REFERENCES users(id),
+      kind TEXT NOT NULL CHECK (kind IN ('text', 'image')),
+      body TEXT,
+      attachment_id UUID REFERENCES attachments(id),
+      client_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+      CHECK (
+        (kind = 'text' AND body IS NOT NULL AND attachment_id IS NULL)
+        OR (kind = 'image' AND attachment_id IS NOT NULL AND body IS NULL)
+      ),
+      CHECK (body IS NULL OR length(body) BETWEEN 1 AND 4000),
+      CHECK (length(client_id) BETWEEN 1 AND 64),
+      UNIQUE (conversation_id, sender_id, client_id),
+      UNIQUE (conversation_id, seq)
+    );
+
+    CREATE TABLE conversation_reads (
+      conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES users(id),
+      last_read_seq INTEGER NOT NULL,
+      PRIMARY KEY (conversation_id, user_id)
     );
 
     CREATE TABLE onboarding_uploads (

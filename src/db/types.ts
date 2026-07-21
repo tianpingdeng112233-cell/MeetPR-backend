@@ -109,7 +109,12 @@ export const READINESS_MUSCLE_GROUPS = [
   'triceps',
   'core',
 ] as const;
-export const ATTACHMENT_KINDS = ['set_video', 'onboarding_video', 'onboarding_doc'] as const;
+export const ATTACHMENT_KINDS = [
+  'set_video',
+  'onboarding_video',
+  'onboarding_doc',
+  'chat_image',
+] as const;
 export const ATTACHMENT_STATUSES = [
   'uploading',
   'completing',
@@ -558,6 +563,34 @@ export interface AttachmentsTable {
   updated_at: TimestampColumn;
 }
 
+export interface ConversationsTable {
+  id: Generated<string>;
+  coach_id: string;
+  student_id: string;
+  created_at: Generated<Date>;
+  last_message_at: NullableColumn<Date>;
+}
+
+export interface MessagesTable {
+  id: Generated<string>;
+  conversation_id: string;
+  // INTEGER intentionally stays a JS number on node-pg (chat wire contract).
+  seq: number;
+  sender_id: string;
+  kind: 'text' | 'image';
+  body: NullableColumn<string>;
+  attachment_id: NullableColumn<string>;
+  client_id: string;
+  created_at: Generated<Date>;
+}
+
+export interface ConversationReadsTable {
+  conversation_id: string;
+  user_id: string;
+  // INTEGER intentionally stays a JS number on node-pg (chat wire contract).
+  last_read_seq: number;
+}
+
 export interface NotificationOutboxTable {
   id: Generated<string>;
   event_type: string;
@@ -697,6 +730,9 @@ export interface Database {
   student_onboarding_profiles: StudentOnboardingProfilesTable;
   onboarding_uploads: OnboardingUploadsTable;
   attachments: AttachmentsTable;
+  conversations: ConversationsTable;
+  messages: MessagesTable;
+  conversation_reads: ConversationReadsTable;
   notification_outbox: NotificationOutboxTable;
   device_tokens: DeviceTokensTable;
   training_sessions: TrainingSessionsTable;

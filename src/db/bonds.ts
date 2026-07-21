@@ -5,6 +5,32 @@ import type { Database } from './types';
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
 
+export interface CanonicalAcceptedBond {
+  id: string;
+  coach_id: string;
+  student_id: string;
+}
+
+/**
+ * Deterministically resolves the student's active accepted bond while legacy
+ * data may still contain more than one accepted coach (chat spec 024 D6).
+ */
+export async function resolveCanonicalAcceptedBond(
+  db: DbExecutor,
+  studentId: string,
+): Promise<CanonicalAcceptedBond | undefined> {
+  return db
+    .selectFrom('bind_requests')
+    .select(['id', 'coach_id', 'student_id'])
+    .where('student_id', '=', studentId)
+    .where('status', '=', 'accepted')
+    .orderBy(sql`responded_at DESC NULLS LAST`)
+    .orderBy('submitted_at', 'desc')
+    .orderBy('id', 'desc')
+    .limit(1)
+    .executeTakeFirst();
+}
+
 /** True when (coach, student) share an accepted bind_requests bond. */
 export async function hasAcceptedBond(
   db: DbExecutor,

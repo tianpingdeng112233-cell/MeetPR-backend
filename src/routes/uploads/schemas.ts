@@ -27,6 +27,10 @@ export const KIND_LIMITS: Record<AttachmentKind, KindLimit> = {
     maxSizeBytes: 20 * MB,
     contentTypes: ['image/png', 'image/jpeg', 'application/pdf'],
   },
+  chat_image: {
+    maxSizeBytes: 10 * MB,
+    contentTypes: ['image/jpeg', 'image/png'],
+  },
 };
 
 /** File extension per whitelisted content type, used to build the oss_key. */

@@ -22,6 +22,12 @@ export function makeMigrationDb() {
     returns: DataType.text,
     implementation: (value: string) => value.trim(),
   });
+  mem.public.registerFunction({
+    name: 'clock_timestamp',
+    returns: DataType.timestamptz,
+    impure: true,
+    implementation: () => new Date(),
+  });
   // pg-mem has no built-in array_length; needed by 0013 CHECK constraints.
   mem.public.registerFunction({
     name: 'array_length',

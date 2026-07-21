@@ -72,6 +72,7 @@ CREATE TABLE conversation_reads (
 `attachments.kind` 扩 `chat_image`(**BLOCKER 修 — 事实纠正**):DB 侧**已有** CHECK 约束 `attachments_kind_check`(`0007-init-attachments.sql:9`);`src/db/types.ts` 的 `ATTACHMENT_KINDS` 只是手工镜像、**不会改 DB**。所以 0045 **必须 `ALTER TABLE attachments DROP CONSTRAINT attachments_kind_check` 再 `ADD CONSTRAINT` 一个含 `chat_image` 的新版**(否则 `/uploads/initiate` 插 `kind='chat_image'` 必被 CHECK 拒),同时改 TS 常量。这是对既有约束的 additive 扩值(只增枚举值、不动既有值),符合硬规则 #8。
 
 > **D1 — 排序/分页/已读全用会话内单调序号 `seq`,不用时间戳也不用 `(created_at,id)`(BLOCKER 深修)**:时间戳(乃至 `(created_at,uuid)`)在并发下不可靠——UUIDv4 不单调,且 `now()` 是**事务开始时间**,早开始晚提交的发送会生成比已轮询 anchor 更早的 created_at → 增量轮询**永久漏消息**。故:
+>
 > - **`seq` = 会话内单调序号**,在发送事务里 **`SELECT … FOR UPDATE` 锁住 conversation row 后**分配 `seq = COALESCE(MAX(seq),0)+1`。会话锁串行化并发发送,`seq` 严格按提交可见顺序递增,`UNIQUE(conversation_id, seq)` 兜底。
 > - **分页/轮询/已读全按 `seq` 比较**;`created_at` 仅展示。
 > - **wire 游标仍用 `message_id`**(客户端友好):`GET messages` 分页也可直接用 `seq`(客户端追最大 seq),`POST /read` 传 `message_id`,服务端解析成该消息的 `seq`(校验属本会话)后前移 `last_read_seq`。
@@ -80,10 +81,12 @@ CREATE TABLE conversation_reads (
 > - **从没读过(无 `conversation_reads` 行)**:wire `my_last_read = null`,未读基线 = 该会话所有对方消息全未读。
 
 > **D2 — 聊天图读授权 = 会话成员;通用 URL 对 chat_image 仅 owner(BLOCKER 修)**:
+>
 > - **正路**:`GET /messages` 对 image 消息现签 `image_url`(`oss.signGetUrl`,15 min TTL);能不能读由「请求者是该会话成员」决定。跨端读聊天图**只走这条**。
 > - **通用 URL 收口**:既有 `GET /uploads/:id/url`(`src/routes/uploads/index.ts:524`)对 `is_unlinked_explicit=true` 附件放行「owner + owner 的 accepted-bind 教练」。强制单教练后(D6)已无「另一教练越界读」的可达漏洞,但仍把 `kind='chat_image'` 收成**仅 owner**——让聊天图授权**不押在 bind 基数约束上**(UUID 不是授权边界),且不挡任何正当流程(对端读图走上面的会话现签、不走通用 URL)。additive-safe,不改其它 kind。
 
 > **D2b — 被消息引用的聊天图不可删除,用共享附件行锁消除 TOCTOU(BLOCKER 深修)**:`messages.attachment_id` 是 `NO ACTION` FK,但既有 `DELETE /uploads/:attachmentId`(`src/routes/uploads/index.ts:461`)先删 OSS 再删行。**光「删前查引用」不够**——它与并发发图存在 TOCTOU:DELETE 查到无引用→发图校验 attachment ready→DELETE 删 OSS→发图插入引用,最终仍产生引用已删对象的坏消息。**修法(发送与删除共用同一 attachment row lock)**:
+>
 > - **发图**:事务内先 `SELECT … FOR UPDATE` 锁住该 attachment,校验 owner/kind/status=ready,再插消息(引用它),提交。
 > - **DELETE / reconcile-delete**:事务内 `SELECT … FOR UPDATE` 锁 attachment → 查 `messages` 引用(有则 `409 ATTACHMENT_IN_USE`,不碰 OSS)→ 原子 claim `deleting` → **提交事务释放锁**,之后再删 OSS(**不持 DB 锁跨 OSS 网络调用**),失败按既有状态机恢复。
 > - 谁先拿锁谁定结果,后者拿到锁必须重读 status/引用。聊天图一旦入消息即不可变、伴会话终身;DELETE/reconcile 测试覆盖并发。
@@ -94,13 +97,13 @@ CREATE TABLE conversation_reads (
 
 **角色门 + 成员不变量(BLOCKER 修)**:`requireAuth` 还放行 `self_train_student` / `admin`——聊天路由须加显式 `requireRole('coach','coached_student')`(自练学员/admin 不参与聊天)。**成员校验** = 请求者 `id` ∈ {`conversation.coach_id`, `conversation.student_id`};非成员一律 `404 CONVERSATION_NOT_FOUND`(不泄漏存在性)。**写路径不变量**:会话的 `(coach_id, student_id)` 恒从 accepted bond 的 canonical 对推导(`coach_id`→`users.role='coach'`、`student_id`→`coached_student`),不信客户端声明的方向;`sender_id` 必须是该会话 participant。
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| `POST` | `/conversations` | get-or-create。body `{ other_user_id }`。**单事务**:`resolveCanonicalAcceptedBond(student)`(D6)→ 请求隐含的 `(coach_id, student_id)` 对**必须等于 canonical pair**(不信客户端方向;非 canonical/无绑定 → `403 CHAT_BIND_REQUIRED`)→ upsert 会话(`ON CONFLICT (coach_id, student_id)` 命中既有)。返回**完整会话对象**(§wire 契约,含 `other_party{id,display_name}`、`last_message`、双游标、`unread_count`),足够 iOS `openConversation` 直接构 `ChatConversation`。 |
-| `GET` | `/conversations` | `ORDER BY last_message_at DESC NULLS LAST, id DESC`(空会话不抢头、稳定次级键)。**教练**=全部学员会话;**学员**=只过滤到**当前 active accepted 绑定**的那条(≤1;过往教练历史会话留库不列,见 D6)。每条形状见 §wire 契约。驱动教练「接收」聚合 + 未读红点。 |
-| `GET` | `/conversations/:id/messages` | 角色+成员校验。游标用会话内 `seq`,`limit` 默认 30 上限 100。**`?before_seq=<n>`**(历史)= `seq < n ORDER BY seq DESC LIMIT N`(新→旧);**`?since_seq=<n>`**(增量轮询)= `seq > n ORDER BY seq ASC LIMIT N`(**取最早的下一批**,防积压 >N 时跳过中间消息);不带游标 = 最新一页 `DESC LIMIT N`。**校验(zod)**:`since_seq` 与 `before_seq` 互斥,同现 → `400 VALIDATION_ERROR`;两者及 `limit` 均正整数、`limit ≤ 100`。meta 带 **`has_more`**(该方向是否还有,客户端在 since 模式 `has_more=true` 时循环推进到追平)。image 消息附现签 `image_url` + `image_expires_in`;meta 附 `other_last_read`(`{message_id, seq}` 或 `null`)。 |
+| 方法   | 路径                          | 说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------ | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/conversations`              | get-or-create。body `{ other_user_id }`。**单事务**:`resolveCanonicalAcceptedBond(student)`(D6)→ 请求隐含的 `(coach_id, student_id)` 对**必须等于 canonical pair**(不信客户端方向;非 canonical/无绑定 → `403 CHAT_BIND_REQUIRED`)→ upsert 会话(`ON CONFLICT (coach_id, student_id)` 命中既有)。返回**完整会话对象**(§wire 契约,含 `other_party{id,display_name}`、`last_message`、双游标、`unread_count`),足够 iOS `openConversation` 直接构 `ChatConversation`。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET`  | `/conversations`              | `ORDER BY last_message_at DESC NULLS LAST, id DESC`(空会话不抢头、稳定次级键)。**教练**=全部学员会话;**学员**=只过滤到**当前 active accepted 绑定**的那条(≤1;过往教练历史会话留库不列,见 D6)。每条形状见 §wire 契约。驱动教练「接收」聚合 + 未读红点。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET`  | `/conversations/:id/messages` | 角色+成员校验。游标用会话内 `seq`,`limit` 默认 30 上限 100。**`?before_seq=<n>`**(历史)= `seq < n ORDER BY seq DESC LIMIT N`(新→旧);**`?since_seq=<n>`**(增量轮询)= `seq > n ORDER BY seq ASC LIMIT N`(**取最早的下一批**,防积压 >N 时跳过中间消息);不带游标 = 最新一页 `DESC LIMIT N`。**校验(zod)**:`since_seq` 与 `before_seq` 互斥,同现 → `400 VALIDATION_ERROR`;两者及 `limit` 均正整数、`limit ≤ 100`。meta 带 **`has_more`**(该方向是否还有,客户端在 since 模式 `has_more=true` 时循环推进到追平)。image 消息附现签 `image_url` + `image_expires_in`;meta 附 `other_last_read`(`{message_id, seq}` 或 `null`)。                                                                                                                                                                                                                                                                                                                                                                    |
 | `POST` | `/conversations/:id/messages` | 角色+成员校验 + **该会话的 `(coach_id, student_id)` 必须 == `resolveCanonicalAcceptedBond(student)`**(非 canonical / 已解绑 → `403 CHAT_BIND_REQUIRED`,见 D3/D6:过往教练会话只读、不可再发)。body `{ kind, body?, attachment_id?, client_id }`。**单事务、步骤严格有序(BLOCKER 修:授权/锁必须先于任何写)**:① 先查幂等既有行 `(conversation_id,sender_id,client_id)`,命中直接回既有(`200`,同 client_id 异 payload 也回既有、记 `warn`);② image:`SELECT … FOR UPDATE` 锁 `attachment` 并校验**本人 owner、kind=chat_image、status=ready**,否则 `400 CHAT_INVALID_ATTACHMENT`(D2b 共享锁);③ `SELECT … FOR UPDATE` 锁 conversation row → 分配 `seq=MAX(seq)+1`、用 `clock_timestamp()`(**非 `now()`**=事务开始时间)作该消息 `created_at`;④ `INSERT` 消息(`ON CONFLICT (conversation_id,sender_id,client_id) DO NOTHING`,并发首发重试回查、不冒 500);⑤ 仅新建时 `last_message_at = GREATEST(last_message_at, 该 created_at)`(防并发提交顺序回退)。返回消息(§wire);新建 `201`、幂等命中 `200`。 |
-| `POST` | `/conversations/:id/read` | 角色+成员校验。body `{ message_id }`(须为该会话内一条消息;不存在/跨会话 → `400 CHAT_INVALID_CURSOR`)。服务端解析其 `seq`,**仅当 `>` 现 `last_read_seq` 才前移**(单调 upsert)。返回新游标 `{message_id, seq}` + 我方 `unread_count`。驱动已读回执 + 清红点。 |
+| `POST` | `/conversations/:id/read`     | 角色+成员校验。body `{ message_id }`(须为该会话内一条消息;不存在/跨会话 → `400 CHAT_INVALID_CURSOR`)。服务端解析其 `seq`,**仅当 `>` 现 `last_read_seq` 才前移**(单调 upsert)。返回新游标 `{message_id, seq}` + 我方 `unread_count`。驱动已读回执 + 清红点。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 在 `src/routes/index.ts` `mountRoutes` 加一行:`app.use('/conversations', deps.requireAuth, conversationsRouter({ db, logger, oss }))`(需 `oss` 现签图片 url;`oss` 缺配时 image 路径降级——见 D4)。
 
@@ -111,6 +114,7 @@ CREATE TABLE conversation_reads (
 > **D5 — `other_party.display_name` 从 profile 表按角色解析,不在 `users` 表**:`display_name` 落 `coach_profiles` / `student_profiles`(`0003.5-init-profile-tables.sql`),不在 `users`。`GET /conversations` 里对方名 = 对方是教练则 join `coach_profiles.display_name`、是学员则 join `student_profiles.display_name`,用 `COALESCE(..., '')` 防 null。**复用既有查询范式**:学员名见 `src/routes/signals.ts:145`(`sp.display_name` COALESCE),教练名见 `src/handlers/bind-requests.ts:187`(`cp.display_name as coach_display_name`)。因请求者自身角色已知(coach_id/student_id 哪个是我),对方角色即另一个,join 目标表确定。
 
 > **D6 — 单一 active 教练(未来可换),聊天 W1 学员只列 active 会话(2026-07-20 David 拍板)**:David 定「一个学员同一时间只能选一名教练,未来可换教练」。拆清三层:
+>
 > - **强制单教练 = 独立任务,不在本聊天 wave**:它是 bind 模型改动,尾巴大——现有测试**故意**给一学员建两 accepted 教练(`tests/helpers/studentActions.ts:563`,多教练是当前受支持数据形状)、新 `409 STUDENT_ALREADY_COACHED` 改 accept 端点行为(硬规则 #8 需客户端先行)、存量违规「保留哪条」是产品数据策略(不能自动任选)。单开 spec 处理:部分唯一索引 `UNIQUE(student_id) WHERE status='accepted'` + **按约束名映射错误码**(不把任意 `23505` 都当 `BIND_ALREADY_BOUND`)+ fail-closed 迁移 preflight + 测试 fixture 迁移 + 客户端计划。**聊天 W1 不依赖它落地**。
 > - **换教练 = 未来能力**:结束旧绑 → accept 新教练;历史会话「全留」(D3),故换教练后学员会**累积多条历史会话**——单 active 教练**不等于** ≤1 会话总数(Codex 正确指出)。
 > - **canonical active 绑定 = 一个共享 helper `resolveCanonicalAcceptedBond(studentId)`(不靠唯一约束)**:该学员 `status='accepted'` 里 **`ORDER BY responded_at DESC NULLS LAST, submitted_at DESC, id DESC` 的第一条**(`responded_at` 可空、DESC 默认 NULLS FIRST 会选中无响应时间的行,故须 `NULLS LAST` + `submitted_at`/`id` 回退)。现数据即便多 accepted 也确定选一条,`LIMIT 1` 有 canonical 依据;bind 约束(拆出 spec)落地后自然只命中一条。
@@ -122,9 +126,11 @@ CREATE TABLE conversation_reads (
 聊天图走**既有** `POST /uploads/initiate`(`kind: 'chat_image'`)→ 多段 PUT → `POST /uploads/:id/complete`,拿到 `ready` 的 `attachment_id` 后 `POST /conversations/:id/messages`(`kind: 'image'`)。本 spec 只在 `KIND_LIMITS` 加 `chat_image`(见下)+ enum 扩值,**不碰** initiate/complete/abort 逻辑。
 
 `src/routes/uploads/schemas.ts` `KIND_LIMITS` 加:
+
 ```ts
 chat_image: { maxSizeBytes: 10 * MB, contentTypes: ['image/jpeg', 'image/png'] },
 ```
+
 (`CONTENT_TYPE_EXTENSIONS` 已含 jpg/png,无需改;`ATTACHMENT_KINDS` 在 `src/db/types.ts` 加 `'chat_image'`。)
 
 > **授权口径见 D2 / D2b(已修正,原「无漏洞」论断作废)**:`chat_image` 经 initiate `is_unlinked_explicit=true`,但**不能**依赖通用 URL 的 coach-of-owner 放行(有跨教练泄漏 + 不可删坏图两洞)。故 0045 配套加固既有 uploads 路由:`GET /uploads/:id/url` 对 chat_image 仅 owner(D2)、`DELETE /uploads/:id` 被消息引用则 409(D2b)。两处 additive-safe,不改其它 kind 行为。
@@ -144,29 +150,50 @@ chat_image: { maxSizeBytes: 10 * MB, contentTypes: ['image/jpeg', 'image/png'] }
 约定:时间戳 **ISO8601 毫秒 UTC**(`2026-07-20T09:12:30.123Z`);id 为 uuid 字符串;字段 **snake_case**;错误统一 `{ "error": "<CODE>", ...detail }`。**文本 wire 字段是 `body`**(iOS model 映射到 `text`)。单对象响应一律具名包裹。
 
 **Conversation 对象**(`POST /conversations` 的 `conversation`、`GET /conversations` 列表元素 同形):
+
 ```json
 {
   "id": "c0-uuid",
   "other_party": { "id": "u1-uuid", "display_name": "王晨曦" },
-  "last_message": { "id":"m9-uuid","seq":42,"kind":"text","preview":"明天深蹲加到 140",
-                    "created_at":"2026-07-20T09:12:30.123Z","sender_id":"u1-uuid" },
+  "last_message": {
+    "id": "m9-uuid",
+    "seq": 42,
+    "kind": "text",
+    "preview": "明天深蹲加到 140",
+    "created_at": "2026-07-20T09:12:30.123Z",
+    "sender_id": "u1-uuid"
+  },
   "last_message_at": "2026-07-20T09:12:30.123Z",
   "unread_count": 2,
-  "my_last_read":    { "message_id":"m7-uuid","seq":40 },
-  "other_last_read": { "message_id":"m9-uuid","seq":42 }
+  "my_last_read": { "message_id": "m7-uuid", "seq": 40 },
+  "other_last_read": { "message_id": "m9-uuid", "seq": 42 }
 }
 ```
+
 **可空**:空会话 `last_message=null` + `last_message_at=null`;从没读过 `my_last_read`/`other_last_read=null`;image 消息的 `preview="[图片]"`。`unread_count` 为任意非负整数(示例值非规范)。
 
 **Message 对象**(GET 列表元素 / POST 返回 同形):
+
 ```json
-{ "id":"m8-uuid","conversation_id":"c0-uuid","seq":41,"sender_id":"u2-uuid","kind":"image",
-  "body":null,"attachment_id":"a3-uuid","image_url":"https://oss…signed","image_expires_in":900,
-  "client_id":"cli-xyz","created_at":"2026-07-20T09:10:00.000Z" }
+{
+  "id": "m8-uuid",
+  "conversation_id": "c0-uuid",
+  "seq": 41,
+  "sender_id": "u2-uuid",
+  "kind": "image",
+  "body": null,
+  "attachment_id": "a3-uuid",
+  "image_url": "https://oss…signed",
+  "image_expires_in": 900,
+  "client_id": "cli-xyz",
+  "created_at": "2026-07-20T09:10:00.000Z"
+}
 ```
+
 `seq` = 会话内单调序号(排序/游标依据);`kind='text'` 时 `body` 非空、`attachment_id/image_url/image_expires_in=null`;`kind='image'` 反之(`image_url` 在 oss 缺配时也为 null,D4)。
 
 **各端点响应包裹**:
+
 - `POST /conversations` → `{ "conversation": {Conversation} }`(201 新建 / 200 命中)
 - `GET  /conversations` → `{ "conversations": [Conversation, …] }`(DESC NULLS LAST)
 - `GET  /conversations/:id/messages?since_seq=&before_seq=&limit=` → `{ "messages": [Message, …], "meta": { "other_last_read": {message_id,seq}|null, "has_more": bool } }`。选批:`since_seq`=`seq>n` 的**最早 N 条**(ASC LIMIT,防跳过)、`before_seq`=`seq<n` 的最新 N 条(DESC LIMIT)、无游标=最新 N 条。`has_more`=该方向是否还有;客户端按 `seq` 排序,`since` 模式 `has_more` 时循环追平。
