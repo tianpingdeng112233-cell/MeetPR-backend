@@ -2,11 +2,13 @@ import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
 
+import { hasAcceptedBond } from '../db/bonds';
 import type { Database } from '../db/types';
 import { fetchCoachFeedback, fetchOwnFeedback } from '../handlers/feedback-fetch';
 import { markFeedbackRead } from '../handlers/feedback-mark-read';
 import {
   coachHasPublishedPlanForStudent,
+  coachMayAttachSetVideo,
   coachOwnsPublishedPlanExercise,
   createFeedback,
 } from '../handlers/feedback-post';
@@ -30,6 +32,7 @@ const FeedbackBodySchema = z
     student_id: UuidSchema,
     day_date: DateSchema.nullable().optional(),
     plan_exercise_id: UuidSchema.nullable().optional(),
+    video_id: UuidSchema.nullable().optional(),
     text: z.string().trim().min(1).max(2000),
   })
   .strict()
@@ -37,6 +40,7 @@ const FeedbackBodySchema = z
     student_id: body.student_id,
     day_date: body.day_date ?? null,
     plan_exercise_id: body.plan_exercise_id ?? null,
+    video_id: body.video_id ?? null,
     text: body.text,
   }));
 
@@ -66,6 +70,15 @@ export function coachFeedbackRouter(deps: FeedbackRouterDeps): ExpressRouter {
         return;
       }
 
+      // A published plan is evidence the pair once worked together, not that
+      // they still do. The bond is the live relationship, so gate on it first
+      // instead of relying on "there is currently no unbind endpoint" holding.
+      const bonded = await hasAcceptedBond(deps.db, req.user.id, body.data.student_id);
+      if (!bonded) {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
+
       if (body.data.plan_exercise_id) {
         const ownsExercise = await coachOwnsPublishedPlanExercise(
           deps.db,
@@ -85,6 +98,19 @@ export function coachFeedbackRouter(deps: FeedbackRouterDeps): ExpressRouter {
         );
         if (!ownsStudent) {
           res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+          return;
+        }
+      }
+
+      if (body.data.video_id) {
+        const mayAttach = await coachMayAttachSetVideo(
+          deps.db,
+          req.user.id,
+          body.data.student_id,
+          body.data.video_id,
+        );
+        if (!mayAttach) {
+          res.status(400).json({ error: 'FEEDBACK_VIDEO_NOT_OWNED' });
           return;
         }
       }
@@ -120,7 +146,13 @@ export function studentFeedbackRouter(deps: FeedbackRouterDeps): ExpressRouter {
         return;
       }
 
-      if (req.user.role !== 'coach') {
+      // Same gate as the POST side: coach role alone is not a relationship.
+      // This response now also carries training metadata, so an unbonded coach
+      // reading it would leak more than the feedback text they wrote.
+      if (
+        req.user.role !== 'coach' ||
+        !(await hasAcceptedBond(deps.db, req.user.id, params.data.id))
+      ) {
         res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
         return;
       }
