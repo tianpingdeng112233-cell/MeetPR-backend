@@ -1,6 +1,6 @@
 # 024 — 教练↔学员 1:1 聊天(后端 · W1 应用内消息)
 
-- **状态**: Draft
+- **状态**: InProgress（scope 已锁,经 6 轮 Claude↔Codex 互审收敛 VERDICT: CLEAN;此后改 scope 须另开 follow-up spec）
 - **PR**: TBD(backend spec PR + backend impl PR)
 - **对应 iOS spec**: `058-coach-student-chat`(同一 wave 的客户端;本 spec 定义 wire 契约,iOS 侧消费)。评审期在 worktree `~/Projects/apps/MeetPR-wt-chat/specs/058-coach-student-chat/SPEC.md`;merge 后落 `~/Projects/apps/MeetPR/specs/058-coach-student-chat/SPEC.md`。
 - **来源 / 授权**:
