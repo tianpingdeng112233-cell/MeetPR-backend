@@ -52,9 +52,10 @@
   同批滚镜像 `sha-cc1ba36`(= #93 后端改动 + plan-web 视频弹窗新 bundle 的 `web/` swap)。
   **⚠️ 本次差点重演 2026-07-20 全站 404**:裸 `npm run build` 会把 `/api` 烘进 bundle
   (`client.ts` 的 `VITE_API_BASE ?? '/api'` 是 dev 代理默认值),同源部署**必须** `VITE_API_BASE=''`。
-  首次构建确实中招,靠 `bd4da5a` commit message 记的那条验证发现并重建。上线后已 curl 线上 chunk
-  实证:`const e=""`、`"/api"` 出现 **0** 次;`/coach/students` 未认证回 401(非 404/502)。
-  建议把这条闸机械化(ship 专用 npm script 或 CI grep 断言),别再靠人记。
+  首次构建确实中招,靠 `bd4da5a` commit message 记的那条验证在 push 前发现并重建。上线后已 curl
+  线上 chunk 实证:`const e=""`、`"/api"` 出现 **0** 次;`/coach/students` 未认证回 401(非 404/502)。
+  注:机械闸早已存在(`fd674dc`,出镜像前验同源 marker + 部署后自动 smoke),坏包本来也进不了线上;
+  本次的人工前置验证只是省了一轮红 CI,**不要再重复造这道闸**。
 
 - **2026-07-17(晚)** — 应用 **0039-multi-device-sessions**(PR #59,多设备会话):建 `sessions` 表
   (每设备一行,60s 轮换宽限治丢包竞态,上限 5 活跃会话),backfill `INSERT 0 124`——124 个在用
