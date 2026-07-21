@@ -294,6 +294,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       day_date DATE,
       plan_exercise_id UUID REFERENCES plan_exercises(id) ON DELETE SET NULL,
+      video_id UUID,
       text TEXT NOT NULL,
       posted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       read_at TIMESTAMPTZ
@@ -318,6 +319,10 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    ALTER TABLE feedback
+      ADD CONSTRAINT feedback_video_id_fkey
+      FOREIGN KEY (video_id) REFERENCES attachments(id) ON DELETE SET NULL;
 
     CREATE TABLE onboarding_uploads (
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

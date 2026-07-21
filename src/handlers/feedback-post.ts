@@ -8,6 +8,7 @@ export interface FeedbackInput {
   student_id: string;
   day_date: string | null;
   plan_exercise_id: string | null;
+  video_id: string | null;
   text: string;
 }
 
@@ -49,6 +50,40 @@ export async function coachOwnsPublishedPlanExercise(
   return row !== undefined;
 }
 
+/**
+ * True when this coach may attach the student's set video to a feedback item.
+ *
+ * The owner/kind/status triple is the obvious half. The provenance clause is
+ * the half that matters for dual-coach students: it mirrors the visibility gate
+ * in GET /students/:id/videos verbatim, so a video coach A can't *see* is also
+ * a video coach A can't *link*. Without it, the feedback row becomes a side
+ * channel that re-exposes coach B's uploads through the student's inbox.
+ */
+export async function coachMayAttachSetVideo(
+  db: Kysely<Database>,
+  coachId: string,
+  studentId: string,
+  videoId: string,
+): Promise<boolean> {
+  const row = await db
+    .selectFrom('attachments')
+    .select(sql<number>`1`.as('exists'))
+    .where('id', '=', videoId)
+    .where('owner_id', '=', studentId)
+    .where('kind', '=', 'set_video')
+    .where('status', '=', 'ready')
+    .where((eb) =>
+      eb.or([
+        eb.and([eb('is_unlinked_explicit', '=', true), eb('source_coach_id', 'is', null)]),
+        eb('source_coach_id', '=', coachId),
+      ]),
+    )
+    .limit(1)
+    .executeTakeFirst();
+
+  return row !== undefined;
+}
+
 export async function createFeedback(
   db: Kysely<Database>,
   coachId: string,
@@ -61,6 +96,7 @@ export async function createFeedback(
       student_id: input.student_id,
       day_date: input.day_date,
       plan_exercise_id: input.plan_exercise_id,
+      video_id: input.video_id,
       text: input.text.trim(),
     })
     .returningAll()
