@@ -30,6 +30,16 @@ export function makeMigrationDb() {
     implementation: (value: string[] | null, _dimension: number) =>
       value === null ? null : value.length,
   });
+  // pg-mem has no built-in replace; needed by 0047's JSONB severity remap.
+  // Postgres replaces every occurrence and leaves the input untouched when the
+  // search string is empty — split/join matches that, an empty needle would not.
+  mem.public.registerFunction({
+    name: 'replace',
+    args: [DataType.text, DataType.text, DataType.text],
+    returns: DataType.text,
+    implementation: (value: string | null, from: string, to: string) =>
+      value === null || from === '' ? value : value.split(from).join(to),
+  });
   return mem;
 }
 

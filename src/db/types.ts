@@ -473,6 +473,7 @@ export interface ReadinessCheckinsTable {
   // JSONB: insert as a JSON string (node-pg would otherwise encode a JS array as a
   // Postgres array literal); node-pg returns parsed JSON, pg-mem may return a string.
   muscle_fatigue: ColumnType<MuscleFatigueEntry[] | string, string, string>;
+  muscle_fatigue_scale_version: Generated<number>;
   motivation: NullableColumn<number>;
   energy: NullableColumn<number>;
   submitted_at: TimestampColumn;

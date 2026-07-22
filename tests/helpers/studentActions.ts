@@ -283,6 +283,8 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       mood SMALLINT NOT NULL,
       stress SMALLINT NOT NULL,
       muscle_fatigue JSONB NOT NULL DEFAULT '[]',
+      muscle_fatigue_scale_version SMALLINT NOT NULL DEFAULT 5,
+      energy SMALLINT,
       submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (student_id, checkin_date)

@@ -31,6 +31,7 @@ describe('POST /students/me/readiness', () => {
     // response as a complete ReadinessCheckinDTO (spec 030 §C7).
     expect(Object.keys(res.body).sort()).toEqual([
       'checkin_date',
+      'energy',
       'id',
       'mood',
       'muscle_fatigue',
@@ -46,6 +47,7 @@ describe('POST /students/me/readiness', () => {
       sleep_quality: validBody.sleep_quality,
       mood: validBody.mood,
       stress: validBody.stress,
+      energy: null,
       muscle_fatigue: validBody.muscle_fatigue,
     });
 
@@ -68,6 +70,35 @@ describe('POST /students/me/readiness', () => {
     expect(res.status).toBe(201);
   });
 
+  it('accepts a missing energy field from legacy clients', async () => {
+    const ctx = await makeContext();
+
+    const res = await request(ctx.app)
+      .post('/students/me/readiness')
+      .set(auth(ctx.traineeToken))
+      .send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(res.body.energy).toBeNull();
+  });
+
+  it('accepts severity 5 on the expanded muscle-fatigue scale', async () => {
+    const ctx = await makeContext();
+
+    const res = await request(ctx.app)
+      .post('/students/me/readiness')
+      .set(auth(ctx.traineeToken))
+      .send({
+        ...validBody,
+        energy: 5,
+        muscle_fatigue: [{ muscle_group: 'quad', severity: 5 }],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.energy).toBe(5);
+    expect(res.body.muscle_fatigue).toEqual([{ muscle_group: 'quad', severity: 5 }]);
+  });
+
   it('upserts on the same day: second POST overwrites and still returns 201', async () => {
     const ctx = await makeContext();
 
@@ -85,6 +116,7 @@ describe('POST /students/me/readiness', () => {
         sleep_quality: 1,
         mood: 5,
         stress: 4,
+        energy: 3,
         muscle_fatigue: [{ muscle_group: 'hamstring', severity: 2 }],
       });
     expect(second.status).toBe(201);
@@ -93,6 +125,7 @@ describe('POST /students/me/readiness', () => {
       sleep_quality: 1,
       mood: 5,
       stress: 4,
+      energy: 3,
       muscle_fatigue: [{ muscle_group: 'hamstring', severity: 2 }],
     });
 
@@ -108,6 +141,7 @@ describe('POST /students/me/readiness', () => {
       sleep_quality: 1,
       mood: 5,
       stress: 4,
+      energy: 3,
       muscle_fatigue: [{ muscle_group: 'hamstring', severity: 2 }],
     });
   });
@@ -153,10 +187,12 @@ describe('POST /students/me/readiness', () => {
       ['sleep_quality below scale', { ...validBody, sleep_quality: 0 }],
       ['mood above scale', { ...validBody, mood: 6 }],
       ['stress below scale', { ...validBody, stress: 0 }],
+      ['energy above scale', { ...validBody, energy: 6 }],
+      ['energy below scale', { ...validBody, energy: 0 }],
       ['non-integer scale value', { ...validBody, mood: 3.5 }],
       [
-        'severity above 3',
-        { ...validBody, muscle_fatigue: [{ muscle_group: 'quad', severity: 4 }] },
+        'severity above 5',
+        { ...validBody, muscle_fatigue: [{ muscle_group: 'quad', severity: 6 }] },
       ],
       [
         'severity below 1',
@@ -224,6 +260,7 @@ describe('GET /students/:id/readiness', () => {
       sleep_quality: 4,
       mood: 3,
       stress: 2,
+      energy: null,
       muscle_fatigue: [
         { muscle_group: 'quad', severity: 3 },
         { muscle_group: 'core', severity: 1 },

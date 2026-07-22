@@ -29,7 +29,7 @@ const ScaleSchema = z.number().int().min(1).max(5);
 const MuscleFatigueEntrySchema = z
   .object({
     muscle_group: z.enum(READINESS_MUSCLE_GROUPS),
-    severity: z.number().int().min(1).max(3),
+    severity: z.number().int().min(1).max(5),
   })
   .strict();
 
@@ -39,6 +39,7 @@ const ReadinessBodySchema = z
     sleep_quality: ScaleSchema,
     mood: ScaleSchema,
     stress: ScaleSchema,
+    energy: ScaleSchema.optional(),
     muscle_fatigue: z
       .array(MuscleFatigueEntrySchema)
       .max(READINESS_MUSCLE_GROUPS.length)
