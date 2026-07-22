@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
+import { sql } from 'kysely';
 
 import type { Database } from '../../db/types';
 import {
@@ -83,6 +84,78 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
     // deleteObject likewise treats NoSuchKey as success: failed/aborted rows
     // may already have been cleaned by OSS lifecycle rules.
     await configuredOss.deleteObject(attachment.oss_key);
+  }
+
+  async function lockAttachmentForDeletion(
+    attachmentId: string,
+    ownerId: string,
+    claimDeleting: boolean,
+  ) {
+    return db.transaction().execute(async (trx) => {
+      const attachment = await trx
+        .selectFrom('attachments')
+        .selectAll()
+        .where('id', '=', attachmentId)
+        .where('owner_id', '=', ownerId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!attachment) return { outcome: 'not_found' as const };
+
+      const referenced = await trx
+        .selectFrom('messages')
+        .select('id')
+        .where('attachment_id', '=', attachment.id)
+        .limit(1)
+        .executeTakeFirst();
+      if (referenced) return { outcome: 'in_use' as const };
+
+      if (!claimDeleting) {
+        return attachment.status === 'deleting'
+          ? { outcome: 'claimed' as const, attachment, previousStatus: attachment.status }
+          : { outcome: 'invalid_state' as const, attachment };
+      }
+
+      if (
+        attachment.status === 'deleting' ||
+        attachment.status === 'completing' ||
+        attachment.status === 'aborting'
+      ) {
+        return { outcome: 'invalid_state' as const, attachment };
+      }
+
+      const claimed = await trx
+        .updateTable('attachments')
+        .set({ status: 'deleting', updated_at: sql<Date>`now()` })
+        .where('id', '=', attachment.id)
+        .where('status', '=', attachment.status)
+        .returningAll()
+        .executeTakeFirst();
+      if (!claimed) return { outcome: 'invalid_state' as const, attachment };
+
+      return {
+        outcome: 'claimed' as const,
+        attachment,
+        previousStatus: attachment.status,
+      };
+    });
+  }
+
+  async function attachmentIsReferenced(attachmentId: string): Promise<boolean> {
+    const referenced = await db
+      .selectFrom('messages')
+      .select('id')
+      .where('attachment_id', '=', attachmentId)
+      .limit(1)
+      .executeTakeFirst();
+    return referenced !== undefined;
+  }
+
+  async function releaseDeletionClaim(
+    attachmentId: string,
+    previousStatus: NonNullable<Awaited<ReturnType<typeof findAttachment>>>['status'],
+  ): Promise<void> {
+    if (previousStatus === 'deleting') return;
+    await transitionAttachmentStatus(db, attachmentId, 'deleting', previousStatus);
   }
 
   router.post(
@@ -441,9 +514,36 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
           return;
         }
       } else if (attachment.status === 'deleting') {
+        const deletion = await lockAttachmentForDeletion(attachment.id, req.user.id, false);
+        if (deletion.outcome === 'not_found') {
+          res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
+          return;
+        }
+        if (deletion.outcome === 'in_use') {
+          res.status(409).json({ error: 'ATTACHMENT_IN_USE' });
+          return;
+        }
+        if (deletion.outcome === 'invalid_state') {
+          res.status(409).json({
+            error: 'UPLOAD_INVALID_STATE',
+            status: deletion.attachment.status,
+          });
+          return;
+        }
+
+        // Recheck after the deleting claim and before OSS. PostgreSQL's shared
+        // attachment row lock makes this redundant in production, but it closes
+        // the same safe send-wins branch in lockless test adapters. New sends
+        // revalidate status in their INSERT and cannot start once claimed.
+        if (await attachmentIsReferenced(deletion.attachment.id)) {
+          res.status(409).json({ error: 'ATTACHMENT_IN_USE' });
+          return;
+        }
+
         try {
-          await deleteRemoteAttachment(attachment);
-          await deleteAttachmentMetadata(db, attachment.id, req.user.id);
+          // The locking transaction has committed before this network call.
+          await deleteRemoteAttachment(deletion.attachment);
+          await deleteAttachmentMetadata(db, deletion.attachment.id, req.user.id);
           res.status(204).send();
           return;
         } catch (err) {
@@ -471,44 +571,51 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
         return;
       }
 
-      const attachment = await findOwnedAttachment(db, params.data.attachmentId, req.user.id);
-      if (!attachment) {
+      const deletion = await lockAttachmentForDeletion(params.data.attachmentId, req.user.id, true);
+      if (deletion.outcome === 'not_found') {
         res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
         return;
       }
-      if (
-        attachment.status === 'deleting' ||
-        attachment.status === 'completing' ||
-        attachment.status === 'aborting'
-      ) {
-        res.status(409).json({ error: 'UPLOAD_INVALID_STATE', status: attachment.status });
+      if (deletion.outcome === 'in_use') {
+        res.status(409).json({ error: 'ATTACHMENT_IN_USE' });
+        return;
+      }
+      if (deletion.outcome === 'invalid_state') {
+        res.status(409).json({
+          error: 'UPLOAD_INVALID_STATE',
+          status: deletion.attachment.status,
+        });
         return;
       }
 
-      const claimed = await transitionAttachmentStatus(
-        db,
-        attachment.id,
-        attachment.status,
-        'deleting',
-      );
-      if (!claimed) {
-        res.status(409).json({ error: 'UPLOAD_INVALID_STATE' });
+      // A send that read `ready` before this transaction claimed `deleting`
+      // may have committed its FK in a lockless adapter. Resolve that race before
+      // any OSS side effect, then restore the pre-claim state for the live message.
+      if (await attachmentIsReferenced(deletion.attachment.id)) {
+        await releaseDeletionClaim(deletion.attachment.id, deletion.previousStatus);
+        res.status(409).json({ error: 'ATTACHMENT_IN_USE' });
         return;
       }
 
       try {
-        await deleteRemoteAttachment(attachment);
+        // The locking/claim transaction has committed before this network call.
+        await deleteRemoteAttachment(deletion.attachment);
       } catch (err) {
         logger.warn(
-          { err, attachmentId: attachment.id, ownerId: req.user.id },
+          { err, attachmentId: deletion.attachment.id, ownerId: req.user.id },
           'upload_delete_oss_failed',
         );
-        await transitionAttachmentStatus(db, attachment.id, 'deleting', attachment.status);
+        await transitionAttachmentStatus(
+          db,
+          deletion.attachment.id,
+          'deleting',
+          deletion.previousStatus,
+        );
         res.status(502).json({ error: 'UPLOAD_DELETE_FAILED' });
         return;
       }
 
-      const deleted = await deleteAttachmentMetadata(db, attachment.id, req.user.id);
+      const deleted = await deleteAttachmentMetadata(db, deletion.attachment.id, req.user.id);
       if (!deleted) {
         // The remote object is already gone. Leave the durable deleting state so
         // a retry of POST /reconcile can finish local cleanup safely.
@@ -516,7 +623,7 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
         return;
       }
 
-      logger.info({ attachmentId: attachment.id, ownerId: req.user.id }, 'upload_deleted');
+      logger.info({ attachmentId: deletion.attachment.id, ownerId: req.user.id }, 'upload_deleted');
       res.status(204).send();
     }),
   );
@@ -542,6 +649,10 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
       }
 
       if (!uuidEquals(attachment.owner_id, req.user.id)) {
+        if (attachment.kind === 'chat_image') {
+          res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
+          return;
+        }
         // Only the owner's accepted-bind coach may read; everyone else gets the
         // same 404 as a missing row so attachment existence never leaks.
         const bound = await coachHasAcceptedBind(db, req.user.id, attachment.owner_id);
