@@ -37,12 +37,25 @@
 | 0041-init-activity-ledger                       | ✅ 2026-07-17 手动应用(psql,Claude)                             |
 | 0042-init-device-tokens                         | ✅ 2026-07-17 手动应用(psql,Claude)                             |
 | 0044-add-admin-role                             | ✅ 2026-07-18 手动应用(DMS,David;执行成功 5 条语句)             |
+| 0046-add-feedback-video-id                      | ✅ 2026-07-22 手动应用(DMS,David;执行成功 4 条语句)             |
 
 > 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。0043 现由 open PR #77/#79(账本扩展)占号,0044 先行落库,库内号段暂跳 0043——#77/#79 合并应用后回续。
 
-**当前 staging schema head = 0044（0043 缺位,被 open PR 占号,见上）。**
+**当前 staging schema head = 0046（0043 / 0045 缺位,均被 open PR 占号,见上）。**
 
 ## 变更历史
+
+- **2026-07-22** — 应用 **0046-add-feedback-video-id**(PR #93,spec 025 视频级教练反馈):`feedback`
+  加可空 `video_id → attachments(id) ON DELETE SET NULL`,纯 additive。工具:DMS 控制台(David),
+  执行成功 4 条语句(`BEGIN` / `SET search_path` / `ALTER TABLE` / `COMMIT`)。schema head 0044 → **0046**
+  (0043 仍被 open PR #77/#79 占号、0045 被聊天波 #92 占号,两处待各自合并后回续)。
+  同批滚镜像 `sha-cc1ba36`(= #93 后端改动 + plan-web 视频弹窗新 bundle 的 `web/` swap)。
+  **⚠️ 本次差点重演 2026-07-20 全站 404**:裸 `npm run build` 会把 `/api` 烘进 bundle
+  (`client.ts` 的 `VITE_API_BASE ?? '/api'` 是 dev 代理默认值),同源部署**必须** `VITE_API_BASE=''`。
+  首次构建确实中招,靠 `bd4da5a` commit message 记的那条验证在 push 前发现并重建。上线后已 curl
+  线上 chunk 实证:`const e=""`、`"/api"` 出现 **0** 次;`/coach/students` 未认证回 401(非 404/502)。
+  注:机械闸早已存在(`fd674dc`,出镜像前验同源 marker + 部署后自动 smoke),坏包本来也进不了线上;
+  本次的人工前置验证只是省了一轮红 CI,**不要再重复造这道闸**。
 
 - **2026-07-17(晚)** — 应用 **0039-multi-device-sessions**(PR #59,多设备会话):建 `sessions` 表
   (每设备一行,60s 轮换宽限治丢包竞态,上限 5 活跃会话),backfill `INSERT 0 124`——124 个在用
@@ -84,6 +97,23 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-21(二) — `sha-bd4da5a`(=staging HEAD,纯 web/ 换装:教练端网页**改密码**上线——顶栏
+  「退出」旁加「改密码」;会话收尾按 review-loop 定案:未保存守卫**前置**到发 PUT 之前(还能存时
+  让教练退出/保存)、204 后**立即**拆会话(清 token+draft mirror、卸编辑器,不等确认)、成功提示由
+  登录页一次性 sessionStorage notice 承载(peek/clear 拆分扛 StrictMode 双跑)、中途 401 走同一
+  会话失效出口。弹窗 portal 到 body 以逃出顶栏 stacking context。新入口 index-BzlfDfdK.js,
+  源自 plan-web main db43488(PR #28,同车带上 f5978c9 技术风格枚举中文化),零后端代码/零迁移)
+  经 deploy-staging.yml(migrations_applied=true, image_sha=全 40 位)部署 `meetpr-backend-staging`;
+  env 未动。⚠️gotcha:`-f image_sha` **必须全 40 位 sha**,传短 sha 直接红("image_sha must be a
+  full 40-char commit sha")。验证:CI bundle base 闸绿 + deploy smoke 绿 + curl 四验(GET / 回新
+  入口、线上 bundle `const e=""` 且零 `/api` 残留、登录红线教练/学员双端 200、错误密码 401、
+  PUT /me/password 回 401 鉴权)+ 浏览器在**线上站点**跑完整改密链路(改密→踢回登录页→提示条
+  显示→token 清空;服务端复核新密码 200/旧密码 401)。
+- 2026-07-20(二) — `sha-468ec61`(=staging HEAD,纯 web/ 换装:plan-web「组」数量格 delete 修复——
+  最后一位数字现可退格删空(编辑中显空、失焦提交为 0 组),不再弹回旧值;需全选覆盖才能改的坑消除。
+  新入口 index-DdUYwqtJ.js,源自 plan-web main f36c7a5,零后端代码/零迁移)经 deploy-staging.yml
+  (migrations_applied=true)部署 `meetpr-backend-staging`;env 未动。deploy smoke 闸全绿 + curl 验证:
+  GET / 已 serve 新入口 index-DdUYwqtJ.js、bundle 内同源 base marker 在。
 - 2026-07-20(二) — `sha-fd674dc`(=staging HEAD,纯 workflow/docs:build 期 web bundle base 闸
   与 deploy 后 smoke 闸,零运行时代码/零迁移)部署 `meetpr-backend-staging`;env 未动。本次部署
   兼作 smoke 闸首航:health OK / login 回 AUTH_INVALID_CREDENTIALS / 线上 bundle 同源 marker 全过

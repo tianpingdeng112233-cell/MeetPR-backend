@@ -530,6 +530,7 @@ export interface FeedbackTable {
   student_id: string;
   day_date: NullableColumn<string>;
   plan_exercise_id: NullableColumn<string>;
+  video_id: NullableColumn<string>;
   text: string;
   posted_at: TimestampColumn;
   read_at: NullableColumn<Date>;
