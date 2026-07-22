@@ -82,7 +82,7 @@ describe('POST /students/me/readiness', () => {
     expect(res.body.energy).toBeNull();
   });
 
-  it('accepts severity 5 on the expanded muscle-fatigue scale', async () => {
+  it('accepts severity 4 on the expanded muscle-fatigue scale', async () => {
     const ctx = await makeContext();
 
     const res = await request(ctx.app)
@@ -91,12 +91,12 @@ describe('POST /students/me/readiness', () => {
       .send({
         ...validBody,
         energy: 5,
-        muscle_fatigue: [{ muscle_group: 'quad', severity: 5 }],
+        muscle_fatigue: [{ muscle_group: 'quad', severity: 4 }],
       });
 
     expect(res.status).toBe(201);
     expect(res.body.energy).toBe(5);
-    expect(res.body.muscle_fatigue).toEqual([{ muscle_group: 'quad', severity: 5 }]);
+    expect(res.body.muscle_fatigue).toEqual([{ muscle_group: 'quad', severity: 4 }]);
   });
 
   it('upserts on the same day: second POST overwrites and still returns 201', async () => {
@@ -191,8 +191,8 @@ describe('POST /students/me/readiness', () => {
       ['energy below scale', { ...validBody, energy: 0 }],
       ['non-integer scale value', { ...validBody, mood: 3.5 }],
       [
-        'severity above 5',
-        { ...validBody, muscle_fatigue: [{ muscle_group: 'quad', severity: 6 }] },
+        'severity above 4',
+        { ...validBody, muscle_fatigue: [{ muscle_group: 'quad', severity: 5 }] },
       ],
       [
         'severity below 1',

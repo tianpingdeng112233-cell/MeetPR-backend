@@ -29,7 +29,10 @@ const ScaleSchema = z.number().int().min(1).max(5);
 const MuscleFatigueEntrySchema = z
   .object({
     muscle_group: z.enum(READINESS_MUSCLE_GROUPS),
-    severity: z.number().int().min(1).max(5),
+    // 1 轻微 / 2 中等 / 3 明显 / 4 严重。产品量表的第五档「完全无酸痛」由
+    // 「不提交该肌群」表示,所以标度只到 4。方向与其余四个 scale 相反:
+    // 这里越大越酸痛,那边越大越好。
+    severity: z.number().int().min(1).max(4),
   })
   .strict();
 
