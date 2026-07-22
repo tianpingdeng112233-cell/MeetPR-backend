@@ -1,20 +1,26 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
+import { shanghaiTrainingDay } from '../src/utils/date';
 import { auth, ids, makeContext, type TestContext } from './helpers/studentActions';
 
 const COMPETITION_SQUAT_ID = '2f708759-821a-4d5b-9fde-32f60bc2b7f2';
 const COMPETITION_DEADLIFT_ID = '4a912d5c-2248-4f3d-80ec-384f8360c315';
 
 function daysFromToday(offset: number): string {
-  const date = new Date();
-  date.setUTCHours(0, 0, 0, 0);
+  const date = new Date(`${shanghaiTrainingDay()}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + offset);
   return date.toISOString().slice(0, 10);
 }
 
 function atTenUtc(date: string, minute = 0): Date {
   return new Date(`${date}T10:${String(minute).padStart(2, '0')}:00.000Z`);
+}
+
+function weekStartMonday(date: string): string {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() - ((value.getUTCDay() + 6) % 7));
+  return value.toISOString().slice(0, 10);
 }
 
 function itemAt<T>(items: T[], index: number): T {
@@ -316,6 +322,27 @@ describe('GET /coach/students/:id/exercise-stats', () => {
       one_rm: { squat: '180.00', bench: '120.00', deadlift: '220.00' },
       last_trained_at: atTenUtc(daysFromToday(-2)).toISOString(),
       recent_4w: { trained_days: 1, total_planned_days: 6, completion_rate: 0.1667 },
+      e1rm_series: {
+        squat: {
+          points: [{ date: daysFromToday(-2), value: '116.67' }],
+          trend: 'new',
+        },
+        bench: { points: [], trend: 'new' },
+        deadlift: { points: [], trend: 'new' },
+      },
+      weekly_volume: [
+        {
+          week_start: weekStartMonday(daysFromToday(-2)),
+          volume_kg: '500.00',
+          avg_rpe: null,
+          volume_by_family: {
+            squat: '500.00',
+            bench: '0.00',
+            deadlift: '0.00',
+            other: '0.00',
+          },
+        },
+      ],
     });
   });
 
