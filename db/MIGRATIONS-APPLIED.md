@@ -46,6 +46,14 @@
 
 ## 变更历史
 
+- **2026-07-22** — `sha-b62de27`(=staging HEAD,#97 纯 web/ 换装:三处误用品牌红的按钮改回设计系统
+  规定的中性/主按钮填充——视频反馈「发送」、绑定请求「接受」、播放速度选中态,改用 `fg-primary`/`bg`
+  以便浅色模式正确反色;bundle 源 plan-web `de40b53`/入口 `index-1lmGK0KK.js`)经 deploy-staging.yml
+  (`migrations_applied=true`,**无迁移**,schema head 仍 0046)部署 `meetpr-backend-staging`;env 未动。
+  curl 验证:GET / 回新入口(旧 `index-DnDfF7y7.js` → 新 `index-1lmGK0KK.js`)、/health 200、
+  /auth/login 空 body 400(非 5xx,登录红线守住)、线上 CSS 三处均已无 `--brand-red`。
+  换装前已核对旧 bundle 已含 PR #27/#28,本次不夹带其他未审改动。
+
 - **2026-07-22** — 应用 **0045-init-chat**(PR #92,spec 024 教练↔学员 1:1 聊天 W1):建 `conversations`
   / `messages` / `conversation_reads` 三表 + 三索引,并把 `attachments_kind_check` 换成含 `chat_image`
   的新约束(枚举保留原有 `set_video` / `onboarding_video` / `onboarding_doc`,零 kind 丢失)。
