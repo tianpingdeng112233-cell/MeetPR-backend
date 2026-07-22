@@ -37,13 +37,28 @@
 | 0041-init-activity-ledger                       | ✅ 2026-07-17 手动应用(psql,Claude)                             |
 | 0042-init-device-tokens                         | ✅ 2026-07-17 手动应用(psql,Claude)                             |
 | 0044-add-admin-role                             | ✅ 2026-07-18 手动应用(DMS,David;执行成功 5 条语句)             |
+| 0045-init-chat                                  | ✅ 2026-07-22 手动应用(DMS,David;执行成功 11 条语句)            |
 | 0046-add-feedback-video-id                      | ✅ 2026-07-22 手动应用(DMS,David;执行成功 4 条语句)             |
 
 > 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。0043 现由 open PR #77/#79(账本扩展)占号,0044 先行落库,库内号段暂跳 0043——#77/#79 合并应用后回续。
 
-**当前 staging schema head = 0046（0043 / 0045 缺位,均被 open PR 占号,见上）。**
+**当前 staging schema head = 0046（0043 缺位,仍被 open PR #77/#79 占号,见上;0045 已于 2026-07-22 回补）。**
 
 ## 变更历史
+
+- **2026-07-22** — 应用 **0045-init-chat**(PR #92,spec 024 教练↔学员 1:1 聊天 W1):建 `conversations`
+  / `messages` / `conversation_reads` 三表 + 三索引,并把 `attachments_kind_check` 换成含 `chat_image`
+  的新约束(枚举保留原有 `set_video` / `onboarding_video` / `onboarding_doc`,零 kind 丢失)。
+  工具:DMS 控制台(David),执行成功 **11 条语句**。**号段回补**:0045 晚于已落库的 0046 应用,
+  两者对象不相交(0046 只加 `feedback.video_id` 外键,0045 只换 `attachments.kind` 的 CHECK),
+  无顺序依赖;schema head 仍为 **0046**。
+  ⚠️ 本份迁移文件**未自带** `SET search_path TO public;`(0042/0044 同样没有,只有 0046 有),
+  DMS 控制台跑必须手加该行,否则撞 `permission denied for schema information_schema`。
+  同批滚镜像 `sha-7b65af4`(= #92 后端全部聊天代码,零 `web/` 改动)。
+  curl 验证:`/health` 200;四条聊天路由 `GET/POST /conversations`、
+  `GET /conversations/:id/messages`、`POST /conversations/:id/read` 全回 401 `AUTH_INVALID_TOKEN`
+  (证明已挂载且受鉴权保护),对照 `/conversations-nope` 回 404(证明 401 不是兜底);
+  既有 `POST /auth/login` 空体仍回 400,未被打坏。
 
 - **2026-07-22** — 应用 **0046-add-feedback-video-id**(PR #93,spec 025 视频级教练反馈):`feedback`
   加可空 `video_id → attachments(id) ON DELETE SET NULL`,纯 additive。工具:DMS 控制台(David),
@@ -97,7 +112,12 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
-- 2026-07-21(二) — `sha-bd4da5a`(=staging HEAD,纯 web/ 换装:教练端网页**改密码**上线——顶栏
+- 2026-07-22(三) — `sha-7b65af4`(=staging HEAD,#92 教练↔学员 1:1 聊天 backend spec 024 W1:
+  `/conversations` 五条 REST 路由 + 会话内单调 `seq` 排序/分页/已读游标 + canonical active 绑定
+  校验 + `chat_image` 附件种类;零 `web/` 改动)经 deploy-staging.yml(`migrations_applied=true`)
+  部署 `meetpr-backend-staging`;env 未动。**先应用 0045 迁移再滚镜像**(DMS,David,11 条语句成功)。
+  触发前已确认 ACR 镜像 `sha-7b65af4` build-push 完成,避开 2026-07-18 那次「镜像未出竞态」。
+  验证:deploy smoke 全绿 + curl 四条聊天路由 401 / 对照路由 404 / `/auth/login` 400 / `/health` 200。(=staging HEAD,纯 web/ 换装:教练端网页**改密码**上线——顶栏
   「退出」旁加「改密码」;会话收尾按 review-loop 定案:未保存守卫**前置**到发 PUT 之前(还能存时
   让教练退出/保存)、204 后**立即**拆会话(清 token+draft mirror、卸编辑器,不等确认)、成功提示由
   登录页一次性 sessionStorage notice 承载(peek/clear 拆分扛 StrictMode 双跑)、中途 401 走同一
