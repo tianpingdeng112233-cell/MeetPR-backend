@@ -311,8 +311,8 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
 
     CREATE TABLE feedback (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      coach_id UUID NOT NULL REFERENCES users(id),
+      student_id UUID NOT NULL REFERENCES users(id),
       day_date DATE,
       plan_exercise_id UUID REFERENCES plan_exercises(id) ON DELETE SET NULL,
       video_id UUID,
@@ -345,10 +345,13 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       ADD CONSTRAINT feedback_video_id_fkey
       FOREIGN KEY (video_id) REFERENCES attachments(id) ON DELETE SET NULL;
 
+    -- Post-0048 shape: the three users FKs cascade so DELETE /me clears a chat
+    -- member in one statement. Keep in sync with
+    -- db/migrations/0048-chat-user-delete-cascade.sql.
     CREATE TABLE conversations (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      coach_id UUID NOT NULL REFERENCES users(id),
-      student_id UUID NOT NULL REFERENCES users(id),
+      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
       last_message_at TIMESTAMPTZ,
       UNIQUE (coach_id, student_id)

@@ -6,6 +6,13 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
 import { auth, config, ids, makeContext } from './helpers/bindEval';
+// The chat tables (spec 024) only exist in the studentActions harness, so the
+// coached_student deletion case has to build its context from there.
+import {
+  ids as chatIds,
+  makeContext as makeChatContext,
+  type TestContext as ChatTestContext,
+} from './helpers/studentActions';
 
 describe('DELETE /me (spec 011 §1)', () => {
   it('deletes a student account and cascades their data', async () => {
@@ -52,6 +59,106 @@ describe('DELETE /me (spec 011 §1)', () => {
       .where('id', '=', ids.coach)
       .executeTakeFirst();
     expect(userRow).toBeDefined();
+  });
+});
+
+// Regression: 0045 created the chat tables with plain `REFERENCES users(id)`
+// (NO ACTION), so DELETE /me — a bare `DELETE FROM users` — hit 23503 and
+// returned 500 for any coached_student who had ever chatted. Fixed by 0048.
+// The pre-existing suite missed it because it only covered a self_train_student,
+// who can never be a conversation member (the router requires coach or
+// coached_student).
+describe('DELETE /me with chat rows (migration 0048)', () => {
+  async function openConversation(ctx: ChatTestContext): Promise<string> {
+    // Disambiguate the two accepted bonds: the canonical coach is the one whose
+    // acceptance is most recent.
+    await ctx.db
+      .updateTable('bind_requests')
+      .set({ responded_at: new Date('2026-01-01T00:00:00.000Z') })
+      .where('student_id', '=', chatIds.trainee)
+      .execute();
+    await ctx.db
+      .updateTable('bind_requests')
+      .set({ responded_at: new Date('2026-02-01T00:00:00.000Z') })
+      .where('student_id', '=', chatIds.trainee)
+      .where('coach_id', '=', chatIds.coach)
+      .execute();
+
+    const created = await request(ctx.app)
+      .post('/conversations')
+      .set(auth(ctx.coachToken))
+      .send({ other_user_id: chatIds.trainee });
+    expect(created.status).toBe(201);
+    return (created.body as { conversation: { id: string } }).conversation.id;
+  }
+
+  it('deletes a coached_student who has a conversation, messages and a read cursor', async () => {
+    const ctx = await makeChatContext();
+    const conversationId = await openConversation(ctx);
+
+    // Both parties leave a trail: the student's own message, the coach's reply,
+    // and a read cursor per side.
+    const fromStudent = await request(ctx.app)
+      .post(`/conversations/${conversationId}/messages`)
+      .set(auth(ctx.traineeToken))
+      .send({ kind: 'text', body: 'ready for tomorrow', client_id: 'student-1' });
+    expect(fromStudent.status).toBe(201);
+    const fromCoach = await request(ctx.app)
+      .post(`/conversations/${conversationId}/messages`)
+      .set(auth(ctx.coachToken))
+      .send({ kind: 'text', body: 'keep the bar path tight', client_id: 'coach-1' });
+    expect(fromCoach.status).toBe(201);
+
+    const studentRead = await request(ctx.app)
+      .post(`/conversations/${conversationId}/read`)
+      .set(auth(ctx.traineeToken))
+      .send({ message_id: (fromCoach.body as { message: { id: string } }).message.id });
+    expect(studentRead.status).toBe(200);
+    const coachRead = await request(ctx.app)
+      .post(`/conversations/${conversationId}/read`)
+      .set(auth(ctx.coachToken))
+      .send({ message_id: (fromStudent.body as { message: { id: string } }).message.id });
+    expect(coachRead.status).toBe(200);
+
+    expect(await ctx.db.selectFrom('messages').select('id').execute()).toHaveLength(2);
+    expect(await ctx.db.selectFrom('conversation_reads').select('user_id').execute()).toHaveLength(
+      2,
+    );
+
+    const deleted = await request(ctx.app).delete('/me').set(auth(ctx.traineeToken));
+    expect(deleted.status).toBe(204);
+
+    // The whole thread goes with the departing member — including the coach's
+    // own messages and read cursor, which hang off the deleted conversation.
+    expect(await ctx.db.selectFrom('conversations').select('id').execute()).toEqual([]);
+    expect(await ctx.db.selectFrom('messages').select('id').execute()).toEqual([]);
+    expect(await ctx.db.selectFrom('conversation_reads').select('user_id').execute()).toEqual([]);
+    const userRow = await ctx.db
+      .selectFrom('users')
+      .select('id')
+      .where('id', '=', chatIds.trainee)
+      .executeTakeFirst();
+    expect(userRow).toBeUndefined();
+
+    // The cascade stops at the thread: the coach account survives untouched.
+    const coachRow = await ctx.db
+      .selectFrom('users')
+      .select('id')
+      .where('id', '=', chatIds.coach)
+      .executeTakeFirst();
+    expect(coachRow?.id).toBe(chatIds.coach);
+
+    const again = await request(ctx.app).delete('/me').set(auth(ctx.traineeToken));
+    expect(again.status).toBe(204);
+  });
+
+  it('deletes a coached_student whose conversation has no messages yet', async () => {
+    const ctx = await makeChatContext();
+    await openConversation(ctx);
+
+    const deleted = await request(ctx.app).delete('/me').set(auth(ctx.traineeToken));
+    expect(deleted.status).toBe(204);
+    expect(await ctx.db.selectFrom('conversations').select('id').execute()).toEqual([]);
   });
 });
 
