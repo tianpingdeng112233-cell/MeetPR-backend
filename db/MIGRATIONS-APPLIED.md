@@ -34,30 +34,30 @@
 
 ## staging (`meetpr-rds-v01-staging`, pgm-bp1h7t65b7if01rq, 华东1杭州) 应用状态
 
-| 迁移                                            | 应用状态                                                        |
-| ----------------------------------------------- | --------------------------------------------------------------- |
-| 0001 → 0028（含 0002.1 / 0003.5 / 0003.6）      | ✅ 漂移前已应用(库长期在 0028 稳定运行)                         |
-| 0029-init-events / 0030-init-analytics-feedback | ✅ 2026-07-13 手动应用(DMS,David)                               |
-| 0031-adhoc-set-logs                             | ✅ 2026-07-10 手动应用(DMS)                                     |
-| 0032-init-session-reviews                       | ✅ 2026-07-10 手动应用(DMS)                                     |
-| 0033-algo-foundation-schema                     | ✅ 2026-07-10 手动应用(DMS)                                     |
-| 0034-imported-history-assumed                   | ✅ 2026-07-10 手动应用(DMS)                                     |
-| 0035-attachment-lifecycle                       | ✅ 2026-07-10 手动应用(DMS)                                     |
-| 0036-notification-outbox                        | ✅ 2026-07-10 手动应用(DMS)                                     |
-| 0037-add-plan-day-shifts                        | ✅ 2026-07-10 手动应用(DMS)                                     |
-| 0038-whole-plan-shift                           | ✅ 2026-07-12 手动应用(DMS,David)                               |
-| 0040-exercise-competition-stance                | ✅ 应用时点未见于账本(早于对账);2026-07-16 对账发现已在库并补记 |
-| 0039-multi-device-sessions                      | ✅ 2026-07-17 手动应用(psql,Claude)                             |
-| 0041-init-activity-ledger                       | ✅ 2026-07-17 手动应用(psql,Claude)                             |
-| 0042-init-device-tokens                         | ✅ 2026-07-17 手动应用(psql,Claude)                             |
-| 0044-add-admin-role                             | ✅ 2026-07-18 手动应用(DMS,David;执行成功 5 条语句)             |
-| 0045-init-chat                                  | ✅ 2026-07-22 手动应用(DMS,David;执行成功 11 条语句)            |
-| 0046-add-feedback-video-id                      | ✅ 2026-07-22 手动应用(DMS,David;执行成功 4 条语句)             |
-| 0049-add-users-is-test                          | ⏳ 待应用(引入 `users.is_test`,回填既有测试账号)                |
+| 迁移                                            | 应用状态                                                                |
+| ----------------------------------------------- | ----------------------------------------------------------------------- |
+| 0001 → 0028（含 0002.1 / 0003.5 / 0003.6）      | ✅ 漂移前已应用(库长期在 0028 稳定运行)                                 |
+| 0029-init-events / 0030-init-analytics-feedback | ✅ 2026-07-13 手动应用(DMS,David)                                       |
+| 0031-adhoc-set-logs                             | ✅ 2026-07-10 手动应用(DMS)                                             |
+| 0032-init-session-reviews                       | ✅ 2026-07-10 手动应用(DMS)                                             |
+| 0033-algo-foundation-schema                     | ✅ 2026-07-10 手动应用(DMS)                                             |
+| 0034-imported-history-assumed                   | ✅ 2026-07-10 手动应用(DMS)                                             |
+| 0035-attachment-lifecycle                       | ✅ 2026-07-10 手动应用(DMS)                                             |
+| 0036-notification-outbox                        | ✅ 2026-07-10 手动应用(DMS)                                             |
+| 0037-add-plan-day-shifts                        | ✅ 2026-07-10 手动应用(DMS)                                             |
+| 0038-whole-plan-shift                           | ✅ 2026-07-12 手动应用(DMS,David)                                       |
+| 0040-exercise-competition-stance                | ✅ 应用时点未见于账本(早于对账);2026-07-16 对账发现已在库并补记         |
+| 0039-multi-device-sessions                      | ✅ 2026-07-17 手动应用(psql,Claude)                                     |
+| 0041-init-activity-ledger                       | ✅ 2026-07-17 手动应用(psql,Claude)                                     |
+| 0042-init-device-tokens                         | ✅ 2026-07-17 手动应用(psql,Claude)                                     |
+| 0044-add-admin-role                             | ✅ 2026-07-18 手动应用(DMS,David;执行成功 5 条语句)                     |
+| 0045-init-chat                                  | ✅ 2026-07-22 手动应用(DMS,David;执行成功 11 条语句)                    |
+| 0046-add-feedback-video-id                      | ✅ 2026-07-22 手动应用(DMS,David;执行成功 4 条语句)                     |
+| 0049-add-users-is-test                          | ✅ 2026-07-23 手动应用(DMS,David;执行成功 5 条语句,标记 2 个 seed 账号) |
 
 > 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。0043 现由 open PR #77/#79(账本扩展)占号,0044 先行落库,库内号段暂跳 0043——#77/#79 合并应用后回续。0047 已被 open PR #95、0048 已被 #99 占用,因此下一份空号取 0049。
 
-**当前 staging schema head = 0046（0043 缺位,0049 待应用;0047/0048 仍由 open PR 占号）。**
+**当前 staging schema head = 0049（0043 缺位、0047/0048 仍由 open PR #95/#99 占号,合并应用后回补）。**
 
 ## 变更历史
 
