@@ -192,6 +192,7 @@ export interface UsersTable {
   password_hash: string;
   role: UserRole;
   refresh_token_jti: NullableColumn<string>;
+  is_test: Generated<boolean>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }

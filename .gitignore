@@ -1,6 +1,9 @@
 node_modules/
 dist/
 coverage/
+/backups/
+*.sql.gz
+*.sql.gz.*
 
 .env
 .env.local
