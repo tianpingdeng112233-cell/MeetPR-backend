@@ -135,6 +135,11 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-24(五) — `sha-cf7029f`(=staging HEAD,#102 纯 web/ 换装:plan-web 学员整体顺延渲染 #31——
+  网格按 `shifted_to_date` 显示日期+顺延 badge、TopBar 顺延提示、拖拽搬带顺延天先确认并清快照;
+  bundle c4b3316/入口 index-C2dhtVsP.js)经 deploy-staging.yml(`migrations_applied=true`,无迁移)部署
+  `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口、入口 js 200 且含顺延文案、/health 200、
+  /auth/login 空 body 400(校验正常)。
 - 2026-07-22(三) — `sha-7b65af4`(=staging HEAD,#92 教练↔学员 1:1 聊天 backend spec 024 W1:
   `/conversations` 五条 REST 路由 + 会话内单调 `seq` 排序/分页/已读游标 + canonical active 绑定
   校验 + `chat_image` 附件种类;零 `web/` 改动)经 deploy-staging.yml(`migrations_applied=true`)
