@@ -26,6 +26,7 @@ import { studentReviewsRouter } from './reviews';
 import { setsRouter, studentSetsRouter } from './sets';
 import { coachSignalsRouter, studentSignalsRouter } from './signals';
 import { studentRouter } from './student';
+import { studentTrainingStreakRouter } from './training-streak';
 import { uploadsRouter } from './uploads';
 import type { OssService } from '../services/oss';
 
@@ -54,6 +55,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use('/students', deps.requireAuth, studentOnboardingRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentVideosRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentSignalsRouter({ db: deps.db }));
+  app.use('/students', deps.requireAuth, studentTrainingStreakRouter({ db: deps.db }));
   app.use('/bind-requests', deps.requireAuth, studentBindRequestsRouter({ db: deps.db }));
   app.use('/exercises', deps.requireAuth, exercisesRouter({ db: deps.db }));
   app.use('/sets', deps.requireAuth, setsRouter({ db: deps.db }));
