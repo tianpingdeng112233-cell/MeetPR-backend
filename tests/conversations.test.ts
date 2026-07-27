@@ -278,6 +278,34 @@ describe('GET /conversations', () => {
 
   it('uses id DESC as the stable tie-break for equal last_message_at values', async () => {
     const ctx = await makeContext();
+    // The harness deliberately leaves ids.coach non-canonical for one student. Since spec 029
+    // a former coach's last_message_at falls back to the last *visible* message — null for
+    // these synthetic message-less rows — which would sort that row last and stop this test
+    // from exercising what it exists for: the id tie-break. Pin ids.coach as the canonical
+    // accepted coach for both students so both rows keep their seeded timestamp.
+    await ctx.db
+      .updateTable('bind_requests')
+      .set({ responded_at: new Date('2026-05-01T00:00:00.000Z') })
+      .where('student_id', '=', ids.trainee)
+      .execute();
+    await ctx.db
+      .updateTable('bind_requests')
+      .set({ responded_at: new Date('2026-05-02T00:00:00.000Z') })
+      .where('student_id', '=', ids.trainee)
+      .where('coach_id', '=', ids.coach)
+      .execute();
+    // The harness seeds no bond at all for otherStudent — add one so this row is a
+    // current-coach view too.
+    await ctx.db
+      .insertInto('bind_requests')
+      .values({
+        student_id: ids.otherStudent,
+        coach_id: ids.coach,
+        status: 'accepted',
+        responded_at: new Date('2026-05-02T00:00:00.000Z'),
+        expired_at: new Date('2026-05-22T00:00:00.000Z'),
+      })
+      .execute();
     const tiedAt = new Date('2026-06-01T10:00:00.000Z');
     const lowerId = '20000000-0000-4000-8000-000000000001';
     const higherId = '20000000-0000-4000-8000-000000000002';

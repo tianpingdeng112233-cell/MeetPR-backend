@@ -1,0 +1,142 @@
+{
+  "valid": [
+    {
+      "name": "all-null",
+      "set_ref": {
+        "v": 1,
+        "exercise_name": "低杠位深蹲",
+        "set_number": 1,
+        "weight_kg": null,
+        "reps": null,
+        "rpe": null,
+        "day_date": "2026-07-27",
+        "set_log_id": "70000000-0000-4000-8000-000000000001"
+      },
+      "first_line": "[训练分享] 低杠位深蹲 第1组 -kg×- (2026-07-27)"
+    },
+    {
+      "name": "weight-null",
+      "set_ref": {
+        "v": 1,
+        "exercise_name": "低杠位深蹲",
+        "set_number": 3,
+        "weight_kg": null,
+        "reps": 5,
+        "rpe": "8.5",
+        "day_date": "2026-07-27",
+        "set_log_id": "70000000-0000-4000-8000-000000000001"
+      },
+      "first_line": "[训练分享] 低杠位深蹲 第3组 -kg×5 @RPE8.5 (2026-07-27)"
+    },
+    {
+      "name": "reps-null",
+      "set_ref": {
+        "v": 1,
+        "exercise_name": "低杠位深蹲",
+        "set_number": 3,
+        "weight_kg": "100",
+        "reps": null,
+        "rpe": "8.5",
+        "day_date": "2026-07-27",
+        "set_log_id": "70000000-0000-4000-8000-000000000001"
+      },
+      "first_line": "[训练分享] 低杠位深蹲 第3组 100kg×- @RPE8.5 (2026-07-27)"
+    },
+    {
+      "name": "rpe-null",
+      "set_ref": {
+        "v": 1,
+        "exercise_name": "低杠位深蹲",
+        "set_number": 3,
+        "weight_kg": "100",
+        "reps": 5,
+        "rpe": null,
+        "day_date": "2026-07-27",
+        "set_log_id": "70000000-0000-4000-8000-000000000001"
+      },
+      "first_line": "[训练分享] 低杠位深蹲 第3组 100kg×5 (2026-07-27)"
+    },
+    {
+      "name": "floating-trap-0.29",
+      "set_ref": {
+        "v": 1,
+        "exercise_name": "哑铃飞鸟",
+        "set_number": 2,
+        "weight_kg": "0.29",
+        "reps": 8,
+        "rpe": "8.5",
+        "day_date": "2026-07-27",
+        "set_log_id": "70000000-0000-4000-8000-000000000001"
+      },
+      "first_line": "[训练分享] 哑铃飞鸟 第2组 0.29kg×8 @RPE8.5 (2026-07-27)"
+    },
+    {
+      "name": "floating-trap-1.15-and-zero-reps",
+      "set_ref": {
+        "v": 1,
+        "exercise_name": "失败组",
+        "set_number": 2,
+        "weight_kg": "1.15",
+        "reps": 0,
+        "rpe": "0",
+        "day_date": "2026-07-27",
+        "set_log_id": "70000000-0000-4000-8000-000000000001"
+      },
+      "first_line": "[训练分享] 失败组 第2组 1.15kg×0 @RPE0 (2026-07-27)"
+    },
+    {
+      "name": "upper-boundary",
+      "set_ref": {
+        "v": 1,
+        "exercise_name": "极限组",
+        "set_number": 2147483648,
+        "weight_kg": "9999.99",
+        "reps": 99,
+        "rpe": "10",
+        "day_date": "2024-02-29",
+        "set_log_id": "70000000-0000-4000-8000-000000000001"
+      },
+      "first_line": "[训练分享] 极限组 第2147483648组 9999.99kg×99 @RPE10 (2024-02-29)"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "weight-trailing-zero",
+      "patch": { "weight_kg": "100.10" }
+    },
+    {
+      "name": "weight-leading-zero",
+      "patch": { "weight_kg": "08" }
+    },
+    {
+      "name": "rpe-dot-zero",
+      "patch": { "rpe": "8.0" }
+    },
+    {
+      "name": "rpe-non-half-step",
+      "patch": { "rpe": "8.3" }
+    },
+    {
+      "name": "invalid-calendar-date",
+      "patch": { "day_date": "2026-02-30" }
+    },
+    {
+      "name": "unknown-field",
+      "patch": { "unknown": true }
+    }
+  ],
+  "exercise_name_code_point_boundaries": [
+    {
+      "name": "120 non-BMP characters",
+      "unit": "😀",
+      "repeat": 120,
+      "valid": true
+    },
+    {
+      "name": "121 non-BMP characters",
+      "unit": "😀",
+      "repeat": 121,
+      "valid": false
+    }
+  ]
+}

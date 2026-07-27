@@ -18,6 +18,11 @@ const TextMessageBodySchema = z
     kind: z.literal('text'),
     body: z.string().min(1).max(4000),
     client_id: z.string().min(1).max(64),
+    // Parsed strictly only after the idempotency lookup. Existing client_id
+    // hits intentionally return the stored message without revalidating a
+    // retried payload (chat spec 024 idempotency contract).
+    set_ref: z.unknown().optional(),
+    video_id: z.unknown().optional(),
   })
   .strict();
 

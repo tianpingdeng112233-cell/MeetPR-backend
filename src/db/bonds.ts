@@ -19,16 +19,36 @@ export async function resolveCanonicalAcceptedBond(
   db: DbExecutor,
   studentId: string,
 ): Promise<CanonicalAcceptedBond | undefined> {
-  return db
+  return (await resolveCanonicalAcceptedBonds(db, [studentId]))[0];
+}
+
+/**
+ * Batch form of the canonical accepted-bond resolver. Candidate ordering is
+ * the exact spec 024 ordering used by the original single-student query.
+ */
+export async function resolveCanonicalAcceptedBonds(
+  db: DbExecutor,
+  studentIds: string[],
+): Promise<CanonicalAcceptedBond[]> {
+  if (studentIds.length === 0) return [];
+
+  const candidates = await db
     .selectFrom('bind_requests')
     .select(['id', 'coach_id', 'student_id'])
-    .where('student_id', '=', studentId)
+    .where('student_id', 'in', studentIds)
     .where('status', '=', 'accepted')
+    .orderBy('student_id')
     .orderBy(sql`responded_at DESC NULLS LAST`)
     .orderBy('submitted_at', 'desc')
     .orderBy('id', 'desc')
-    .limit(1)
-    .executeTakeFirst();
+    .execute();
+
+  const seenStudents = new Set<string>();
+  return candidates.filter((candidate) => {
+    if (seenStudents.has(candidate.student_id)) return false;
+    seenStudents.add(candidate.student_id);
+    return true;
+  });
 }
 
 /** True when (coach, student) share an accepted bind_requests bond. */
