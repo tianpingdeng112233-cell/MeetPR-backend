@@ -135,6 +135,16 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-27(日) — `sha-5bf9792`(=staging HEAD,#108 纯 web/ 换装:plan-web 教练网页端 1:1 聊天
+  spec 006 W1——会话列表/线程/输入区、5s 线程轮询 + 30s 收件箱轮询、已读游标、图片只读渲染,
+  外加走查抓到的两处滚动修复(重入会话贴底 + 加载更早的锚点保持,原用裸 rAF 会读到过期 scrollHeight);
+  bundle 40dc253/入口 index-BpjdY1hI.js + index-DLBqI-TP.css)经 deploy-staging.yml
+  (`migrations_applied=true`,**无迁移**)部署 `meetpr-backend-staging`;env 未动。
+  curl 验证:GET / 回新入口哈希(非看 workflow 绿灯)、入口 js 200 且含「发起对话」「已送达」
+  与 `/conversations`、产物中 `"/api"` 出现 0 次、CSS 含沉底规则、/health 200。
+  ⚠️ 首次触发部署失败:合并后立刻触发,`Build & push staging image` 尚未把 sha 推进 ACR,
+  「Verify image exists in ACR」直接拒绝(**先校验后动手,线上未被动过**)。
+  **合并后必须等镜像构建完成再触发 deploy-staging.yml。**
 - 2026-07-24(五) — `sha-cf7029f`(=staging HEAD,#102 纯 web/ 换装:plan-web 学员整体顺延渲染 #31——
   网格按 `shifted_to_date` 显示日期+顺延 badge、TopBar 顺延提示、拖拽搬带顺延天先确认并清快照;
   bundle c4b3316/入口 index-C2dhtVsP.js)经 deploy-staging.yml(`migrations_applied=true`,无迁移)部署
