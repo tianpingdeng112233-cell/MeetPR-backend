@@ -135,6 +135,17 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-27(日) — `sha-4fb71c9`(=staging HEAD,#111 纯 web/ 换装:plan-web 聊天滚动补审 loop 产出
+  [plan-web#33];bundle 60216de/入口 index-3BNAfztL.js,CSS 未变仍 index-DLBqI-TP.css)经
+  deploy-staging.yml(`migrations_applied=true`,**无迁移**)部署 `meetpr-backend-staging`;env 未动。
+  **修掉的是 sha-5bf9792 带上线的一个真缺陷**:自动沉底会触发 `document` 捕获阶段的 scroll 监听,
+  而那正是打已读的交互判定所依赖的——闲置教练停在会话底部时,每来一条消息就把自己的交互时间戳
+  刷新一次,下一拍轮询即打已读,违反 spec 006 §8.2.25「已读不越权」。现改为程序化滚动 arm 一个
+  绑定落点的一次性标记(不用时间窗:长任务会让事件迟到、窗口内真实滚动又被吞)。
+  同批修:loadHistory 的高度改在响应返回后采样、轮询 nearBottom 改在合并那一刻现算。
+  curl 验证:GET / 回新入口哈希、入口 js 200 且 `"/api"` 0 次 / client.ts marker 1 处 /
+  含聊天与 #31 顺延渲染 / 可辨认一次性标记逻辑、/health 200。
+  ⚠️ 本次**先等 `Build & push staging image` 完成再触发部署**(上一条 sha-5bf9792 就是没等而首触失败)。
 - 2026-07-27(日) — `sha-5bf9792`(=staging HEAD,#108 纯 web/ 换装:plan-web 教练网页端 1:1 聊天
   spec 006 W1——会话列表/线程/输入区、5s 线程轮询 + 30s 收件箱轮询、已读游标、图片只读渲染,
   外加走查抓到的两处滚动修复(重入会话贴底 + 加载更早的锚点保持,原用裸 rAF 会读到过期 scrollHeight);
