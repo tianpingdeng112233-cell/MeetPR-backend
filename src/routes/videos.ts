@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { hasAcceptedBond } from '../db/bonds';
 import type { Database } from '../db/types';
 import { timestamp } from '../handlers/serialization';
+import { coachSetVideoProvenancePredicate } from '../handlers/set-video-access';
 import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
@@ -81,16 +82,7 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
         .where('a.status', '=', 'ready');
 
       if (isBondedCoach) {
-        // A set-log can be detached by legacy data maintenance. Its immutable
-        // source coach remains the visibility gate, so an orphan cannot become
-        // a broadly-visible "unlinked" video.
-        const coachId = req.user.id;
-        query = query.where((eb) =>
-          eb.or([
-            eb.and([eb('a.is_unlinked_explicit', '=', true), eb('a.source_coach_id', 'is', null)]),
-            eb('a.source_coach_id', '=', coachId),
-          ]),
-        );
+        query = query.where(coachSetVideoProvenancePredicate(req.user.id, 'a'));
       }
 
       const rows = await query.orderBy('a.created_at', 'desc').limit(WALL_LIMIT).execute();
