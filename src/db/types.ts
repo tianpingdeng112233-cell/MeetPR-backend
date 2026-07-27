@@ -187,12 +187,18 @@ type NullableJsonColumn<T> = ColumnType<T | null, T | string | null | undefined,
 
 export interface UsersTable {
   id: Generated<string>;
-  phone: string;
+  // Nullable since 0050: an anonymized account releases its number so the same
+  // person can register with it again. Live accounts always have one (CHECK
+  // users_phone_present_unless_deleted).
+  phone: NullableColumn<string>;
   apple_user_id: NullableColumn<string>;
   password_hash: string;
   role: UserRole;
   refresh_token_jti: NullableColumn<string>;
   is_test: Generated<boolean>;
+  // NULL = live account. Set by DELETE /me (spec 011 §1); the login and refresh
+  // paths reject rows where it is set.
+  deleted_at: NullableColumn<Date>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }

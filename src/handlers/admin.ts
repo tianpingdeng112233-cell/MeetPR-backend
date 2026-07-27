@@ -11,7 +11,8 @@ interface SafeUserRow {
   id: string;
   display_name: string | null;
   role: UserRole;
-  phone: string;
+  // NULL for accounts anonymized by DELETE /me (migration 0050).
+  phone: string | null;
   created_at: Date;
 }
 
@@ -130,7 +131,8 @@ function toAdminUser(row: SafeUserRow, bonds: BondIndex): AdminUser {
     id: row.id,
     displayName: row.display_name,
     role: row.role,
-    phone: row.phone,
+    // Keep the admin wire contract non-null for the shipped plan-web build.
+    phone: row.phone ?? '',
     createdAt: timestamp(row.created_at),
     relation: userRelation(row, bonds),
   };
