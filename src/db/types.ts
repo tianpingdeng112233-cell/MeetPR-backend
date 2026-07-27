@@ -124,6 +124,7 @@ export const ATTACHMENT_STATUSES = [
   'failed',
   'deleting',
 ] as const;
+export const VIDEO_MARKER_LEVELS = ['info', 'warn', 'bad'] as const;
 // Analytics event platform. The column is text for forward-compat; this const
 // is the current closed set (SPEC 008 §6). 'android' added 2026-07-19 for the
 // RN Android client (meetpr-rn W0).
@@ -168,6 +169,7 @@ export type InjuryArea = (typeof INJURY_AREAS)[number];
 export type ReadinessMuscleGroup = (typeof READINESS_MUSCLE_GROUPS)[number];
 export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
 export type AttachmentStatus = (typeof ATTACHMENT_STATUSES)[number];
+export type VideoMarkerLevel = (typeof VIDEO_MARKER_LEVELS)[number];
 export type EventPlatform = (typeof EVENT_PLATFORMS)[number];
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 export type StudentEventType = (typeof STUDENT_EVENT_TYPES)[number];
@@ -565,6 +567,16 @@ export interface AttachmentsTable {
   updated_at: TimestampColumn;
 }
 
+export interface VideoMarkersTable {
+  id: Generated<string>;
+  video_id: string;
+  coach_id: string;
+  time_ms: number;
+  level: Generated<VideoMarkerLevel>;
+  note: Generated<string>;
+  created_at: Generated<Date>;
+}
+
 export interface ConversationsTable {
   id: Generated<string>;
   coach_id: string;
@@ -732,6 +744,7 @@ export interface Database {
   student_onboarding_profiles: StudentOnboardingProfilesTable;
   onboarding_uploads: OnboardingUploadsTable;
   attachments: AttachmentsTable;
+  video_markers: VideoMarkersTable;
   conversations: ConversationsTable;
   messages: MessagesTable;
   conversation_reads: ConversationReadsTable;

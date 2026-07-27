@@ -28,6 +28,7 @@ import { coachSignalsRouter, studentSignalsRouter } from './signals';
 import { studentRouter } from './student';
 import { studentTrainingStreakRouter } from './training-streak';
 import { uploadsRouter } from './uploads';
+import { videoMarkersRouter } from './video-markers';
 import type { OssService } from '../services/oss';
 
 interface RouteDeps {
@@ -89,4 +90,5 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
     deps.requireAuth,
     uploadsRouter({ db: deps.db, logger: deps.logger, oss: deps.oss }),
   );
+  app.use('/videos', deps.requireAuth, videoMarkersRouter({ db: deps.db }));
 }

@@ -3,6 +3,7 @@ import { sql } from 'kysely';
 
 import type { Database } from '../db/types';
 import { type FeedbackResponse, toFeedback } from './feedback-serialization';
+import { coachSetVideoProvenancePredicate } from './set-video-access';
 
 export interface FeedbackInput {
   student_id: string;
@@ -72,12 +73,7 @@ export async function coachMayAttachSetVideo(
     .where('owner_id', '=', studentId)
     .where('kind', '=', 'set_video')
     .where('status', '=', 'ready')
-    .where((eb) =>
-      eb.or([
-        eb.and([eb('is_unlinked_explicit', '=', true), eb('source_coach_id', 'is', null)]),
-        eb('source_coach_id', '=', coachId),
-      ]),
-    )
+    .where(coachSetVideoProvenancePredicate(coachId))
     .limit(1)
     .executeTakeFirst();
 
