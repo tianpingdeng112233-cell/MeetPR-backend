@@ -20,12 +20,14 @@
 ## 1. 目标与非目标
 
 ### 1.1 目标
+
 - 学员从**训练页**(今日训练,已录完的组)一键「问教练」→ 冻结快照 → 进聊天补一句话发送,可附该组视频。
 - 聊天内同一选择器可发起(仅列今日已录组)。
 - 教练在 plan-web 与 iOS ChatUI 看到数字卡(动作名/第 N 组/重量×次数/RPE/日期),有视频则就地播放。
 - 老客户端(iOS ≤1.0(14)、旧 web bundle)看到 body 降级文本,不崩不缺。
 
 ### 1.2 非目标(明确不做,别顺手做)
+
 - 日级整份分享(被搁置的 B 楔子);教练→学员方向(服务端强制,见 §3);多组打包(D2 默认);
 - 转发/引用回复/撤回;W2 APNs;学员端收件口重塑(已改排本波之后);冷启动 deep link(见 §5)。
 
@@ -56,18 +58,18 @@ CREATE INDEX messages_video_id_idx ON messages (video_id) WHERE video_id IS NOT 
 ```jsonc
 {
   "v": 1,
-  "exercise_name": "低杠位深蹲",  // 冻结显示名;禁止换行与控制字符(防逃逸 §3 首行边界)
-  "set_number": 3,                // ⚠️ 1-based 展示序号 = set_logs.set_index + 1。
-                                  // 命名刻意避开 set_index:本仓 set_logs.set_index 是 0-based
-                                  // (0005 CHECK >=0 实证)。⚠️ backend feedback 序列化原样回传
-                                  // 0-based(feedback-serialization.ts:70),「第1组显示#2」的
-                                  // 病根在哪一层喂错**尚未定位**——C0 的任务就是逐面审计并
-                                  // 建立 per-surface fixture,不许按传言删任何 +1。
-  "weight_kg": "100",             // 可空;**十进制字符串**,规范形(无尾零/无多余前导零)
-  "reps": 5,                      // 可空,整数 0..99(0 合法,失败组)
-  "rpe": "8.5",                   // 可空;**十进制字符串**,0..10,0.5 步进(域正典)
-  "day_date": "2026-07-27",       // 学员 gym-day 口径
-  "set_log_id": "uuid"            // 轻量溯源,见 §3 校验级别
+  "exercise_name": "低杠位深蹲", // 冻结显示名;禁止换行与控制字符(防逃逸 §3 首行边界)
+  "set_number": 3, // ⚠️ 1-based 展示序号 = set_logs.set_index + 1。
+  // 命名刻意避开 set_index:本仓 set_logs.set_index 是 0-based
+  // (0005 CHECK >=0 实证)。⚠️ backend feedback 序列化原样回传
+  // 0-based(feedback-serialization.ts:70),「第1组显示#2」的
+  // 病根在哪一层喂错**尚未定位**——C0 的任务就是逐面审计并
+  // 建立 per-surface fixture,不许按传言删任何 +1。
+  "weight_kg": "100", // 可空;**十进制字符串**,规范形(无尾零/无多余前导零)
+  "reps": 5, // 可空,整数 0..99(0 合法,失败组)
+  "rpe": "8.5", // 可空;**十进制字符串**,0..10,0.5 步进(域正典)
+  "day_date": "2026-07-27", // 学员 gym-day 口径
+  "set_log_id": "uuid", // 轻量溯源,见 §3 校验级别
 }
 ```
 
@@ -146,8 +148,8 @@ visible(viewer, message) =
   5. **会话列表排序**(同上,按 viewer 视角的 last_message_at 排,防隐藏卡把前教练的旧会话顶上来);
   6. `my_last_read` 与 7. `other_last_read`(现值精确 join 原消息 `index.ts:105`——wire cursor
      **投影**为「不大于原始 seq 的最后一条可见消息」;原始 seq 保留在库,只投影 wire);
-  8. `meta.other_last_read`(messages 响应内,同投影);
-  9. **`POST /read`**:前教练提交隐藏卡 message_id → 400 `CHAT_INVALID_CURSOR`(既有错误码)。
+  7. `meta.other_last_read`(messages 响应内,同投影);
+  8. **`POST /read`**:前教练提交隐藏卡 message_id → 400 `CHAT_INVALID_CURSOR`(既有错误码)。
 - **seq 空洞口径**:前教练视角 seq 允许缺号;分页协议无碍(`since_seq`/`before_seq` 是比较,
   `has_more` 靠多取一条)。**测试与走查断言从「严格连续」放宽为「无重复、单调递增」**。
 - wire 每条消息新增可空 `set_ref`(原样)与 `video_url` + `video_expires_in`。逐字段写死:
@@ -188,13 +190,13 @@ visible(viewer, message) =
 
 ## 7. 兼容矩阵(全部进验收,缺一不收)
 
-| 场景 | 预期 |
-|---|---|
-| iOS 1.0(14) 真包收 v1 卡 | 不崩;聊天页与会话列表渲染 body 文本与 `[训练分享]` 预览 |
-| **旧 plan-web bundle**(当前已部署版)收 v1 卡 | 按 text body 显示,无空消息 |
-| 新 iOS / 新 plan-web 收 `set_ref.v=2` | 仅该卡降级文本;消息数组/会话页完整(iOS 用 lossy decode 测「v2 卡夹在普通消息中」) |
-| 新服务端收旧客户端普通 text/image | 行为不变(仅响应多可空字段) |
-| **部署顺序** | backend(含隐私闭环)先上;客户端发卡能力后放。**C1 未含 §4 闭环前不得部署** |
+| 场景                                         | 预期                                                                              |
+| -------------------------------------------- | --------------------------------------------------------------------------------- |
+| iOS 1.0(14) 真包收 v1 卡                     | 不崩;聊天页与会话列表渲染 body 文本与 `[训练分享]` 预览                           |
+| **旧 plan-web bundle**(当前已部署版)收 v1 卡 | 按 text body 显示,无空消息                                                        |
+| 新 iOS / 新 plan-web 收 `set_ref.v=2`        | 仅该卡降级文本;消息数组/会话页完整(iOS 用 lossy decode 测「v2 卡夹在普通消息中」) |
+| 新服务端收旧客户端普通 text/image            | 行为不变(仅响应多可空字段)                                                        |
+| **部署顺序**                                 | backend(含隐私闭环)先上;客户端发卡能力后放。**C1 未含 §4 闭环前不得部署**         |
 
 ## 8. 验收标准(跨端硬项;各卡另带机械闸)
 
@@ -214,15 +216,15 @@ visible(viewer, message) =
 
 ## 9. 分卡(每卡一个可 review 的原子 diff)
 
-| 卡 | 级 | 端 | 范围 | 依赖 |
-|---|---|---|---|---|
-| **C0 前置** | T1 | iOS | **组号口径统一**:建立三端 fixture(源 0-based → 展示 1-based);审计并修正「喂 1-based 值进 +1 显示组件」的路径(`HistoryEntriesView`/`SetReadOnlyCell` 及 feedback wire 消费处);落 release/1.0。⚠️ 不是无脑删 `+1`——源是 0-based 时 `+1` 是正确转换 | 无,**先行合并** |
-| **C1** | T2 | backend | 迁移 `NNNN` + 写路径(§3 全部校验)+ 读路径 + **§4 九处隐私闭环**(与读写同卡原子上线,不拆——拆开会造出「任何 API 客户端可写卡、前教练可全读」的可部署中间态) | 无 |
-| **C2a** | T1 | iOS | **共享层**:`SetRefV1` 模型 + canonical formatter(机械首行,golden fixtures 与 backend 共享)+ **源值规范化**(set wire 常见 `"100.00"`/`"8.0"` → intent builder 解析为 minor units 后输出规范形 `"100"`/`"8"`;服务端只校验不代规范化;fixture 含 `"100.00"→"100"`、`"8.0"→"8"`)+ `ChatSendCoordinator` 扩展(意图/client_id 单次 mint/上传订阅自动发) | C0 |
-| **C2b** | T1 | iOS | 训练页入口 + 选择器 + 会话懒创建 + in-app 路由 + 发送 UI | **C1、C2a** |
-| **C2c** | T1 | iOS | ChatUI 接收渲染 + lossy decode + 教练端播视频 | **C1、C2a**(与 C2b 并行) |
-| **C3** | T1 | plan-web | 组卡渲染 + 就地播视频 + 续签 + v 降级 | C1 |
-| ~~C4~~ | — | — | **已并入 C1**(BLOCKER 7:隐私闭环不得晚于读写部署) | — |
+| 卡          | 级  | 端       | 范围                                                                                                                                                                                                                                                                                                                                             | 依赖                     |
+| ----------- | --- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
+| **C0 前置** | T1  | iOS      | **组号口径统一**:建立三端 fixture(源 0-based → 展示 1-based);审计并修正「喂 1-based 值进 +1 显示组件」的路径(`HistoryEntriesView`/`SetReadOnlyCell` 及 feedback wire 消费处);落 release/1.0。⚠️ 不是无脑删 `+1`——源是 0-based 时 `+1` 是正确转换                                                                                                 | 无,**先行合并**          |
+| **C1**      | T2  | backend  | 迁移 `NNNN` + 写路径(§3 全部校验)+ 读路径 + **§4 九处隐私闭环**(与读写同卡原子上线,不拆——拆开会造出「任何 API 客户端可写卡、前教练可全读」的可部署中间态)                                                                                                                                                                                        | 无                       |
+| **C2a**     | T1  | iOS      | **共享层**:`SetRefV1` 模型 + canonical formatter(机械首行,golden fixtures 与 backend 共享)+ **源值规范化**(set wire 常见 `"100.00"`/`"8.0"` → intent builder 解析为 minor units 后输出规范形 `"100"`/`"8"`;服务端只校验不代规范化;fixture 含 `"100.00"→"100"`、`"8.0"→"8"`)+ `ChatSendCoordinator` 扩展(意图/client_id 单次 mint/上传订阅自动发) | C0                       |
+| **C2b**     | T1  | iOS      | 训练页入口 + 选择器 + 会话懒创建 + in-app 路由 + 发送 UI                                                                                                                                                                                                                                                                                         | **C1、C2a**              |
+| **C2c**     | T1  | iOS      | ChatUI 接收渲染 + lossy decode + 教练端播视频                                                                                                                                                                                                                                                                                                    | **C1、C2a**(与 C2b 并行) |
+| **C3**      | T1  | plan-web | 组卡渲染 + 就地播视频 + 续签 + v 降级                                                                                                                                                                                                                                                                                                            | C1                       |
+| ~~C4~~      | —   | —        | **已并入 C1**(BLOCKER 7:隐私闭环不得晚于读写部署)                                                                                                                                                                                                                                                                                                | —                        |
 
 - C2a 先行;**C2b 与 C2c 可并行**(formatter 唯一 owner 是 C2a);C3 与 C2 系并行。发卡能力(C2b)必须晚于 C1 部署(§7 矩阵)。
 - **迁移取号纪律**:C1 开工当天 `gh pr list --json number,files` + `ls db/migrations/` 现场取;
