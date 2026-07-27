@@ -84,7 +84,10 @@ type RefreshResult =
 function toClientUser(row: ClientUserRow): ClientUser {
   return {
     id: row.id,
-    phone: row.phone,
+    // users.phone is nullable since 0050, but only for anonymized rows — which
+    // register/login structurally cannot return. The fallback keeps the wire
+    // contract non-null for shipped clients (CLAUDE.md hard rule 8).
+    phone: row.phone ?? '',
     role: row.role,
     createdAt: row.created_at.toISOString(),
   };
@@ -276,6 +279,9 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
           .selectFrom('users')
           .select(['id', 'phone', 'password_hash', 'role', 'created_at'])
           .where('phone', '=', body.data.phone)
+          // An anonymized account has a NULL phone and so can never match here;
+          // the guard is explicit so the intent survives future query edits.
+          .where('deleted_at', 'is', null)
           .forUpdate()
           .executeTakeFirst();
         if (!lockedUser) return null;
@@ -357,6 +363,7 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
               .selectFrom('users')
               .select(['id', 'role', 'refresh_token_jti'])
               .where('id', '=', payload.data.sub)
+              .where('deleted_at', 'is', null)
               .forUpdate()
               .executeTakeFirst()
           : undefined;
@@ -373,6 +380,9 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
           .where('sessions.user_id', '=', payload.data.sub)
           .where('sessions.refresh_token_jti', '=', payload.data.jti)
           .where('sessions.revoked_at', 'is', null)
+          // Anonymized accounts (spec 011 §1) have every session revoked already;
+          // this is the belt to that braces.
+          .where('users.deleted_at', 'is', null)
           .forUpdate()
           .executeTakeFirst();
 
@@ -411,6 +421,7 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
           .where('sessions.prev_jti', '=', payload.data.jti)
           .where('sessions.prev_jti_valid_until', '>', sql<Date>`now()`)
           .where('sessions.revoked_at', 'is', null)
+          .where('users.deleted_at', 'is', null)
           .forUpdate()
           .executeTakeFirst();
 

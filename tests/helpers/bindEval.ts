@@ -103,13 +103,25 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
   mem.public.none(`
     CREATE TABLE users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      phone TEXT NOT NULL UNIQUE,
+      -- Nullable + deleted_at per migration 0050 (anonymized deletion).
+      phone TEXT UNIQUE,
       apple_user_id TEXT,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL,
       refresh_token_jti UUID,
+      deleted_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE device_tokens (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      platform TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
     CREATE TABLE sessions (

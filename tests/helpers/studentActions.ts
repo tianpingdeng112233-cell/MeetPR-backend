@@ -121,13 +121,26 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
   mem.public.none(`
     CREATE TABLE users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      phone TEXT NOT NULL UNIQUE,
+      -- Nullable + deleted_at per migration 0050 (anonymized deletion).
+      phone TEXT UNIQUE,
       apple_user_id TEXT,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL,
       refresh_token_jti UUID,
+      deleted_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE sessions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      refresh_token_jti UUID NOT NULL UNIQUE,
+      prev_jti UUID,
+      prev_jti_valid_until TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      last_used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      revoked_at TIMESTAMPTZ
     );
 
     CREATE TABLE exercises (
@@ -232,13 +245,23 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    -- Trimmed to the columns these suites touch: the 1RM/stance fields the
+    -- e1RM and plan paths read, plus the free text DELETE /me wipes and the
+    -- structured neighbours it must leave alone (spec 011 §1.3).
     CREATE TABLE student_onboarding_profiles (
       user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      unit_preference TEXT,
+      gender TEXT,
       squat_stance TEXT,
       deadlift_style TEXT,
       squat_1rm_kg NUMERIC(6,2),
       bench_1rm_kg NUMERIC(6,2),
-      deadlift_1rm_kg NUMERIC(6,2)
+      deadlift_1rm_kg NUMERIC(6,2),
+      injury_notes TEXT,
+      injury_areas TEXT[],
+      note_to_coach TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
     CREATE TABLE bind_requests (

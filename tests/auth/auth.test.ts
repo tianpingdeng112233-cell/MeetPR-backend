@@ -69,6 +69,11 @@ class InMemoryAuthDb {
       implementation: randomUUID,
     });
     this.mem.public.none(fs.readFileSync('db/migrations/0001-init-users.sql', 'utf8'));
+    // 0050 only touches users (nullable phone + deleted_at), so it is safe on
+    // either side of the sessions migration.
+    this.mem.public.none(
+      fs.readFileSync('db/migrations/0050-anonymized-account-deletion.sql', 'utf8'),
+    );
     if (options.applySessionsMigration !== false) this.applySessionsMigration();
 
     const { Pool } = this.mem.adapters.createPg();
@@ -120,6 +125,12 @@ class InMemoryAuthDb {
         ${user.refresh_token_jti === null ? 'NULL' : `'${user.refresh_token_jti}'`}
       )
     `);
+  }
+
+  // Stamps deleted_at without touching the phone, so the deleted_at guard is
+  // what does the rejecting rather than the NULL phone (spec 011 §1.5).
+  markDeleted(userId: string): void {
+    this.mem.public.none(`UPDATE users SET deleted_at = now() WHERE id = '${userId}'`);
   }
 
   applySessionsMigration(): void {
@@ -300,6 +311,27 @@ describe('auth endpoints', () => {
     expect(loginJti).not.toBe(registerJti);
     expect(db.getSessionByCurrentJti(registerJti)?.revoked_at).toBeNull();
     expect(db.getSessionByCurrentJti(loginJti)?.revoked_at).toBeNull();
+  });
+
+  it('locks out a deleted account on both login and refresh (spec 011 §1.5)', async () => {
+    const { app, db, response: registerResponse } = await registerUser();
+    const userId = registerResponse.body.user.id as string;
+    const refreshToken = registerResponse.body.refreshToken as string;
+
+    // DELETE /me also NULLs the phone and revokes the sessions; stamping only
+    // deleted_at isolates the guard itself.
+    db.markDeleted(userId);
+
+    const login = await request(app).post('/auth/login').send({
+      phone: '+8613800000001',
+      password: 'hunter2hunter2',
+    });
+    expect(login.status).toBe(401);
+    expect(login.body).toEqual({ error: 'AUTH_INVALID_CREDENTIALS' });
+
+    const refreshed = await request(app).post('/auth/refresh').send({ refreshToken });
+    expect(refreshed.status).toBe(401);
+    expect(refreshed.body).toEqual({ error: 'AUTH_INVALID_REFRESH' });
   });
 
   it('keeps two device sessions independent while each rotates', async () => {
