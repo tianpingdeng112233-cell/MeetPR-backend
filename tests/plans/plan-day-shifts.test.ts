@@ -350,6 +350,90 @@ describe('coached student whole-plan shifts', () => {
     ).toEqual(['2026-07-12', '2026-07-14', '2026-07-16']);
   });
 
+  it('anchors the shift to an explicit target_date matching the local today', async () => {
+    const ctx = await makeContext();
+    const { plan, days } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [0, 1, 3] });
+
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken))
+      .send({ target_date: ctx.today });
+
+    expect(response.status).toBe(201);
+    expect(response.body.shifted_days).toEqual([
+      { day_id: days[1]?.id, shifted_to_date: ctx.tomorrow },
+      { day_id: days[2]?.id, shifted_to_date: '2026-07-14' },
+    ]);
+  });
+
+  it('anchors the shift a day back when the client is a calendar day behind', async () => {
+    const ctx = await makeContext();
+    const { plan, days } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [0, 1, 3] });
+
+    // A UTC-negative client still sees 2026-07-10 as "today"; the plan day at
+    // that date anchors, and every remaining day moves with it.
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken))
+      .send({ target_date: '2026-07-10' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.shifted_days).toEqual([
+      { day_id: days[0]?.id, shifted_to_date: ctx.today },
+      { day_id: days[1]?.id, shifted_to_date: ctx.tomorrow },
+      { day_id: days[2]?.id, shifted_to_date: '2026-07-14' },
+    ]);
+  });
+
+  it('rejects a target_date pointing at a rest day with SHIFT_ONLY_TODAY', async () => {
+    const ctx = await makeContext();
+    const { plan } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [0, 1, 3] });
+
+    // Tomorrow is inside the timezone window but holds no plan day.
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken))
+      .send({ target_date: ctx.tomorrow });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: 'SHIFT_ONLY_TODAY' });
+  });
+
+  it('rejects a target_date outside the one-day timezone window', async () => {
+    const ctx = await makeContext();
+    const { plan } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [0, 1, 3] });
+
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken))
+      .send({ target_date: '2026-07-13' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(response.body.issues).toEqual([
+      { path: ['target_date'], message: 'target_date must be within one day of the server date' },
+    ]);
+  });
+
+  it('rejects a malformed target_date and unknown body fields', async () => {
+    const ctx = await makeContext();
+    const { plan } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [0, 1, 3] });
+
+    const malformed = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken))
+      .send({ target_date: '2026/07/11' });
+    expect(malformed.status).toBe(400);
+    expect(malformed.body.error).toBe('VALIDATION_ERROR');
+
+    const unknownField = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken))
+      .send({ target_date: ctx.today, extra: true });
+    expect(unknownField.status).toBe(400);
+    expect(unknownField.body.error).toBe('VALIDATION_ERROR');
+  });
+
   it('rejects a shift when UTC today is not an effective training day', async () => {
     const ctx = await makeContext();
     const { plan } = await seedPlan(ctx, { dayOffsets: [1] });

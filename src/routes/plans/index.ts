@@ -49,6 +49,7 @@ import {
   SetIdParamSchema,
   StudentPlansParamSchema,
   StudentPlansQuerySchema,
+  WholePlanShiftBodySchema,
 } from './schemas';
 import {
   type PlanExerciseResponse,
@@ -388,6 +389,7 @@ async function createWholePlanShift(
   db: Transaction<Database>,
   planId: string,
   studentId: string,
+  anchorDate?: string,
 ): Promise<
   | {
       type: 'shifted';
@@ -405,7 +407,9 @@ async function createWholePlanShift(
     return { type: 'error', error: 'PLAN_NOT_ACTIVE' };
   }
 
-  const today = utcDateOnly(new Date());
+  // The anchor is the client's local "today" when provided (see
+  // WholePlanShiftBodySchema); the server's UTC day otherwise.
+  const today = anchorDate ?? utcDateOnly(new Date());
   const effectiveDays = effectivePlanDays(context.plan, context.days, context.shifts);
   const todayDay = effectiveDays.find((item) => item.effectiveDate === today);
   if (!todayDay) {
@@ -1566,9 +1570,17 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
+      const body = WholePlanShiftBodySchema.safeParse(req.body ?? {});
+      if (!body.success) {
+        res.status(400).json(validationEnvelope(body.error));
+        return;
+      }
+
       const result = await deps.db
         .transaction()
-        .execute((trx) => createWholePlanShift(trx, params.data.id, user.id));
+        .execute((trx) =>
+          createWholePlanShift(trx, params.data.id, user.id, body.data.target_date),
+        );
       if (result.type === 'error') {
         res.status(result.error === 'NOT_PLAN_STUDENT' ? 403 : 409).json({ error: result.error });
         return;
