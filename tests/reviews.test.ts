@@ -27,6 +27,36 @@ describe('PUT /students/me/reviews/:date', () => {
     expect(second.body.review_date).toBe('2026-07-04');
   });
 
+  it('requires session RPE to use 0.5 steps', async () => {
+    const ctx = await makeContext();
+
+    for (const session_rpe of [8.3, '8.3']) {
+      const response = await request(ctx.app)
+        .put('/students/me/reviews/2026-07-04')
+        .set(auth(ctx.selfTrainStudentToken))
+        .send({ feeling: '今天训练完成', session_rpe });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: 'VALIDATION_ERROR',
+        issues: [{ path: ['session_rpe'], message: 'RPE must be in 0.5 steps' }],
+      });
+    }
+
+    for (const [date, session_rpe] of [
+      ['2026-07-05', 8.5],
+      ['2026-07-06', 10],
+      ['2026-07-07', 0],
+    ] as const) {
+      const response = await request(ctx.app)
+        .put(`/students/me/reviews/${date}`)
+        .set(auth(ctx.selfTrainStudentToken))
+        .send({ feeling: '今天训练完成', session_rpe });
+
+      expect(response.status).toBe(200);
+    }
+  });
+
   it('rejects blank feelings and coach role', async () => {
     const ctx = await makeContext();
 

@@ -23,6 +23,36 @@ describe('POST /sets/log', () => {
     expect(rows[0]?.failed).toBe(false);
   });
 
+  it('requires RPE to use 0.5 steps', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    const payload = {
+      plan_exercise_id: plan.planExerciseId,
+      weight_kg: '100.00',
+      reps: 5,
+      completed: true,
+    };
+
+    for (const [setIndex, rpe] of [8.3, '8.3'].entries()) {
+      const response = await request(ctx.app)
+        .post('/sets/log')
+        .set(auth(ctx.traineeToken))
+        .send({ ...payload, set_index: setIndex, rpe });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+
+    for (const [setIndex, rpe] of [8.5, 10, 0].entries()) {
+      const response = await request(ctx.app)
+        .post('/sets/log')
+        .set(auth(ctx.traineeToken))
+        .send({ ...payload, set_index: setIndex + 2, rpe });
+
+      expect(response.status).toBe(201);
+    }
+  });
+
   it('upserts by student, plan_exercise_id, and set_index and overwrites failed', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);

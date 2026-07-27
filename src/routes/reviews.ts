@@ -19,7 +19,8 @@ const RpeSchema = z
   .union([z.string(), z.number()])
   .transform((value) => (typeof value === 'number' ? String(value) : value))
   .pipe(z.string().regex(/^\d+(\.\d)?$/, 'RPE must have at most 1 decimal'))
-  .refine((value) => Number(value) >= 0 && Number(value) <= 10, 'RPE must be between 0 and 10');
+  .refine((value) => Number(value) >= 0 && Number(value) <= 10, 'RPE must be between 0 and 10')
+  .refine((value) => Number.isInteger(Number(value) * 2), 'RPE must be in 0.5 steps');
 
 const ReviewBodySchema = z
   .object({
