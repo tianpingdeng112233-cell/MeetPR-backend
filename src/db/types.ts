@@ -129,8 +129,13 @@ export const ATTACHMENT_STATUSES = [
 // RN Android client (meetpr-rn W0).
 export const EVENT_PLATFORMS = ['ios', 'android'] as const;
 export const SESSION_STATUSES = ['in_progress', 'completed', 'partial'] as const;
-export const STUDENT_EVENT_TYPES = ['session_completed', 'session_partial', 'pr_e1rm'] as const;
-export const SIGNAL_TYPES = ['missed_training', 'pr_congrats'] as const;
+export const STUDENT_EVENT_TYPES = [
+  'session_completed',
+  'session_partial',
+  'pr_e1rm',
+  'set_failed',
+] as const;
+export const SIGNAL_TYPES = ['missed_training', 'pr_congrats', 'weight_failed'] as const;
 export const SIGNAL_SEVERITIES = ['red', 'yellow', 'green'] as const;
 export const SIGNAL_STATUSES = ['open', 'acked', 'auto_resolved', 'expired'] as const;
 

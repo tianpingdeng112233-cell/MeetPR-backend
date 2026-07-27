@@ -438,6 +438,30 @@ describe('activity ledger session state machine', () => {
     expect(selfTrainEvent.coach_id).toBeNull();
   });
 
+  it('deletes a timed-out explicit session with zero sets and emits no event', async () => {
+    const ctx = await makeContext();
+    await ctx.db
+      .insertInto('training_sessions')
+      .values({
+        student_id: ids.trainee,
+        session_date: '2026-07-10',
+        status: 'in_progress',
+        started_at: new Date('2026-07-09T20:00:00Z'),
+        last_set_at: new Date('2026-07-09T20:00:00Z'),
+        plan_day_ids: [],
+      })
+      .execute();
+
+    const now = new Date('2026-07-10T00:00:01Z');
+    await sweepTimedOutSessions(ctx.db, now);
+    await sweepTimedOutSessions(ctx.db, now);
+
+    const sessions = await ctx.db.selectFrom('training_sessions').select('id').execute();
+    const events = await ctx.db.selectFrom('student_events').select('id').execute();
+    expect(sessions).toEqual([]);
+    expect(events).toEqual([]);
+  });
+
   it('does not archive a session whose newest set has not been through the hook yet', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);

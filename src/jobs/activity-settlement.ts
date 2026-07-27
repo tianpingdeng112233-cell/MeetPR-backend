@@ -7,7 +7,7 @@ import { effectivePlanDays } from '../domain/plan-calendar';
 import { SIGNAL_POLICY } from '../domain/signal-policy';
 import { sweepTimedOutSessions } from '../handlers/activity-ledger';
 import type { Logger } from '../logger';
-import { isIsoCalendarDate, normalizeDateOnly } from '../utils/date';
+import { isIsoCalendarDate, normalizeDateOnly, utcDate } from '../utils/date';
 
 type SettlementLogger = Pick<Logger, 'warn'>;
 type SettlementTransaction = Transaction<Database>;
@@ -61,6 +61,23 @@ function humanDate(date: string): string {
 
 function missedReason(payload: MissedTrainingPayload): string {
   return `连续 ${String(payload.consecutive_count)} 个训练日未打卡（${payload.missed_dates.map(humanDate).join(' / ')}）`;
+}
+
+function parseWeightFailedGymDay(value: Record<string, unknown> | string): string | null {
+  try {
+    const decoded = typeof value === 'string' ? (JSON.parse(value) as unknown) : value;
+    if (typeof decoded !== 'object' || decoded === null) return null;
+    const gymDay = (decoded as Record<string, unknown>).gym_day;
+    return typeof gymDay === 'string' && isIsoCalendarDate(gymDay) ? gymDay : null;
+  } catch {
+    return null;
+  }
+}
+
+function gymDayClosesAt(gymDay: string): Date {
+  // Shanghai is fixed at UTC+8: the next calendar day's 04:00 cutoff is
+  // 20:00Z on gymDay itself.
+  return new Date(utcDate(gymDay).getTime() + 20 * 60 * 60 * 1000);
 }
 
 async function lockStudent(trx: SettlementTransaction, studentId: string): Promise<boolean> {
@@ -222,6 +239,40 @@ async function settleStudent(
 ): Promise<void> {
   // LOCK CONTRACT: every student_signals mutation is below this row lock.
   if (!(await lockStudent(trx, studentId))) return;
+
+  const completed = await trx
+    .selectFrom('student_events')
+    .select('id')
+    .where('student_id', '=', studentId)
+    .where('event_type', '=', 'session_completed')
+    .where('session_date', '=', gymDay)
+    .executeTakeFirst();
+  if (completed !== undefined) {
+    const closeAt = gymDayClosesAt(gymDay);
+    const openFailures = await trx
+      .selectFrom('student_signals')
+      .select(['id', 'payload'])
+      .where('student_id', '=', studentId)
+      .where('signal_type', '=', 'weight_failed')
+      .where('status', '=', 'open')
+      .where('opened_at', '<', closeAt)
+      .forUpdate()
+      .execute();
+    const resolvableIds = openFailures
+      .filter((signal) => {
+        const signalGymDay = parseWeightFailedGymDay(signal.payload);
+        return signalGymDay === null || signalGymDay <= gymDay;
+      })
+      .map((signal) => signal.id);
+    if (resolvableIds.length > 0) {
+      await trx
+        .updateTable('student_signals')
+        .set({ status: 'auto_resolved', resolved_at: now, updated_at: now })
+        .where('id', 'in', resolvableIds)
+        .where('status', '=', 'open')
+        .execute();
+    }
+  }
 
   const acceptedBonds = await trx
     .selectFrom('bind_requests')

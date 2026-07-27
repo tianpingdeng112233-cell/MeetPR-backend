@@ -11,6 +11,7 @@ export interface DailyDigestCounts {
   session_completed: number;
   session_partial: number;
   missed_training: number;
+  weight_failed: number;
   pr_e1rm: number;
 }
 
@@ -21,6 +22,7 @@ function emptyCounts(): DailyDigestCounts {
     session_completed: 0,
     session_partial: 0,
     missed_training: 0,
+    weight_failed: 0,
     pr_e1rm: 0,
   };
 }
@@ -81,6 +83,7 @@ export function dailyDigestBody(counts: DailyDigestCounts): string | null {
     counts.session_completed > 0 ? `${String(counts.session_completed)} 练完` : null,
     counts.session_partial > 0 ? `${String(counts.session_partial)} 部分完成` : null,
     counts.missed_training > 0 ? `${String(counts.missed_training)} 缺练` : null,
+    counts.weight_failed > 0 ? `${String(counts.weight_failed)} 被压` : null,
     counts.pr_e1rm > 0 ? `${String(counts.pr_e1rm)} 破 PR` : null,
   ].filter((segment): segment is string => segment !== null);
   return segments.length === 0 ? null : `昨天：${segments.join(' · ')}`;
@@ -137,6 +140,7 @@ export async function runDailyDigest(
     }),
   );
   const countsByCoach = new Map(coachIds.map((coachId) => [coachId, emptyCounts()]));
+  const failedStudentsByCoach = new Map<string, Set<string>>();
 
   for (const event of events) {
     if (event.coach_id === null || !countsByCoach.has(event.coach_id)) {
@@ -146,10 +150,20 @@ export async function runDailyDigest(
     if (counts === undefined) continue;
     if (event.event_type === 'session_completed') counts.session_completed += 1;
     if (event.event_type === 'pr_e1rm') counts.pr_e1rm += 1;
+    if (event.event_type === 'set_failed') {
+      const students = failedStudentsByCoach.get(event.coach_id) ?? new Set<string>();
+      students.add(event.student_id);
+      failedStudentsByCoach.set(event.coach_id, students);
+    }
     if (event.event_type === 'session_partial') {
       const suffix = eventSuffix(event.dedup_key, 'session_partial');
       if (suffix !== null && !completedSuffixes.has(suffix)) counts.session_partial += 1;
     }
+  }
+
+  for (const [coachId, students] of failedStudentsByCoach) {
+    const counts = countsByCoach.get(coachId);
+    if (counts !== undefined) counts.weight_failed = students.size;
   }
 
   const missedStudentsByCoach = new Map<string, Set<string>>();

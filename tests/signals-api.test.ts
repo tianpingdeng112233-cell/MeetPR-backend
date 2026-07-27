@@ -2,9 +2,16 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
 import type { SignalSeverity, SignalStatus, SignalType } from '../src/db/types';
+import { recordSetLogActivity } from '../src/handlers/activity-ledger';
 import { timestamp } from '../src/handlers/serialization';
 import { normalizeDateOnly, shanghaiTrainingDay, utcDate, utcDateOnly } from '../src/utils/date';
-import { auth, ids, makeContext, type TestContext } from './helpers/studentActions';
+import {
+  auth,
+  createPublishedPlan,
+  ids,
+  makeContext,
+  type TestContext,
+} from './helpers/studentActions';
 
 const signalIds = {
   redOld: '81000000-0000-4000-8000-000000000001',
@@ -456,5 +463,156 @@ describe('GET /students/me/session', () => {
     });
     expect(asCoach.status).toBe(403);
     expect(asCoach.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
+  });
+});
+
+describe('POST /students/me/session/start', () => {
+  it('creates an in-progress session once and returns the existing row idempotently', async () => {
+    const ctx = await makeContext();
+
+    const created = await request(ctx.app)
+      .post('/students/me/session/start')
+      .set(auth(ctx.traineeToken));
+    const replayed = await request(ctx.app)
+      .post('/students/me/session/start')
+      .set(auth(ctx.traineeToken));
+
+    expect(created.status).toBe(201);
+    expect(created.body).toEqual({
+      session: {
+        status: 'in_progress',
+        started_at: expect.any(String),
+        last_set_at: expect.any(String),
+        completed_at: null,
+        duration_seconds: 0,
+      },
+    });
+    expect(created.body.session.last_set_at).toBe(created.body.session.started_at);
+    expect(replayed.status).toBe(200);
+    expect(replayed.body).toEqual(created.body);
+
+    const sessions = await ctx.db
+      .selectFrom('training_sessions')
+      .select(['session_date', 'status', 'plan_day_ids'])
+      .where('student_id', '=', ids.trainee)
+      .execute();
+    expect(sessions).toEqual([
+      expect.objectContaining({
+        status: 'in_progress',
+        plan_day_ids: [],
+      }),
+    ]);
+    expect(normalizeDateOnly(sessions[0]?.session_date ?? '')).toBe(shanghaiTrainingDay());
+  });
+
+  it('returns a completed session unchanged and rejects the coach role', async () => {
+    const ctx = await makeContext();
+    const today = shanghaiTrainingDay();
+    const startedAt = new Date('2026-07-10T08:00:00.250Z');
+    const lastSetAt = new Date('2026-07-10T09:02:03.999Z');
+    const completedAt = new Date('2026-07-10T09:02:04.000Z');
+    await ctx.db
+      .insertInto('training_sessions')
+      .values({
+        student_id: ids.trainee,
+        session_date: today,
+        status: 'completed',
+        started_at: startedAt,
+        last_set_at: lastSetAt,
+        completed_at: completedAt,
+        plan_day_ids: ['40000000-0000-4000-8000-000000000001'],
+        archived_sets_logged: 3,
+      })
+      .execute();
+
+    const response = await request(ctx.app)
+      .post('/students/me/session/start')
+      .set(auth(ctx.traineeToken));
+    const asCoach = await request(ctx.app)
+      .post('/students/me/session/start')
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      session: {
+        status: 'completed',
+        started_at: timestamp(startedAt),
+        last_set_at: timestamp(lastSetAt),
+        completed_at: timestamp(completedAt),
+        duration_seconds: 3723,
+      },
+    });
+    expect(asCoach.status).toBe(403);
+    const stored = await ctx.db
+      .selectFrom('training_sessions')
+      .selectAll()
+      .where('student_id', '=', ids.trainee)
+      .executeTakeFirstOrThrow();
+    expect(stored).toMatchObject({
+      status: 'completed',
+      started_at: startedAt,
+      last_set_at: lastSetAt,
+      completed_at: completedAt,
+      archived_sets_logged: 3,
+    });
+  });
+
+  it('serializes concurrent self-train starts through one seeded row', async () => {
+    const ctx = await makeContext();
+
+    const responses = await Promise.all([
+      request(ctx.app).post('/students/me/session/start').set(auth(ctx.selfTrainStudentToken)),
+      request(ctx.app).post('/students/me/session/start').set(auth(ctx.selfTrainStudentToken)),
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 201]);
+    expect(responses[0].body).toEqual(responses[1].body);
+    const sessions = await ctx.db
+      .selectFrom('training_sessions')
+      .select('id')
+      .where('student_id', '=', ids.selfTrainStudent)
+      .where('session_date', '=', shanghaiTrainingDay())
+      .execute();
+    expect(sessions).toHaveLength(1);
+  });
+
+  it('keeps the button timestamp when the first set arrives later', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    const started = await request(ctx.app)
+      .post('/students/me/session/start')
+      .set(auth(ctx.traineeToken));
+    expect(started.status).toBe(201);
+    const startedAt = new Date(started.body.session.started_at as string);
+    const firstSetAt = new Date(startedAt.getTime() + 1);
+    const setLogId = '30000000-0000-4000-8000-000000000020';
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        id: setLogId,
+        student_id: ids.trainee,
+        plan_exercise_id: plan.planExerciseId,
+        exercise_id: ids.exercise,
+        set_index: 0,
+        weight_kg: '100.00',
+        reps: 5,
+        completed: true,
+        failed: false,
+        assumed: false,
+        adhoc: false,
+        logged_date: shanghaiTrainingDay(startedAt),
+        logged_at: firstSetAt,
+      })
+      .execute();
+
+    await recordSetLogActivity(ctx.db, ids.trainee, setLogId, firstSetAt);
+
+    const session = await ctx.db
+      .selectFrom('training_sessions')
+      .select(['started_at', 'last_set_at'])
+      .where('student_id', '=', ids.trainee)
+      .executeTakeFirstOrThrow();
+    expect(session.started_at).toEqual(startedAt);
+    expect(session.last_set_at).toEqual(firstSetAt);
   });
 });
