@@ -340,6 +340,7 @@ type PlanShiftError =
   | 'NO_ACTIVE_SHIFT'
   | 'NOT_PLAN_STUDENT'
   | 'PLAN_NOT_ACTIVE'
+  | 'SHIFT_ONCE_PER_DAY'
   | 'SHIFT_ONLY_TODAY'
   | 'UNDO_WINDOW_PASSED';
 
@@ -407,6 +408,14 @@ async function createWholePlanShift(
     return { type: 'error', error: 'PLAN_NOT_ACTIVE' };
   }
 
+  // One shift action per server day, whatever the anchor: without this, a
+  // client could walk the anchor across the ±1 window (D, then D+1) and stack
+  // several shifts inside a single UTC day.
+  const latestBatchRow = latestShiftBatch(context.shifts)[0];
+  if (latestBatchRow && utcDateOnly(latestBatchRow.created_at) === utcDateOnly(new Date())) {
+    return { type: 'error', error: 'SHIFT_ONCE_PER_DAY' };
+  }
+
   // The anchor is the client's local "today" when provided (see
   // WholePlanShiftBodySchema); the server's UTC day otherwise.
   const today = anchorDate ?? utcDateOnly(new Date());
@@ -467,11 +476,26 @@ async function undoLatestWholePlanShift(
   }
 
   const daysById = new Map(context.days.map((day) => [day.id, day]));
+  // The batch's anchor is its earliest pre-shift date. With target_date the
+  // anchor may differ from the server's UTC today, so gate the log check on
+  // the anchored day itself — comparing against UTC today alone let a
+  // cross-day anchor undo a session that already has logs.
+  const preShiftDates = batchRows
+    .map((row) => {
+      const day = daysById.get(row.plan_day_id);
+      return day ? effectiveDateBeforeBatch(context.plan, day, context.shifts, row.batch_id) : null;
+    })
+    .filter((value): value is string => value != null)
+    .sort();
+  const batchAnchorDate = preShiftDates[0];
   for (const row of batchRows) {
     const day = daysById.get(row.plan_day_id);
+    if (!day) {
+      continue;
+    }
+    const preShiftDate = effectiveDateBeforeBatch(context.plan, day, context.shifts, row.batch_id);
     if (
-      day &&
-      effectiveDateBeforeBatch(context.plan, day, context.shifts, row.batch_id) === today &&
+      (preShiftDate === today || preShiftDate === batchAnchorDate) &&
       (await planDayHasLogs(db, day.id))
     ) {
       return { type: 'error', error: 'ALREADY_STARTED' };
@@ -1570,7 +1594,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      const body = WholePlanShiftBodySchema.safeParse(req.body ?? {});
+      const body = WholePlanShiftBodySchema.safeParse(req.body === undefined ? {} : req.body);
       if (!body.success) {
         res.status(400).json(validationEnvelope(body.error));
         return;

@@ -434,6 +434,63 @@ describe('coached student whole-plan shifts', () => {
     expect(unknownField.body.error).toBe('VALIDATION_ERROR');
   });
 
+  it('rejects a second shift inside the same UTC day whatever the anchor', async () => {
+    const ctx = await makeContext();
+    const { plan } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [0, 1, 3] });
+
+    const first = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
+    expect(first.status).toBe(201);
+
+    // The moved course now sits on tomorrow — walking the anchor there must
+    // not allow stacking a second shift within the same UTC day.
+    const second = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken))
+      .send({ target_date: ctx.tomorrow });
+    expect(second.status).toBe(409);
+    expect(second.body).toEqual({ error: 'SHIFT_ONCE_PER_DAY' });
+  });
+
+  it('keeps the undo ALREADY_STARTED gate on a cross-day anchor', async () => {
+    const ctx = await makeContext();
+    const { plan, days } = await seedPlan(ctx, { startOffset: -2, dayOffsets: [1, 2, 4] });
+
+    // A day-behind client anchors yesterday's course and shifts it onto today…
+    const shifted = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken))
+      .send({ target_date: '2026-07-10' });
+    expect(shifted.status).toBe(201);
+
+    // …then trains it. Undo must refuse: the anchored day already has logs.
+    const anchoredDayId = days[0]?.id;
+    expect(anchoredDayId).toBeDefined();
+    await addLog(ctx, anchoredDayId ?? '');
+    const undo = await request(ctx.app)
+      .delete(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
+    expect(undo.status).toBe(409);
+    expect(undo.body).toEqual({ error: 'ALREADY_STARTED' });
+  });
+
+  it('rejects an impossible calendar date with VALIDATION_ERROR', async () => {
+    const ctx = await makeContext();
+    const { plan } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [0, 1, 3] });
+
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken))
+      .send({ target_date: '2026-07-32' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(response.body.issues).toEqual([
+      { path: ['target_date'], message: 'target_date must be a real calendar date' },
+    ]);
+  });
+
   it('rejects a shift when UTC today is not an effective training day', async () => {
     const ctx = await makeContext();
     const { plan } = await seedPlan(ctx, { dayOffsets: [1] });

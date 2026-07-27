@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { isIsoCalendarDate } from '../../utils/date';
 import {
   API_PLAN_SOURCES,
   INTENSITY_MODES,
@@ -307,6 +308,14 @@ function dayDiffFromUtcToday(value: string): number {
 export const WholePlanShiftBodySchema = z
   .object({
     target_date: DateSchema.superRefine((value, ctx) => {
+      // DateSchema only checks the shape; 2026-07-32 must not sneak through.
+      if (!isIsoCalendarDate(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'target_date must be a real calendar date',
+        });
+        return;
+      }
       if (Math.abs(dayDiffFromUtcToday(value)) > 1) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
