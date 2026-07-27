@@ -1,5 +1,7 @@
 import type { ColumnType, Generated } from 'kysely';
 
+import type { SetRefV1 } from '../domain/set-ref';
+
 export const USER_ROLES = ['coach', 'coached_student', 'self_train_student', 'admin'] as const;
 export const REGISTERABLE_ROLES = ['coach', 'coached_student', 'self_train_student'] as const;
 export const LIFT_FAMILIES = ['squat', 'bench', 'deadlift'] as const;
@@ -582,6 +584,8 @@ export interface MessagesTable {
   kind: 'text' | 'image';
   body: NullableColumn<string>;
   attachment_id: NullableColumn<string>;
+  set_ref: NullableJsonColumn<SetRefV1>;
+  video_id: NullableColumn<string>;
   client_id: string;
   created_at: Generated<Date>;
 }

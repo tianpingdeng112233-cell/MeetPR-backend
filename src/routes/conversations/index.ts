@@ -3,9 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely, Selectable, Transaction } from 'kysely';
 import { sql } from 'kysely';
+import { z } from 'zod';
 
-import { resolveCanonicalAcceptedBond } from '../../db/bonds';
+import { resolveCanonicalAcceptedBond, resolveCanonicalAcceptedBonds } from '../../db/bonds';
 import type { ConversationsTable, Database, MessagesTable } from '../../db/types';
+import { bodyMatchesSetRef, SetRefV1Schema, type SetRefV1 } from '../../domain/set-ref';
 import { timestamp } from '../../handlers/serialization';
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
@@ -24,15 +26,19 @@ const IMAGE_URL_TTL_SECONDS = 900;
 const MAX_SEQUENCE_ALLOCATION_ATTEMPTS = 5;
 const MESSAGE_IDEMPOTENCY_CONSTRAINT = 'messages_conversation_id_sender_id_client_id_key';
 const MESSAGE_SEQUENCE_CONSTRAINT = 'messages_conversation_id_seq_key';
+const UuidSchema = z.string().uuid();
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
 type ConversationRow = Selectable<ConversationsTable>;
 type MessageRow = Selectable<MessagesTable>;
+type ValidationErrorEnvelope = ReturnType<typeof validationEnvelope>;
 type SendMessageResult =
+  | { outcome: 'authorization_forbidden' }
   | { outcome: 'bind_required' }
   | { outcome: 'invalid_attachment' }
   | { outcome: 'not_found' }
   | { outcome: 'sequence_conflict' }
+  | { outcome: 'validation_error'; error: ValidationErrorEnvelope }
   | { outcome: 'message'; message: MessageRow; created: boolean };
 
 interface ConversationsRouterDeps {
@@ -46,6 +52,16 @@ interface ReadCursorWire {
   seq: number;
 }
 
+interface ReadCursorProjection {
+  rawSeq: number | null;
+  cursor: ReadCursorWire | null;
+}
+
+interface VisibilityContext {
+  conversationId: string;
+  showSetRefs: boolean;
+}
+
 interface MessageWire {
   id: string;
   conversation_id: string;
@@ -56,6 +72,9 @@ interface MessageWire {
   attachment_id: string | null;
   image_url: string | null;
   image_expires_in: number | null;
+  set_ref: SetRefV1 | null;
+  video_url: string | null;
+  video_expires_in: number | null;
   client_id: string;
   created_at: string;
 }
@@ -100,24 +119,94 @@ async function findConversationForMember(
   return conversation && isConversationMember(conversation, userId) ? conversation : undefined;
 }
 
+async function resolveVisibilityContext(
+  db: DbExecutor,
+  conversation: ConversationRow,
+  viewerId: string,
+): Promise<VisibilityContext> {
+  if (uuidEquals(conversation.student_id, viewerId)) {
+    return { conversationId: conversation.id, showSetRefs: true };
+  }
+
+  const canonical = await resolveCanonicalAcceptedBond(db, conversation.student_id);
+  return {
+    conversationId: conversation.id,
+    showSetRefs:
+      uuidEquals(conversation.coach_id, viewerId) && canonicalPairMatches(conversation, canonical),
+  };
+}
+
+async function resolveVisibilityContexts(
+  db: DbExecutor,
+  conversations: ConversationRow[],
+  viewerId: string,
+): Promise<Map<string, VisibilityContext>> {
+  const contexts = new Map<string, VisibilityContext>();
+  const coachConversations = conversations.filter(
+    (conversation) => !uuidEquals(conversation.student_id, viewerId),
+  );
+
+  for (const conversation of conversations) {
+    if (uuidEquals(conversation.student_id, viewerId)) {
+      contexts.set(conversation.id, {
+        conversationId: conversation.id,
+        showSetRefs: true,
+      });
+    }
+  }
+
+  const canonicalBonds = await resolveCanonicalAcceptedBonds(db, [
+    ...new Set(coachConversations.map((conversation) => conversation.student_id)),
+  ]);
+  const canonicalByStudent = new Map(
+    canonicalBonds.map((canonical) => [canonical.student_id, canonical]),
+  );
+  for (const conversation of coachConversations) {
+    contexts.set(conversation.id, {
+      conversationId: conversation.id,
+      showSetRefs:
+        uuidEquals(conversation.coach_id, viewerId) &&
+        canonicalPairMatches(conversation, canonicalByStudent.get(conversation.student_id)),
+    });
+  }
+
+  return contexts;
+}
+
+function visibleMessagePredicate(
+  context: VisibilityContext,
+  tableAlias: 'm' | 'messages' = 'messages',
+) {
+  return context.showSetRefs
+    ? sql<boolean>`TRUE`
+    : sql<boolean>`${sql.ref(`${tableAlias}.set_ref`)} IS NULL`;
+}
+
 async function fetchReadCursor(
   db: DbExecutor,
   conversationId: string,
   userId: string,
-): Promise<ReadCursorWire | null> {
+  visibility: VisibilityContext,
+): Promise<ReadCursorProjection> {
+  const read = await db
+    .selectFrom('conversation_reads')
+    .select('last_read_seq')
+    .where('conversation_id', '=', conversationId)
+    .where('user_id', '=', userId)
+    .executeTakeFirst();
+  if (!read) return { rawSeq: null, cursor: null };
+
   const cursor = await db
-    .selectFrom('conversation_reads as cr')
-    .innerJoin('messages as m', (join) =>
-      join
-        .onRef('m.conversation_id', '=', 'cr.conversation_id')
-        .onRef('m.seq', '=', 'cr.last_read_seq'),
-    )
-    .select(['m.id as message_id', 'cr.last_read_seq as seq'])
-    .where('cr.conversation_id', '=', conversationId)
-    .where('cr.user_id', '=', userId)
+    .selectFrom('messages')
+    .select(['id as message_id', 'seq'])
+    .where('conversation_id', '=', conversationId)
+    .where('seq', '<=', read.last_read_seq)
+    .where(visibleMessagePredicate(visibility))
+    .orderBy('seq', 'desc')
+    .limit(1)
     .executeTakeFirst();
 
-  return cursor ?? null;
+  return { rawSeq: read.last_read_seq, cursor: cursor ?? null };
 }
 
 async function fetchUnreadCount(
@@ -125,6 +214,7 @@ async function fetchUnreadCount(
   conversationId: string,
   userId: string,
   lastReadSeq: number | null,
+  visibility: VisibilityContext,
 ): Promise<number> {
   const unread = await db
     .selectFrom('messages')
@@ -132,20 +222,34 @@ async function fetchUnreadCount(
     .where('conversation_id', '=', conversationId)
     .where('sender_id', '!=', userId)
     .where('seq', '>', lastReadSeq ?? 0)
+    .where(visibleMessagePredicate(visibility))
     .executeTakeFirstOrThrow();
 
   return Number(unread.count);
 }
 
 async function serializeMessage(
-  row: MessageRow & { attachment_oss_key: string | null },
+  row: MessageRow & {
+    attachment_oss_key: string | null;
+    video_oss_key: string | null;
+  },
   oss: OssService | undefined,
+  signedVideoUrls = new Map<string, Promise<string>>(),
 ): Promise<MessageWire> {
   const isImage = row.kind === 'image';
   const imageUrl =
     isImage && oss && row.attachment_oss_key !== null
       ? await oss.signGetUrl(row.attachment_oss_key, IMAGE_URL_TTL_SECONDS)
       : null;
+  let videoUrl: string | null = null;
+  if (row.video_id !== null && oss && row.video_oss_key !== null) {
+    let signedUrl = signedVideoUrls.get(row.video_oss_key);
+    if (!signedUrl) {
+      signedUrl = oss.signGetUrl(row.video_oss_key, IMAGE_URL_TTL_SECONDS);
+      signedVideoUrls.set(row.video_oss_key, signedUrl);
+    }
+    videoUrl = await signedUrl;
+  }
 
   return {
     id: row.id,
@@ -157,9 +261,27 @@ async function serializeMessage(
     attachment_id: row.attachment_id,
     image_url: imageUrl,
     image_expires_in: isImage ? IMAGE_URL_TTL_SECONDS : null,
+    set_ref: row.set_ref,
+    video_url: videoUrl,
+    video_expires_in: videoUrl === null ? null : IMAGE_URL_TTL_SECONDS,
     client_id: row.client_id,
     created_at: timestamp(row.created_at),
   };
+}
+
+async function fetchAttachmentOssKeys(
+  db: DbExecutor,
+  attachmentIds: (string | null)[],
+): Promise<Map<string, string>> {
+  const ids = [...new Set(attachmentIds.filter((id): id is string => id !== null))];
+  if (ids.length === 0) return new Map();
+
+  const attachments = await db
+    .selectFrom('attachments')
+    .select(['id', 'oss_key'])
+    .where('id', 'in', ids)
+    .execute();
+  return new Map(attachments.map((attachment) => [attachment.id, attachment.oss_key]));
 }
 
 async function fetchMessageWire(
@@ -168,20 +290,31 @@ async function fetchMessageWire(
   oss: OssService | undefined,
 ): Promise<MessageWire> {
   const row = await db
-    .selectFrom('messages as m')
-    .leftJoin('attachments as a', 'a.id', 'm.attachment_id')
-    .selectAll('m')
-    .select('a.oss_key as attachment_oss_key')
-    .where('m.id', '=', messageId)
+    .selectFrom('messages')
+    .selectAll()
+    .where('id', '=', messageId)
     .executeTakeFirstOrThrow();
+  const attachmentOssKeys =
+    oss === undefined
+      ? new Map<string, string>()
+      : await fetchAttachmentOssKeys(db, [row.attachment_id, row.video_id]);
 
-  return serializeMessage(row, oss);
+  return serializeMessage(
+    {
+      ...row,
+      attachment_oss_key:
+        row.attachment_id === null ? null : (attachmentOssKeys.get(row.attachment_id) ?? null),
+      video_oss_key: row.video_id === null ? null : (attachmentOssKeys.get(row.video_id) ?? null),
+    },
+    oss,
+  );
 }
 
 async function fetchConversationWire(
   db: Kysely<Database>,
   conversation: ConversationRow,
   viewerId: string,
+  visibility: VisibilityContext,
 ): Promise<ConversationWire> {
   const viewerIsCoach = uuidEquals(conversation.coach_id, viewerId);
   const otherId = otherParticipantId(conversation, viewerId);
@@ -200,20 +333,22 @@ async function fetchConversationWire(
           .executeTakeFirst(),
     db
       .selectFrom('messages')
-      .select(['id', 'seq', 'kind', 'body', 'created_at', 'sender_id'])
+      .select(['id', 'seq', 'kind', 'body', 'set_ref', 'created_at', 'sender_id'])
       .where('conversation_id', '=', conversation.id)
+      .where(visibleMessagePredicate(visibility))
       .orderBy('seq', 'desc')
       .limit(1)
       .executeTakeFirst(),
-    fetchReadCursor(db, conversation.id, viewerId),
-    fetchReadCursor(db, conversation.id, otherId),
+    fetchReadCursor(db, conversation.id, viewerId, visibility),
+    fetchReadCursor(db, conversation.id, otherId, visibility),
   ]);
 
   const unreadCount = await fetchUnreadCount(
     db,
     conversation.id,
     viewerId,
-    myLastRead?.seq ?? null,
+    myLastRead.rawSeq,
+    visibility,
   );
 
   return {
@@ -224,16 +359,26 @@ async function fetchConversationWire(
           id: lastMessage.id,
           seq: lastMessage.seq,
           kind: lastMessage.kind,
-          preview: lastMessage.kind === 'image' ? '[图片]' : (lastMessage.body ?? ''),
+          preview:
+            lastMessage.set_ref !== null
+              ? '[训练分享]'
+              : lastMessage.kind === 'image'
+                ? '[图片]'
+                : (lastMessage.body ?? ''),
           created_at: timestamp(lastMessage.created_at),
           sender_id: lastMessage.sender_id,
         }
       : null,
-    last_message_at:
-      conversation.last_message_at === null ? null : timestamp(conversation.last_message_at),
+    last_message_at: visibility.showSetRefs
+      ? conversation.last_message_at === null
+        ? null
+        : timestamp(conversation.last_message_at)
+      : lastMessage === undefined
+        ? null
+        : timestamp(lastMessage.created_at),
     unread_count: unreadCount,
-    my_last_read: myLastRead,
-    other_last_read: otherLastRead,
+    my_last_read: myLastRead.cursor,
+    other_last_read: otherLastRead.cursor,
   };
 }
 
@@ -248,14 +393,36 @@ function canonicalPairMatches(
   );
 }
 
+function messageValidationError(
+  path: (string | number)[],
+  message: string,
+): ValidationErrorEnvelope {
+  return { error: 'VALIDATION_ERROR', issues: [{ path, message }] };
+}
+
 function messagePayloadMatches(
   message: MessageRow,
   body:
-    | { kind: 'text'; body: string; client_id: string }
+    | {
+        kind: 'text';
+        body: string;
+        client_id: string;
+        set_ref?: unknown;
+        video_id?: unknown;
+      }
     | { kind: 'image'; attachment_id: string; client_id: string },
 ): boolean {
   if (message.kind !== body.kind) return false;
-  if (body.kind === 'text') return message.body === body.body && message.attachment_id === null;
+  if (body.kind === 'text') {
+    const setRef = body.set_ref === undefined ? null : body.set_ref;
+    const videoId = typeof body.video_id === 'string' ? body.video_id : null;
+    return (
+      message.body === body.body &&
+      message.attachment_id === null &&
+      JSON.stringify(message.set_ref) === JSON.stringify(setRef) &&
+      (message.video_id === null ? videoId === null : uuidEquals(message.video_id, videoId))
+    );
+  }
   return message.body === null && uuidEquals(message.attachment_id, body.attachment_id);
 }
 
@@ -359,7 +526,13 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
         return;
       }
 
-      const conversation = await fetchConversationWire(db, result.conversation, req.user.id);
+      const visibility = await resolveVisibilityContext(db, result.conversation, req.user.id);
+      const conversation = await fetchConversationWire(
+        db,
+        result.conversation,
+        req.user.id,
+        visibility,
+      );
       res.status(result.created ? 201 : 200).json({ conversation });
     }),
   );
@@ -387,13 +560,31 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
           .where('student_id', '=', canonical.student_id);
       }
 
-      const rows = await query
-        .orderBy(sql`last_message_at DESC NULLS LAST`)
-        .orderBy('id', 'desc')
-        .execute();
+      const rows = await query.execute();
+      const visibilityByConversation = await resolveVisibilityContexts(db, rows, user.id);
       const conversations = await Promise.all(
-        rows.map((conversation) => fetchConversationWire(db, conversation, user.id)),
+        rows.map((conversation) =>
+          fetchConversationWire(
+            db,
+            conversation,
+            user.id,
+            visibilityByConversation.get(conversation.id) ??
+              ({
+                conversationId: conversation.id,
+                showSetRefs: false,
+              } satisfies VisibilityContext),
+          ),
+        ),
       );
+      conversations.sort((left, right) => {
+        if (left.last_message_at === null && right.last_message_at !== null) return 1;
+        if (left.last_message_at !== null && right.last_message_at === null) return -1;
+        if (left.last_message_at !== right.last_message_at) {
+          return (right.last_message_at ?? '').localeCompare(left.last_message_at ?? '');
+        }
+        if (left.id === right.id) return 0;
+        return left.id < right.id ? 1 : -1;
+      });
 
       res.status(200).json({ conversations });
     }),
@@ -422,13 +613,13 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
         res.status(400).json(validationEnvelope(query.error));
         return;
       }
+      const visibility = await resolveVisibilityContext(db, conversation, user.id);
 
       let messagesQuery = db
         .selectFrom('messages as m')
-        .leftJoin('attachments as a', 'a.id', 'm.attachment_id')
         .selectAll('m')
-        .select('a.oss_key as attachment_oss_key')
-        .where('m.conversation_id', '=', conversation.id);
+        .where('m.conversation_id', '=', conversation.id)
+        .where(visibleMessagePredicate(visibility, 'm'));
 
       if (query.data.since_seq !== undefined) {
         messagesQuery = messagesQuery
@@ -445,16 +636,43 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
       const batch = await messagesQuery.limit(query.data.limit + 1).execute();
       const hasMore = batch.length > query.data.limit;
       const selected = batch.slice(0, query.data.limit);
-      const messages = await Promise.all(selected.map((message) => serializeMessage(message, oss)));
+      const attachmentOssKeys =
+        oss === undefined
+          ? new Map<string, string>()
+          : await fetchAttachmentOssKeys(
+              db,
+              selected.flatMap((message) => [message.attachment_id, message.video_id]),
+            );
+      const signedVideoUrls = new Map<string, Promise<string>>();
+      const messages = await Promise.all(
+        selected.map((message) =>
+          serializeMessage(
+            {
+              ...message,
+              attachment_oss_key:
+                message.attachment_id === null
+                  ? null
+                  : (attachmentOssKeys.get(message.attachment_id) ?? null),
+              video_oss_key:
+                message.video_id === null
+                  ? null
+                  : (attachmentOssKeys.get(message.video_id) ?? null),
+            },
+            oss,
+            signedVideoUrls,
+          ),
+        ),
+      );
       const otherLastRead = await fetchReadCursor(
         db,
         conversation.id,
         otherParticipantId(conversation, user.id),
+        visibility,
       );
 
       res.status(200).json({
         messages,
-        meta: { other_last_read: otherLastRead, has_more: hasMore },
+        meta: { other_last_read: otherLastRead.cursor, has_more: hasMore },
       });
     }),
   );
@@ -513,6 +731,69 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
             return { outcome: 'message', message: existing, created: false };
           }
 
+          let setRef: SetRefV1 | null = null;
+          let videoId: string | null = null;
+          if (body.data.kind === 'text') {
+            if (body.data.set_ref === undefined) {
+              if (body.data.video_id !== undefined) {
+                return {
+                  outcome: 'validation_error',
+                  error: messageValidationError(['video_id'], 'video_id requires a valid set_ref'),
+                };
+              }
+            } else {
+              if (!uuidEquals(user.id, conversation.student_id)) {
+                return { outcome: 'authorization_forbidden' };
+              }
+
+              const parsedSetRef = SetRefV1Schema.safeParse(body.data.set_ref);
+              if (!parsedSetRef.success) {
+                return {
+                  outcome: 'validation_error',
+                  error: validationEnvelope(parsedSetRef.error),
+                };
+              }
+              setRef = parsedSetRef.data;
+
+              if (!bodyMatchesSetRef(body.data.body, setRef)) {
+                return {
+                  outcome: 'validation_error',
+                  error: messageValidationError(
+                    ['body'],
+                    'body must equal or begin with the canonical set_ref first line',
+                  ),
+                };
+              }
+
+              const sourceSet = await trx
+                .selectFrom('set_logs')
+                .select('id')
+                .where('id', '=', setRef.set_log_id)
+                .where('student_id', '=', user.id)
+                .executeTakeFirst();
+              if (!sourceSet) {
+                return {
+                  outcome: 'validation_error',
+                  error: messageValidationError(
+                    ['set_ref', 'set_log_id'],
+                    'set_log_id must identify a set owned by the sender',
+                  ),
+                };
+              }
+
+              if (body.data.video_id !== undefined) {
+                const parsedVideoId = UuidSchema.safeParse(body.data.video_id);
+                if (!parsedVideoId.success) {
+                  return {
+                    outcome: 'validation_error',
+                    error: validationEnvelope(parsedVideoId.error),
+                  };
+                }
+                videoId = parsedVideoId.data;
+              }
+            }
+          }
+
           if (body.data.kind === 'image') {
             const attachment = await trx
               .selectFrom('attachments')
@@ -525,6 +806,24 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
               !uuidEquals(attachment.owner_id, user.id) ||
               attachment.kind !== 'chat_image' ||
               attachment.status !== 'ready'
+            ) {
+              return { outcome: 'invalid_attachment' };
+            }
+          }
+
+          if (videoId !== null && setRef !== null) {
+            const video = await trx
+              .selectFrom('attachments')
+              .select(['id', 'owner_id', 'kind', 'status', 'set_log_id'])
+              .where('id', '=', videoId)
+              .forUpdate()
+              .executeTakeFirst();
+            if (
+              !video ||
+              !uuidEquals(video.owner_id, user.id) ||
+              video.kind !== 'set_video' ||
+              video.status !== 'ready' ||
+              !uuidEquals(video.set_log_id, setRef.set_log_id)
             ) {
               return { outcome: 'invalid_attachment' };
             }
@@ -578,6 +877,8 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
                     kind: 'text',
                     body: body.data.body,
                     attachment_id: null,
+                    set_ref: setRef,
+                    video_id: videoId,
                     client_id: body.data.client_id,
                     created_at: sql<Date>`clock_timestamp()`,
                   })
@@ -677,6 +978,14 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
         res.status(403).json({ error: 'CHAT_BIND_REQUIRED' });
         return;
       }
+      if (result.outcome === 'authorization_forbidden') {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
+      if (result.outcome === 'validation_error') {
+        res.status(400).json(result.error);
+        return;
+      }
       if (result.outcome === 'invalid_attachment') {
         res.status(400).json({ error: 'CHAT_INVALID_ATTACHMENT' });
         return;
@@ -714,6 +1023,7 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
         res.status(400).json(validationEnvelope(body.error));
         return;
       }
+      const visibility = await resolveVisibilityContext(db, conversation, user.id);
 
       const cursor = await db.transaction().execute(async (trx) => {
         const requested = await trx
@@ -721,10 +1031,11 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
           .select(['id', 'seq'])
           .where('id', '=', body.data.message_id)
           .where('conversation_id', '=', conversation.id)
+          .where(visibleMessagePredicate(visibility))
           .executeTakeFirst();
         if (!requested) return null;
 
-        const read = await trx
+        await trx
           .insertInto('conversation_reads')
           .values({
             conversation_id: conversation.id,
@@ -739,22 +1050,22 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
           .returning('last_read_seq')
           .executeTakeFirstOrThrow();
 
-        const actual = await trx
-          .selectFrom('messages')
-          .select(['id as message_id', 'seq'])
-          .where('conversation_id', '=', conversation.id)
-          .where('seq', '=', read.last_read_seq)
-          .executeTakeFirstOrThrow();
-        return actual;
+        return fetchReadCursor(trx, conversation.id, user.id, visibility);
       });
 
-      if (!cursor) {
+      if (!cursor?.cursor) {
         res.status(400).json({ error: 'CHAT_INVALID_CURSOR' });
         return;
       }
 
-      const unreadCount = await fetchUnreadCount(db, conversation.id, user.id, cursor.seq);
-      res.status(200).json({ my_last_read: cursor, unread_count: unreadCount });
+      const unreadCount = await fetchUnreadCount(
+        db,
+        conversation.id,
+        user.id,
+        cursor.rawSeq,
+        visibility,
+      );
+      res.status(200).json({ my_last_read: cursor.cursor, unread_count: unreadCount });
     }),
   );
 
