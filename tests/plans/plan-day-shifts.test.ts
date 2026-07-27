@@ -517,6 +517,37 @@ describe('coached student whole-plan shifts', () => {
     expect(WholePlanShiftBodySchema.safeParse({}).success).toBe(true);
   });
 
+  it('maps a raw JSON null body to a 400 validation envelope', async () => {
+    const ctx = await makeContext();
+    const { plan } = await seedPlan(ctx, { dayOffsets: [0, 1, 3] });
+
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken))
+      .set('Content-Type', 'application/json')
+      .send('null');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(response.body.issues).toEqual([
+      { path: [], message: 'request body must be valid JSON' },
+    ]);
+  });
+
+  it('maps malformed JSON to the same 400 envelope instead of a 500', async () => {
+    const ctx = await makeContext();
+    const { plan } = await seedPlan(ctx, { dayOffsets: [0, 1, 3] });
+
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken))
+      .set('Content-Type', 'application/json')
+      .send('{"target_date":');
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+  });
+
   it('stamps batch created_at from the post-lock clock', async () => {
     const ctx = await makeContext();
     const { plan } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [0, 1, 3] });
