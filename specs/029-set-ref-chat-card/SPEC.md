@@ -65,7 +65,7 @@ CREATE INDEX messages_video_id_idx ON messages (video_id) WHERE video_id IS NOT 
                                   // 建立 per-surface fixture,不许按传言删任何 +1。
   "weight_kg": "100",             // 可空;**十进制字符串**,规范形(无尾零/无多余前导零)
   "reps": 5,                      // 可空,整数 0..99(0 合法,失败组)
-  "rpe": "8.3",                   // 可空;**十进制字符串**,0..10,0.1 精度
+  "rpe": "8.5",                   // 可空;**十进制字符串**,0..10,0.5 步进(域正典)
   "day_date": "2026-07-27",       // 学员 gym-day 口径
   "set_log_id": "uuid"            // 轻量溯源,见 §3 校验级别
 }
@@ -82,12 +82,16 @@ CREATE INDEX messages_video_id_idx ON messages (video_id) WHERE video_id IS NOT 
       (**ASCII 数字类 `[0-9]`,不用 `\d`**——Swift/ICU 与 JS 对 Unicode decimal digit 解释不同),
       **必须已是规范形**(无尾零:`"100.10"` → 400;无多余前导零)——首行直接逐字节引用该串,
       三端零格式化分歧;
-    - `rpe`: null 或匹配 `^(10|[0-9](\.[0-9])?)$`(0..10,0.1 精度,与源一致),同规范形要求;
+    - `rpe`: null 或匹配 `^(10|[0-9](\.5)?)$`(0..10,**0.5 步进**——⚖️ 2026-07-27 David 域裁决:
+      RPE 就是 0.5 步进,iOS 滑杆 step 0.5、E1RM 表 0.5 步斜率、算法 rpeInc 0.5 全域一致;
+      backend `RpeSchema` 的 0.1 松校验是**校验债**而非域真相,评审 R2 按它对齐是错的。
+      规范形:整数无 `.0`,半步恒 `.5`),同规范形要求;
     - 解析用正则捕获组转整数 minor units(weight×100、rpe×10),**禁止二进制乘法判精度**;
   - `reps`: null 或整数 0..99(与源 `sets.ts` 一致,0 合法——失败组);
   - `day_date` 合法日期;**未知字段拒绝**(strict)。失败 → 400 `VALIDATION_ERROR`。
-  - golden fixtures 必须覆盖:全 null、各单项 null、**`"0.29"` 与 `"1.15"`**(浮点陷阱值)、
-    非规范形拒绝(`"100.10"`/`"08"`)、0 值(reps 0)、边界(`"9999.99"` / `"10"`)。
+  - golden fixtures 必须覆盖:全 null、各单项 null、weight **`"0.29"` 与 `"1.15"`**(浮点陷阱值)、
+    非规范形拒绝(`"100.10"`/`"08"`/rpe `"8.0"`)、**rpe `"8.3"` 拒绝**(0.1 值,域外)、
+    0 值(reps 0)、边界(`"9999.99"` / rpe `"10"`)。
 
 ## 3. 写路径(POST /conversations/:id/messages 扩展)
 
@@ -237,3 +241,7 @@ visible(viewer, message) =
   隐藏闭环扩到九处含 `/read` 与排序;canonical 复用 024 函数;C4 并入 C1;
   兼容矩阵补旧 web/v2 lossy/部署顺序;C2 拆三卡补懒创建与路由契约;追加两条新 CHECK;
   补 Status 头。nit(索引理由改为服务 FK SET NULL 定位)已改。
+
+- **终审修订(2026-07-27,David)**:RPE 恢复 **0.5 步进**。评审 R2-B1 的「对齐源 0.1」被域裁决
+  推翻——Codex 把 `RpeSchema` 的松校验当成域真相,属代码考古误判;分享路径按域收紧不算
+  「缩窄源域」,因为域本来就是 0.5。`RpeSchema` 收紧另开卡,不混本波。
