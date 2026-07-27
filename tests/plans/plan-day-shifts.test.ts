@@ -8,6 +8,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../src/app';
+import { WholePlanShiftBodySchema } from '../../src/routes/plans/schemas';
 import type { Config } from '../../src/config';
 import { createDb } from '../../src/db/kysely';
 import type { Database, PlanStatus, UserRole } from '../../src/db/types';
@@ -489,6 +490,48 @@ describe('coached student whole-plan shifts', () => {
     expect(response.body.issues).toEqual([
       { path: ['target_date'], message: 'target_date must be a real calendar date' },
     ]);
+  });
+
+  it('anchors a day ahead when tomorrow actually holds a course', async () => {
+    const ctx = await makeContext();
+    const { plan, days } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [1, 2, 4] });
+
+    // A UTC-positive client already sees tomorrow as "today".
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken))
+      .send({ target_date: ctx.tomorrow });
+
+    expect(response.status).toBe(201);
+    // Today's course (offset 1) stays put; days from the anchor move.
+    expect(response.body.shifted_days).toEqual([
+      { day_id: days[1]?.id, shifted_to_date: '2026-07-13' },
+      { day_id: days[2]?.id, shifted_to_date: '2026-07-15' },
+    ]);
+  });
+
+  it('never treats an explicit null body as an empty object', () => {
+    // Express's strict JSON parser rejects a raw `null` before the route runs;
+    // this locks the schema-level guard in case that ever changes.
+    expect(WholePlanShiftBodySchema.safeParse(null).success).toBe(false);
+    expect(WholePlanShiftBodySchema.safeParse({}).success).toBe(true);
+  });
+
+  it('stamps batch created_at from the post-lock clock', async () => {
+    const ctx = await makeContext();
+    const { plan } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [0, 1, 3] });
+
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
+    expect(response.status).toBe(201);
+
+    const rows = await ctx.db.selectFrom('plan_day_shifts').select(['created_at']).execute();
+    for (const row of rows) {
+      // Fake time is pinned; an explicit stamp must match it exactly instead
+      // of whatever the storage engine considers the transaction start.
+      expect(new Date(row.created_at).toISOString()).toBe('2026-07-11T08:00:00.000Z');
+    }
   });
 
   it('rejects a shift when UTC today is not an effective training day', async () => {
