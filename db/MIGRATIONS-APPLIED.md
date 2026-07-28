@@ -137,6 +137,9 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-28 — `sha-44bf320`(=staging HEAD,#130 纯 web/ 换装:plan-web 编排器墨蓝换皮+单元格选择模型 #45,
+  bundle 0415c1f/入口 index-_divO7ke.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
+  `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口 index-_divO7ke.js、/auth/login 空body 400 正常。
 - 2026-07-28(一) — `sha-60ba916`(=staging HEAD,#125 spec 030 教练 RPE 校准+取消 e1RM 低 RPE 拒收:
   set_logs 加 coach_rpe 列 + PATCH /coach/set-logs/:id/coach-rpe + 统计/PR 检测 coalesce(coach_rpe,rpe) +
   set_logs/videos 响应 additive 补 rpe/coach_rpe)经 deploy-staging.yml(`migrations_applied=true`)部署;
