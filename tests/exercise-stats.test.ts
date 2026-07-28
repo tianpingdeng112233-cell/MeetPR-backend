@@ -444,8 +444,8 @@ describe('GET /coach/students/:id/exercise-stats', () => {
       },
     ]);
     expect(response.body.e1rm).toEqual({
-      value: '121.79',
-      computed_at: atTenUtc(daysFromToday(-7)).toISOString(),
+      value: '125.00',
+      computed_at: atTenUtc(daysFromToday(-7), 5).toISOString(),
     });
     expect(response.body.one_rm_reference).toBe('180.00');
   });
@@ -485,6 +485,65 @@ describe('GET /coach/students/:id/exercise-stats', () => {
     expect(unbound.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
     expect(student.status).toBe(403);
     expect(student.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
+  });
+
+  it('uses coach RPE before student RPE when taking the rolling e1RM max', async () => {
+    const ctx = await makeContext();
+    await addExercise(ctx, COMPETITION_SQUAT_ID, '竞技深蹲', 'squat');
+    const planExerciseIds = await addPlanExercise(ctx, COMPETITION_SQUAT_ID);
+    await ctx.db
+      .insertInto('set_logs')
+      .values([
+        {
+          student_id: ids.trainee,
+          plan_exercise_id: itemAt(planExerciseIds, 0),
+          exercise_id: COMPETITION_SQUAT_ID,
+          logged_date: daysFromToday(-3),
+          set_index: 0,
+          weight_kg: '120.00',
+          reps: 5,
+          rpe: '6.0',
+          completed: true,
+          logged_at: atTenUtc(daysFromToday(-3)),
+        },
+        {
+          student_id: ids.trainee,
+          plan_exercise_id: itemAt(planExerciseIds, 1),
+          exercise_id: COMPETITION_SQUAT_ID,
+          logged_date: daysFromToday(-2),
+          set_index: 0,
+          weight_kg: '140.00',
+          reps: 5,
+          rpe: null,
+          completed: true,
+          logged_at: atTenUtc(daysFromToday(-2)),
+        },
+        {
+          student_id: ids.trainee,
+          plan_exercise_id: itemAt(planExerciseIds, 2),
+          exercise_id: COMPETITION_SQUAT_ID,
+          logged_date: daysFromToday(-1),
+          set_index: 0,
+          weight_kg: '140.00',
+          reps: 5,
+          rpe: '6.0',
+          coach_rpe: '8.0',
+          completed: true,
+          logged_at: atTenUtc(daysFromToday(-1)),
+        },
+      ])
+      .execute();
+
+    const response = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/exercise-stats?exercise_id=${COMPETITION_SQUAT_ID}`)
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(200);
+    expect(response.body.e1rm).toEqual({
+      value: '179.49',
+      computed_at: atTenUtc(daysFromToday(-1)).toISOString(),
+    });
+    expect(response.body.recent_sessions[0].sets[0].rpe).toBe('6.0');
   });
 
   it('keeps completed-plan logs in rep PRs and recent sessions', async () => {
