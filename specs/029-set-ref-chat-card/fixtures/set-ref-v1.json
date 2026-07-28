@@ -1,4 +1,24 @@
 {
+  "normalization": {
+    "cases": [
+      {
+        "field": "weight_kg",
+        "input": "100.00",
+        "canonical": "100"
+      },
+      {
+        "field": "rpe",
+        "input": "8.0",
+        "canonical": "8"
+      },
+      {
+        "field": "weight_kg",
+        "input": "0.29",
+        "canonical": "0.29"
+      }
+    ]
+  },
+  "invalid_names": ["含\u2028的名", "含\u2029的名"],
   "valid": [
     {
       "name": "all-null",
