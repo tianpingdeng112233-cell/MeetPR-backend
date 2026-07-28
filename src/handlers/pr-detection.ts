@@ -2,14 +2,14 @@ import type { Kysely, Transaction } from 'kysely';
 import { z } from 'zod';
 
 import { LIFT_FAMILIES, type Database, type LiftFamily } from '../db/types';
-import { E1RM_POLICY, calculateEligibleE1RM, resolveCompetitionFamily } from '../domain/e1rm';
+import { resolveCompetitionFamily } from '../domain/e1rm';
 import { SIGNAL_POLICY } from '../domain/signal-policy';
 import { normalizeDateOnly } from '../utils/date';
 import { resolveEventCoachId } from './activity-ledger';
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
 
-const PrEventPayloadSchema = z.object({
+const LegacyPrEventPayloadSchema = z.object({
   set_log_id: z.string().uuid(),
   exercise_id: z.string().uuid(),
   family: z.enum(LIFT_FAMILIES),
@@ -18,7 +18,14 @@ const PrEventPayloadSchema = z.object({
   logged_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
+const PrEventPayloadSchema = LegacyPrEventPayloadSchema.extend({
+  metric: z.literal('actual_weight'),
+  weight_kg: z.number().positive().finite(),
+  previous_best_weight_kg: z.number().positive().finite(),
+});
+
 type PrEventPayload = z.infer<typeof PrEventPayloadSchema>;
+type CompatiblePrEventPayload = PrEventPayload | z.infer<typeof LegacyPrEventPayloadSchema>;
 
 const FAMILY_LABELS: Record<LiftFamily, string> = {
   squat: '深蹲',
@@ -28,38 +35,18 @@ const FAMILY_LABELS: Record<LiftFamily, string> = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function eligibleE1rm(
-  log: {
-    weight_kg: string;
-    reps: number;
-    rpe: string | null;
-    coach_rpe: string | null;
-    completed: boolean;
-    failed: boolean;
-    e1rm_confidence: 'normal' | 'low' | null;
-  },
-  family: LiftFamily | null,
-): number | null {
-  return calculateEligibleE1RM({
-    family,
-    weightKg: Number(log.weight_kg),
-    reps: log.reps,
-    rpe:
-      log.coach_rpe === null ? (log.rpe === null ? null : Number(log.rpe)) : Number(log.coach_rpe),
-    completed: log.completed,
-    failed: log.failed,
-    confidence: log.e1rm_confidence,
-  });
+function payloadWeight(payload: CompatiblePrEventPayload): number {
+  return 'weight_kg' in payload ? payload.weight_kg : payload.e1rm;
 }
 
 function reasonFor(payload: PrEventPayload): string {
-  return `${FAMILY_LABELS[payload.family]} e1RM 新高 ${payload.e1rm.toFixed(1)}kg（此前最好 ${payload.previous_best.toFixed(1)}kg）`;
+  return `${FAMILY_LABELS[payload.family]}实测重量新高 ${payload.weight_kg.toFixed(1)}kg（此前最好 ${payload.previous_best_weight_kg.toFixed(1)}kg）`;
 }
 
-function parsePayload(value: Record<string, unknown> | string): PrEventPayload | null {
+function parsePayload(value: Record<string, unknown> | string): CompatiblePrEventPayload | null {
   try {
     const decoded = typeof value === 'string' ? (JSON.parse(value) as unknown) : value;
-    const parsed = PrEventPayloadSchema.safeParse(decoded);
+    const parsed = z.union([PrEventPayloadSchema, LegacyPrEventPayloadSchema]).safeParse(decoded);
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -89,7 +76,7 @@ async function updateOpenCongrats(
 
   const existingPayload = parsePayload(existing.payload);
   const winningPayload =
-    existingPayload !== null && existingPayload.e1rm >= input.payload.e1rm
+    existingPayload !== null && payloadWeight(existingPayload) >= input.payload.weight_kg
       ? existingPayload
       : input.payload;
   const winningReason =
@@ -156,8 +143,9 @@ async function upsertOpenCongrats(
 }
 
 /**
- * Detect an e1RM PR for one persisted set log. Callers own the transaction so
- * the fact event and optional coach signal commit atomically with the ledger.
+ * Detect an actual-weight PR for one persisted set log. The legacy event name
+ * remains for live-client compatibility. Callers own the transaction so the
+ * fact event and optional coach signal commit atomically with the ledger.
  */
 export async function detectSetLogPr(
   db: DbExecutor,
@@ -174,13 +162,9 @@ export async function detectSetLogPr(
     .select([
       'sl.exercise_id as exercise_id',
       'sl.weight_kg as weight_kg',
-      'sl.reps as reps',
-      'sl.rpe as rpe',
-      'sl.coach_rpe as coach_rpe',
       'sl.completed as completed',
       'sl.failed as failed',
       'sl.assumed as assumed',
-      'sl.e1rm_confidence as e1rm_confidence',
       'sl.logged_date as logged_date',
       'sl.logged_at as logged_at',
       'e.main_lift_family as main_lift_family',
@@ -195,7 +179,7 @@ export async function detectSetLogPr(
 
   const onboarding = await db
     .selectFrom('student_onboarding_profiles')
-    .select(['squat_stance', 'deadlift_style'])
+    .select(['squat_stance', 'deadlift_style', 'squat_1rm_kg', 'bench_1rm_kg', 'deadlift_1rm_kg'])
     .where('user_id', '=', studentId)
     .executeTakeFirst();
   const stance = {
@@ -203,53 +187,75 @@ export async function detectSetLogPr(
     deadlift_style: onboarding?.deadlift_style ?? null,
   };
   const family = resolveCompetitionFamily(trigger, stance);
-  const currentE1rm = eligibleE1rm(trigger, family);
-  if (family === null || currentE1rm === null) return;
+  const currentWeight = Number(trigger.weight_kg);
+  if (
+    family === null ||
+    !trigger.completed ||
+    trigger.failed ||
+    !Number.isFinite(currentWeight) ||
+    currentWeight <= 0
+  ) {
+    return;
+  }
 
-  const windowStart = new Date(
-    trigger.logged_at.getTime() - E1RM_POLICY.rollingWindowDays * DAY_MS,
-  );
   const candidates = await db
     .selectFrom('set_logs as sl')
     .innerJoin('exercises as e', 'e.id', 'sl.exercise_id')
     .select([
       'sl.weight_kg as weight_kg',
-      'sl.reps as reps',
-      'sl.rpe as rpe',
-      'sl.coach_rpe as coach_rpe',
-      'sl.completed as completed',
-      'sl.failed as failed',
-      'sl.e1rm_confidence as e1rm_confidence',
       'e.main_lift_family as main_lift_family',
       'e.is_competition_lift as is_competition_lift',
       'e.competition_stance as competition_stance',
     ])
     .where('sl.student_id', '=', studentId)
     .where('sl.id', '!=', setLogId)
-    .where('sl.assumed', '=', false)
-    .where('sl.logged_at', '>=', windowStart)
-    .where('sl.logged_at', '<', trigger.logged_at)
+    // Imported-history rows (assumed=true) never trigger a PR themselves (see
+    // the trigger guard above) but DO raise the baseline: an experienced
+    // lifter importing 12 weeks of history must not get fake PRs afterwards
+    // (2026-07-09 decision ④, spec 053).
+    .where('sl.completed', '=', true)
+    .where('sl.failed', '=', false)
     .execute();
 
-  let previousBest: number | null = null;
+  let historicalBest: number | null = null;
   for (const candidate of candidates) {
     const candidateFamily = resolveCompetitionFamily(candidate, stance);
     if (candidateFamily !== family) continue;
-    const candidateE1rm = eligibleE1rm(candidate, candidateFamily);
-    if (candidateE1rm !== null && (previousBest === null || candidateE1rm > previousBest)) {
-      previousBest = candidateE1rm;
+    const candidateWeight = Number(candidate.weight_kg);
+    if (
+      Number.isFinite(candidateWeight) &&
+      candidateWeight > 0 &&
+      (historicalBest === null || candidateWeight > historicalBest)
+    ) {
+      historicalBest = candidateWeight;
     }
   }
-  if (previousBest === null) return;
 
-  const noiseBand = Math.max(0.5, previousBest * E1RM_POLICY.prNoiseRatio);
-  if (currentE1rm <= previousBest || currentE1rm - previousBest <= noiseBand) return;
+  const registeredOneRm = Number(
+    family === 'squat'
+      ? onboarding?.squat_1rm_kg
+      : family === 'bench'
+        ? onboarding?.bench_1rm_kg
+        : onboarding?.deadlift_1rm_kg,
+  );
+  const baselines = [
+    historicalBest,
+    Number.isFinite(registeredOneRm) && registeredOneRm > 0 ? registeredOneRm : null,
+  ].filter((value): value is number => value !== null);
+  if (baselines.length === 0) return;
+
+  const previousBest = Math.max(...baselines);
+  if (currentWeight <= previousBest) return;
 
   const payload = PrEventPayloadSchema.parse({
     set_log_id: setLogId,
     exercise_id: trigger.exercise_id,
     family,
-    e1rm: currentE1rm,
+    metric: 'actual_weight',
+    weight_kg: currentWeight,
+    previous_best_weight_kg: previousBest,
+    // Legacy aliases retained because live clients decode these keys.
+    e1rm: currentWeight,
     previous_best: previousBest,
     logged_date: normalizeDateOnly(trigger.logged_date),
   });
