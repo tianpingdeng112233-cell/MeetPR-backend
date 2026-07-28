@@ -135,6 +135,9 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-28 — `sha-217088d`(=staging HEAD,#124 纯 web/ 换装:plan-web 墨蓝亮色 UI 重做波合集 #43,
+  bundle 203f944/入口 index-Da2hn7KC.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
+  `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口 index-Da2hn7KC.js、/auth/login 空body 400 正常。
 - 2026-07-28(一) — `sha-46777db`(=staging HEAD,#120 纯 web/ 换装:plan-web spec 029 C3 组卡渲染 +就地播视频+续签即隐私删除;bundle 7d035ea/入口 index-CXpYh1FE.js + index-D3L8bszw.css)经
   deploy-staging.yml(`migrations_applied=true`,无迁移)部署;env 未动。curl 验证:GET / 回新入口哈希、
   线上 bundle 含「训练分享」×2、/health 200。**本次先等镜像进 ACR 再触发,时序正确**。
