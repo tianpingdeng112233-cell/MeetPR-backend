@@ -135,6 +135,14 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-28(一) — `sha-e2f32b2`(=staging HEAD,#117 spec 029 C1 组卡片 backend 原子卡:
+  messages 加 set_ref/video_id 两列 + 两条追加 CHECK + partial index + 写路径全套校验 +
+  前教练九处隐私闭环)经 deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`;
+  env 未动。**迁移 0051 已由 David 经 DMS 应用**(schema head 0049→0051;先迁移后部署,顺序正确;
+  DMS 验证:两列 information_schema 可见、messages_set_ref_text_only/messages_video_needs_set_ref/
+  messages_video_id_fkey 三约束在)。curl 验证:/health 200、无 token /conversations 401、
+  **学员真 token GET messages 200 且 wire 含 set_ref/video_url/video_expires_in 三字段**
+  (对既有 image 消息正确全 null)。镜像先于部署已在 ACR(合并时构建),未重踩时序坑。
 - 2026-07-27(日) — `sha-4fb71c9`(=staging HEAD,#111 纯 web/ 换装:plan-web 聊天滚动补审 loop 产出
   [plan-web#33];bundle 60216de/入口 index-3BNAfztL.js,CSS 未变仍 index-DLBqI-TP.css)经
   deploy-staging.yml(`migrations_applied=true`,**无迁移**)部署 `meetpr-backend-staging`;env 未动。
