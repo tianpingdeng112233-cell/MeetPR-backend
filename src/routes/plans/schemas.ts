@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { isIsoCalendarDate } from '../../utils/date';
 import {
   API_PLAN_SOURCES,
   INTENSITY_MODES,
@@ -292,3 +293,37 @@ export type CreatePlanSetBody = z.infer<typeof CreatePlanSetBodySchema>;
 export type PatchPlanSetBody = z.infer<typeof PatchPlanSetBodySchema>;
 export type BatchDaysBody = z.infer<typeof BatchDaysBodySchema>;
 export type ImportedHistoryBody = z.infer<typeof ImportedHistoryBodySchema>;
+
+function dayDiffFromUtcToday(value: string): number {
+  const target = Date.parse(`${value}T00:00:00.000Z`);
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.round((target - todayUtc) / 86_400_000);
+}
+
+// spec 054 addendum: `target_date` is the client's local "today", so the shift
+// anchors to the day the student is looking at instead of the server's UTC
+// day. The ±1 window only absorbs timezone skew (UTC±14h is at most one
+// calendar day away); this is not a reschedule-any-day entry point.
+export const WholePlanShiftBodySchema = z
+  .object({
+    target_date: DateSchema.superRefine((value, ctx) => {
+      // DateSchema only checks the shape; 2026-07-32 must not sneak through.
+      if (!isIsoCalendarDate(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'target_date must be a real calendar date',
+        });
+        return;
+      }
+      if (Math.abs(dayDiffFromUtcToday(value)) > 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'target_date must be within one day of the server date',
+        });
+      }
+    }).optional(),
+  })
+  .strict();
+
+export type WholePlanShiftBody = z.infer<typeof WholePlanShiftBodySchema>;
