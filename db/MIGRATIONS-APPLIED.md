@@ -135,6 +135,10 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-28(一) — `sha-46777db`(=staging HEAD,#120 纯 web/ 换装:plan-web spec 029 C3 组卡渲染
+  +就地播视频+续签即隐私删除;bundle 7d035ea/入口 index-CXpYh1FE.js + index-D3L8bszw.css)经
+  deploy-staging.yml(`migrations_applied=true`,无迁移)部署;env 未动。curl 验证:GET / 回新入口哈希、
+  线上 bundle 含「训练分享」×2、/health 200。**本次先等镜像进 ACR 再触发,时序正确**。
 - 2026-07-28(一) — `sha-e2f32b2`(=staging HEAD,#117 spec 029 C1 组卡片 backend 原子卡:
   messages 加 set_ref/video_id 两列 + 两条追加 CHECK + partial index + 写路径全套校验 +
   前教练九处隐私闭环)经 deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`;
