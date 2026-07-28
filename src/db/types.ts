@@ -441,6 +441,7 @@ export interface SetLogsTable {
   weight_kg: string;
   reps: number;
   rpe: NullableColumn<string>;
+  coach_rpe: NullableColumn<string>;
   completed: Generated<boolean>;
   failed: Generated<boolean>;
   assumed: Generated<boolean>;

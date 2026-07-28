@@ -67,7 +67,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
     deps.requireAuth,
     conversationsRouter({ db: deps.db, logger: deps.logger, oss: deps.oss }),
   );
-  app.use('/coach', deps.requireAuth, coachRouter({ db: deps.db }));
+  app.use('/coach', deps.requireAuth, coachRouter({ db: deps.db, logger: deps.logger }));
   app.use('/coach', deps.requireAuth, coachExerciseStatsRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachFeedbackRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachInviteCodesRouter({ db: deps.db }));

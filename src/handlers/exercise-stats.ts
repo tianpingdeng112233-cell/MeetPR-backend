@@ -34,6 +34,7 @@ async function fetchScopedLogs(
       'sl.weight_kg as weight_kg',
       'sl.reps as reps',
       'sl.rpe as rpe',
+      'sl.coach_rpe as coach_rpe',
       'sl.completed as completed',
       'sl.failed as failed',
       'sl.assumed as assumed',
@@ -191,7 +192,12 @@ function currentE1rm(logs: ScopedLog[], family: LiftFamily | null) {
       family,
       weightKg: Number(log.weight_kg),
       reps: log.reps,
-      rpe: log.rpe === null ? null : Number(log.rpe),
+      rpe:
+        log.coach_rpe === null
+          ? log.rpe === null
+            ? null
+            : Number(log.rpe)
+          : Number(log.coach_rpe),
       completed: log.completed,
       failed: log.failed,
       confidence: log.e1rm_confidence,

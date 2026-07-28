@@ -18,6 +18,7 @@ describe('GET /students/:id/sets', () => {
         weight_kg: '100.00',
         reps: 5,
         rpe: '8.0',
+        coach_rpe: '7.5',
         completed: true,
         failed: true,
         assumed: true,
@@ -39,6 +40,7 @@ describe('GET /students/:id/sets', () => {
         adhoc: false,
         weight_kg: '100.00',
         rpe: '8.0',
+        coach_rpe: '7.5',
         completed: true,
         failed: true,
         assumed: true,
@@ -201,6 +203,7 @@ describe('GET /students/:id/sets', () => {
     expect(res.body.logs).toHaveLength(1);
     expect(res.body.logs[0].plan_exercise_id).toBe(coachPlan.planExerciseId);
     expect(res.body.logs[0].failed).toBe(true);
+    expect(res.body.logs[0].coach_rpe).toBeNull();
   });
 
   it('returns an empty list for a non-owner coach and forbids other students', async () => {

@@ -20,6 +20,7 @@ interface LogFixture {
   weightKg?: number;
   reps?: number;
   rpe?: number | null;
+  coachRpe?: number | null;
   completed?: boolean;
   failed?: boolean;
   assumed?: boolean;
@@ -60,6 +61,12 @@ async function insertLog(ctx: TestContext, fixture: LogFixture): Promise<void> {
       reps: fixture.reps ?? 1,
       rpe:
         fixture.rpe === undefined ? '10.0' : fixture.rpe === null ? null : fixture.rpe.toFixed(1),
+      coach_rpe:
+        fixture.coachRpe === undefined
+          ? null
+          : fixture.coachRpe === null
+            ? null
+            : fixture.coachRpe.toFixed(1),
       completed: fixture.completed ?? true,
       failed: fixture.failed ?? false,
       assumed: fixture.assumed ?? false,
@@ -89,7 +96,6 @@ async function prRows(ctx: TestContext) {
 
 describe('detectSetLogPr', () => {
   it.each([
-    { name: 'RPE below 7', trigger: { rpe: 6.5 } },
     { name: 'low confidence', trigger: { confidence: 'low' as const } },
     { name: 'more than 10 reps', trigger: { reps: 11 } },
     { name: 'more than 5 deadlift reps', trigger: { reps: 6 }, deadlift: true },
@@ -134,6 +140,38 @@ describe('detectSetLogPr', () => {
 
     expect(await prRows(ctx)).toHaveLength(0);
     expect(await ctx.db.selectFrom('student_signals').selectAll().execute()).toHaveLength(0);
+  });
+
+  it('coalesces coach RPE for both the trigger and rolling-window candidates', async () => {
+    const ctx = await makePrContext();
+    await insertLog(ctx, {
+      id: '31000000-0000-4000-8000-000000000023',
+      loggedAt: daysBefore(1),
+      setIndex: 0,
+      weightKg: 100,
+      reps: 1,
+      rpe: 6,
+      coachRpe: 10,
+    });
+    const triggerId = '31000000-0000-4000-8000-000000000024';
+    await insertLog(ctx, {
+      id: triggerId,
+      loggedAt: TRIGGER_AT,
+      setIndex: 1,
+      weightKg: 90,
+      reps: 1,
+      rpe: 10,
+      coachRpe: 6,
+    });
+
+    await detect(ctx, triggerId);
+
+    const event = (await prRows(ctx))[0];
+    expect(event).toBeDefined();
+    expect(payload(event?.payload ?? {})).toMatchObject({
+      e1rm: 90 / 0.84,
+      previous_best: 100,
+    });
   });
 
   it('excludes assumed baselines while retaining the real eligible best', async () => {

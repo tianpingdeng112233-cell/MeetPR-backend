@@ -67,16 +67,24 @@ describe('resolveCompetitionFamily', () => {
 });
 
 describe('e1RM policy', () => {
-  it('uses Epley without RPE and the canonical RTS table with eligible RPE', () => {
+  it('uses Epley without RPE and the canonical RTS table from RPE 6', () => {
     expect(calculateEligibleE1RM(base)).toBeCloseTo(116.6667, 4);
     expect(calculateEligibleE1RM({ ...base, rpe: 8 })).toBeCloseTo(128.2051, 4);
+    expect(calculateEligibleE1RM({ ...base, weightKg: 140, reps: 5, rpe: 6 })).toBeCloseTo(200, 4);
+  });
+
+  it('falls back to Epley below RPE 6 and rejects RPE above 10', () => {
+    expect(calculateEligibleE1RM({ ...base, weightKg: 140, reps: 5, rpe: 5 })).toBeCloseTo(
+      163.3333,
+      4,
+    );
+    expect(calculateEligibleE1RM({ ...base, rpe: 10.1 })).toBeNull();
   });
 
   it.each([
     ['unresolved exercise family', { family: null }],
     ['incomplete', { completed: false }],
     ['failed', { failed: true }],
-    ['RPE below 7', { rpe: 6.5 }],
     ['more than 10 reps', { reps: 11 }],
     ['low confidence', { confidence: 'low' as const }],
     ['deadlift above 5 reps', { family: 'deadlift' as const, reps: 6 }],

@@ -17,6 +17,7 @@ async function seedSetLog(ctx: Awaited<ReturnType<typeof makeUploadsContext>>): 
       weight_kg: '140.00',
       reps: 5,
       rpe: '7.5',
+      coach_rpe: '8.0',
       completed: true,
     })
     .returning(['id'])
@@ -126,6 +127,8 @@ describe('GET /students/:id/videos (spec 007)', () => {
       set_index: 0,
       weight_kg: '140.00',
       reps: 5,
+      rpe: '7.5',
+      coach_rpe: '8.0',
     });
     expect(linked.plan_exercise_id).toEqual(expect.any(String));
     expect(linked.logged_at).toEqual(expect.any(String));
@@ -140,6 +143,8 @@ describe('GET /students/:id/videos (spec 007)', () => {
       set_index: null,
       weight_kg: null,
       reps: null,
+      rpe: null,
+      coach_rpe: null,
     });
   });
 

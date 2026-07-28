@@ -33,6 +33,7 @@ function eligibleE1rm(
     weight_kg: string;
     reps: number;
     rpe: string | null;
+    coach_rpe: string | null;
     completed: boolean;
     failed: boolean;
     e1rm_confidence: 'normal' | 'low' | null;
@@ -43,7 +44,8 @@ function eligibleE1rm(
     family,
     weightKg: Number(log.weight_kg),
     reps: log.reps,
-    rpe: log.rpe === null ? null : Number(log.rpe),
+    rpe:
+      log.coach_rpe === null ? (log.rpe === null ? null : Number(log.rpe)) : Number(log.coach_rpe),
     completed: log.completed,
     failed: log.failed,
     confidence: log.e1rm_confidence,
@@ -174,6 +176,7 @@ export async function detectSetLogPr(
       'sl.weight_kg as weight_kg',
       'sl.reps as reps',
       'sl.rpe as rpe',
+      'sl.coach_rpe as coach_rpe',
       'sl.completed as completed',
       'sl.failed as failed',
       'sl.assumed as assumed',
@@ -213,6 +216,7 @@ export async function detectSetLogPr(
       'sl.weight_kg as weight_kg',
       'sl.reps as reps',
       'sl.rpe as rpe',
+      'sl.coach_rpe as coach_rpe',
       'sl.completed as completed',
       'sl.failed as failed',
       'sl.e1rm_confidence as e1rm_confidence',

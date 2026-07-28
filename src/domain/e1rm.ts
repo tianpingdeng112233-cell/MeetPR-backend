@@ -1,7 +1,6 @@
 import type { CompetitionStance, DeadliftStyle, LiftFamily, SquatStance } from '../db/types';
 
 export const E1RM_POLICY = {
-  minimumRpe: 7,
   maximumReps: 10,
   maximumDeadliftReps: 5,
   rollingWindowDays: 28,
@@ -71,11 +70,11 @@ export function calculateEligibleE1RM(input: E1RMInput): number | null {
     return null;
   if (input.weightKg <= 0 || input.reps < 1 || input.reps > E1RM_POLICY.maximumReps) return null;
   if (family === 'deadlift' && input.reps > E1RM_POLICY.maximumDeadliftReps) return null;
-  if (input.rpe !== null && input.rpe < E1RM_POLICY.minimumRpe) return null;
 
-  if (input.rpe === null) {
+  if (input.rpe === null || input.rpe < 6) {
     return input.weightKg * (1 + input.reps / 30);
   }
+  if (input.rpe > 10) return null;
 
   const rpePosition = (input.rpe - 6) / 0.5;
   const lower = Math.floor(rpePosition);
