@@ -137,6 +137,16 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-29(三) — `sha-e8adf25`(=staging HEAD,#143 纯 web/ 换装:plan-web 聊天组卡视频弹窗样式回归
+  修复 #50,plan-web main 2ad19f2/入口 index-C_RhbZi2.js + index-iGzXtTky.css)经 deploy-staging.yml
+  部署(21:51 UTC,run 30493946181),**无迁移**。当日第五次部署,由另一会话执行;此条为**事后核实补记**。
+  curl 核验(独立复核,非工作流自带 smoke):GET / 已回新入口;线上 CSS 里 `video-modal`、
+  `.day.sel{outline:2px solid var(--ink)`、`.day input:disabled`、`.writing-panel`、`.context-recall` 全在;
+  线上 JS 里撰写上下文面板的「学员画像 · ONBOARDING」「登记 1RM」「后端滚动值」「次数 PR」等串全在
+  ——即当日三个回归修复(#49 选中态 / #51 撰写面板 / #50 视频弹窗)已同时在产。
+  ⚠️ 记账习惯提醒:本条补记时另有两条账本 PR(#131 编辑器换皮、#134 键盘层)仍未合,
+  所以 `sha-09a5f52` / `sha-cf9e233` 两次部署在本文件里仍缺席。账本落后于线上时,
+  排查「这功能到底上没上」只能回去数产物字符串——**账本 PR 请随部署当场合掉**。
 - 2026-07-29(三) — `sha-7a79a17`(=staging HEAD,#142 纯 web/ 换装:plan-web 撰写上下文面板回归修复
   #51,plan-web main 76ad8d7/入口 index-VbNWE0LL.js + index-CspPujRY.css)经 deploy-staging.yml
   (`migrations_applied=true`,**无迁移**——与上次部署的 c58b7d9 相比只差 `web/` 与本账本)部署
