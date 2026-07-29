@@ -137,6 +137,17 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-29(三) — `sha-e8adf25`(=staging HEAD,#143 纯 web/ 换装:plan-web 聊天视频弹窗样式回归修复
+  #50,plan-web main 2ad19f2/入口 index-C_RhbZi2.js + index-iGzXtTky.css)经 deploy-staging.yml
+  (`migrations_applied=true`,**无迁移**——与上次部署的 7a79a17 相比只差 `web/`)部署
+  `meetpr-backend-staging`;env 未动。curl 验证:GET / 已回新入口(部署绿灯后首次探测即命中)、
+  线上 CSS 里 `.video-modal{position:fixed;...z-index:180` 一条在、`/assets/index-C_RhbZi2.js` 200、
+  /health 200。反回退比字符串:与线上正在跑的 `index-VbNWE0LL.js`+`index-DIm2g17H.js` 对比,
+  995 条中文串**丢 0 增 0**(纯 CSS + 一个 `playsInline` 属性,JS 只差 15 字节),无静默回退。当日第五次部署。
+  ⚠️ 同类回归第二起:卡5「训练视频页改内嵌播放器」(`55025cd`)删掉 `index.css` 整块 `.video-modal`
+  规则,但聊天页 set-ref 播放仍在渲染 `VideoModal` 组件——类名成孤儿,教练点开视频得到一个
+  按原始像素躺在聊天流里的裸 `<video>`。**CSS 孤儿类名是编译期与测试期的双盲区**:tsc 过、466 个
+  jsdom 测试全绿(断言的是 DOM 结构不是样式),只有真人点开才看得见。
 - 2026-07-29(三) — `sha-7a79a17`(=staging HEAD,#142 纯 web/ 换装:plan-web 撰写上下文面板回归修复
   #51,plan-web main 76ad8d7/入口 index-VbNWE0LL.js + index-CspPujRY.css)经 deploy-staging.yml
   (`migrations_applied=true`,**无迁移**——与上次部署的 c58b7d9 相比只差 `web/` 与本账本)部署
@@ -147,6 +158,7 @@
   `RmStrip`/`SessionDetail` tree-shake 掉。教练从 `sha-09a5f52`(07-28 10:23 换装)起就没有学员画像/
   次数 PR/e1RM 条/最近训练记录,全程零报错。**换装反回退比对必须比字符串,不能只看 diff 体积**:
   本次比对显示线上包 1032 条中文串丢失 0、恰好找回 card 3 丢掉的 21 条。
+- 2026-07-29(三) — `sha-c58b7d9`(#139 纯 web/ 换装:plan-web 训练日选中态修复 #49,
   plan-web main d3c1f28/入口 index-DSxyWe4K.js + index-CspPujRY.css)经 deploy-staging.yml
   (`migrations_applied=true`,**无迁移**——与上次部署的 de9c15a 相比只差 `web/`)部署
   `meetpr-backend-staging`;env 未动。curl 验证:GET / 已回新入口、线上 CSS 里
