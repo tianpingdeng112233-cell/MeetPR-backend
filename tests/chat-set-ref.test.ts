@@ -7,7 +7,7 @@ import { formatSetRefFirstLine, type SetRefV1 } from '../src/domain/set-ref';
 import { conversationsRouter } from '../src/routes/conversations';
 import type { OssService } from '../src/services/oss';
 import type { TestContext } from './helpers/studentActions';
-import { auth, ids, makeContext } from './helpers/studentActions';
+import { auth, createPublishedPlan, ids, makeContext } from './helpers/studentActions';
 import { makeFakeOss, makeUploadsContext } from './helpers/uploads';
 
 const DAY = '2026-07-27';
@@ -62,15 +62,46 @@ async function createSetLog(ctx: TestContext, studentId = ids.trainee, setIndex 
 function setRef(setLogId: string, overrides: Partial<SetRefV1> = {}): SetRefV1 {
   return {
     v: 1,
+    source: 'logged',
     exercise_name: '低杠位深蹲',
     set_number: 1,
+    set_total: null,
     weight_kg: '100',
     reps: 5,
+    reps_max: null,
     rpe: '8.5',
     day_date: DAY,
     set_log_id: setLogId,
+    plan_set_id: null,
     ...overrides,
   };
+}
+
+function plannedRef(planSetId: string, overrides: Partial<SetRefV1> = {}): SetRefV1 {
+  return {
+    v: 1,
+    source: 'planned',
+    exercise_name: '低杠位深蹲',
+    set_number: 1,
+    set_total: 3,
+    weight_kg: '100',
+    reps: 3,
+    reps_max: 5,
+    rpe: null,
+    day_date: DAY,
+    set_log_id: null,
+    plan_set_id: planSetId,
+    ...overrides,
+  };
+}
+
+async function createPlanSet(ctx: TestContext, studentId = ids.trainee) {
+  const plan = await createPublishedPlan(ctx, ids.coach, studentId);
+  return ctx.db
+    .selectFrom('plan_sets')
+    .select(['id', 'set_number'])
+    .where('plan_exercise_id', '=', plan.planExerciseId)
+    .executeTakeFirstOrThrow();
 }
 
 async function createVideo(
@@ -155,7 +186,12 @@ describe('POST /conversations/:id/messages set_ref', () => {
     await chooseCanonicalCoach(ctx);
     const conversation = await createConversation(ctx);
     const log = await createSetLog(ctx);
-    const snapshot = setRef(log.id, { weight_kg: '0.29', reps: 0, rpe: '10' });
+    const snapshot = setRef(log.id, {
+      set_total: 3,
+      weight_kg: '0.29',
+      reps: 0,
+      rpe: '10',
+    });
     const firstLine = formatSetRefFirstLine(snapshot);
     const body = `${firstLine}\n膝盖底部有点不稳`;
 
@@ -198,6 +234,122 @@ describe('POST /conversations/:id/messages set_ref', () => {
       .set(auth(ctx.coachToken))
       .send({ kind: 'text', body: '普通回复', client_id: 'coach-ordinary-text' });
     expect(ordinaryCoachText.status).toBe(201);
+  });
+
+  it('accepts an owned planned set without changing its 1-based number and uses planned preview', async () => {
+    const ctx = await makeContext();
+    await chooseCanonicalCoach(ctx);
+    const conversation = await createConversation(ctx);
+    const ownPlanSet = await createPlanSet(ctx);
+    expect(ownPlanSet.set_number).toBe(1);
+    const snapshot = plannedRef(ownPlanSet.id, { set_number: ownPlanSet.set_number });
+    const body = formatSetRefFirstLine(snapshot);
+    expect(body).toBe('[训练计划] 低杠位深蹲 第1组/3 计划 100kg×3-5 (2026-07-27)');
+
+    const sent = await requestConversationsRouter(ctx, {
+      method: 'POST',
+      url: `/${conversation.id}/messages`,
+      user: { id: ids.trainee, role: 'coached_student' },
+      body: { kind: 'text', body, set_ref: snapshot, client_id: 'planned-valid' },
+    });
+    expect(sent.status).toBe(201);
+    expect(sent.body).toMatchObject({
+      message: {
+        body,
+        set_ref: snapshot,
+        video_url: null,
+        video_expires_in: null,
+      },
+    });
+
+    const list = await requestConversationsRouter(ctx, {
+      method: 'GET',
+      url: '/',
+      user: { id: ids.trainee, role: 'coached_student' },
+    });
+    expect(list.body).toMatchObject({
+      conversations: [
+        {
+          id: conversation.id,
+          last_message: { preview: '[训练计划]' },
+        },
+      ],
+    });
+  });
+
+  it('rejects foreign or missing planned sets, forged planned body, and any planned video_id', async () => {
+    const ctx = await makeContext();
+    await chooseCanonicalCoach(ctx);
+    const conversation = await createConversation(ctx);
+    const ownPlanSet = await createPlanSet(ctx);
+    const foreignPlanSet = await createPlanSet(ctx, ids.otherStudent);
+    const ownSnapshot = plannedRef(ownPlanSet.id);
+    const ownBody = formatSetRefFirstLine(ownSnapshot);
+    const missingSnapshot = plannedRef('71000000-0000-4000-8000-000000000099');
+
+    for (const [clientId, snapshot] of [
+      ['planned-foreign', plannedRef(foreignPlanSet.id)],
+      ['planned-missing', missingSnapshot],
+    ] as const) {
+      const response = await requestConversationsRouter(ctx, {
+        method: 'POST',
+        url: `/${conversation.id}/messages`,
+        user: { id: ids.trainee, role: 'coached_student' },
+        body: {
+          kind: 'text',
+          body: formatSetRefFirstLine(snapshot),
+          set_ref: snapshot,
+          client_id: clientId,
+        },
+      });
+      expect(response.status, clientId).toBe(400);
+      expect(response.body).toEqual({
+        error: 'VALIDATION_ERROR',
+        issues: [
+          {
+            path: ['set_ref', 'plan_set_id'],
+            message: 'plan_set_id must identify a planned set on a plan owned by the sender',
+          },
+        ],
+      });
+    }
+
+    const forgedBody = await requestConversationsRouter(ctx, {
+      method: 'POST',
+      url: `/${conversation.id}/messages`,
+      user: { id: ids.trainee, role: 'coached_student' },
+      body: {
+        kind: 'text',
+        body: ownBody.replace(' 计划 ', ' '),
+        set_ref: ownSnapshot,
+        client_id: 'planned-forged-body',
+      },
+    });
+    expect(forgedBody.status).toBe(400);
+    expect(forgedBody.body).toMatchObject({ error: 'VALIDATION_ERROR' });
+
+    const withVideo = await requestConversationsRouter(ctx, {
+      method: 'POST',
+      url: `/${conversation.id}/messages`,
+      user: { id: ids.trainee, role: 'coached_student' },
+      body: {
+        kind: 'text',
+        body: ownBody,
+        set_ref: ownSnapshot,
+        video_id: '80000000-0000-4000-8000-000000000099',
+        client_id: 'planned-video',
+      },
+    });
+    expect(withVideo.status).toBe(400);
+    expect(withVideo.body).toEqual({
+      error: 'VALIDATION_ERROR',
+      issues: [
+        {
+          path: ['video_id'],
+          message: 'video_id is not allowed for source=planned',
+        },
+      ],
+    });
   });
 
   it('rejects strict snapshot/body/source violations but skips all new validation on idempotent hits', async () => {

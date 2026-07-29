@@ -232,11 +232,8 @@ visible(viewer, message) =
 
 ## 10. 待 David 拍板(不阻塞评审,按默认走)
 
-- ~~D1 训练页入口形态:默认每组行尾「问教练」~~ → ⚖️ **2026-07-28 David 实机截图后修订**:
-  行尾按钮太挤,撤;改为 **hero 卡片常驻单一「问教练」入口**(有今日已录完组且 active 绑定时显示),
-  点击弹选择器 sheet(列今日已录组:动作/组号/重量×次数/RPE/视频标记,**单选**,默认选中最近录完
-  的那组)→ 既有确认卡流程。聊天内 composer「+」共用同一选择器。
-- D2 一条消息一组(**维持默认,D1 修订时未翻案**);多组打包不做。
+- D1 训练页入口形态:默认**每组行尾「问教练」**;备选=当日汇总区单入口进选择器。
+- D2 一条消息一组(默认);多组打包不做。
 
 ## 评审处置
 
@@ -250,3 +247,125 @@ visible(viewer, message) =
 - **终审修订(2026-07-27,David)**:RPE 恢复 **0.5 步进**。评审 R2-B1 的「对齐源 0.1」被域裁决
   推翻——Codex 把 `RpeSchema` 的松校验当成域真相,属代码考古误判;分享路径按域收紧不算
   「缩窄源域」,因为域本来就是 0.5。`RpeSchema` 收紧另开卡,不混本波。
+
+---
+
+## 11. 修订 R3 — 计划组分享 + 总组数 + 卡片视觉重做(2026-07-29,David 拍板 B+A)
+
+**触发**:David 看到实机卡片后给出参考设计,并拍两条范围:
+① 「今日的所有训练,无论练完还是没练完」= **连计划了但一次没练的组也能发**(选项 B);
+② 参考设计的「第 1 组 / 3」**总组数要做**,接受三仓小改(选项 A)。
+
+**版本策略**:`set_ref` **不升 v2,就地扩 v1**。理由=该形状**从未发过版**——C1/C2/C3 全部躺在
+未切包的 `release/1.0` 与已部署但无客户端在用的 staging 上,线上零存量卡片,**零版本偏斜代价**。
+升 v2 反而要写一套永远跑不到的降级路径。⚠️ 本条**随 1.0(15) 切包即失效**:包一出去,
+下次改 `set_ref` 必须升版本 + lossy 降级。
+
+### 11.1 `set_ref` v1 扩展形状
+
+```jsonc
+{
+  "v": 1,
+  "source": "logged", // 🆕 'logged' | 'planned' —— 必填枚举,决定下面两个 id 哪个非空
+  "exercise_name": "低杠位深蹲",
+  "set_number": 3, // 1-based 展示序号(口径不变)
+  "set_total": 5, // 🆕 可空整数 1..999;该动作当日计划总组数,缺则卡上不显示 /N
+  "weight_kg": "100", // 可空规范形十进制字符串(不变)
+  "reps": 5, // 可空整数 0..99(不变)
+  "reps_max": null, // 🆕 可空整数;次数区间上界(计划组常见「3-5 次」)
+  "rpe": "8.5", // 可空规范形,0.5 步进(不变)
+  "day_date": "2026-07-29",
+  "set_log_id": "uuid", // source='logged' 时必填;'planned' 时**必须为 null**
+  "plan_set_id": null, // 🆕 source='planned' 时必填;'logged' 时**必须为 null**
+}
+```
+
+- **字段仍然全部必现**(缺字段 = 400 / iOS 端 `missingField` throw);可空项显式写 `null`。
+  strict 未知字段拒绝不变。
+- **跨字段不变量**(逐条写死,各带 fixture):
+  - `source == 'logged'` ⟺ `set_log_id != null && plan_set_id == null`;
+    `source == 'planned'` ⟺ `plan_set_id != null && set_log_id == null`。违反 → 400。
+  - `set_total` null 或 `1..999` 且 `>= set_number`。`set_number > set_total` → 400
+    (防「第 9 组 / 3」这种自相矛盾的展示)。
+  - `reps_max` null 或 `reps != null && reps < reps_max <= 99`。`reps == null` 而
+    `reps_max != null` → 400。
+- **`set_total` 是展示值,不回查校验**——与 `set_log_id` 同级的轻量语义:服务端只保证它
+  **进机械首行**因而与 body 一致,不保证它等于计划当前组数(冻结语义,计划后续被改属正常)。
+
+### 11.2 归属校验(写路径,§3 的 `set_log_id` 一条扩成两条)
+
+- `source='logged'`:原样不变(`set_logs.id` 存在且 `student_id == sender`)。
+- `source='planned'`:`plan_sets → plan_exercises → plan_days → plans` 四表 join,
+  要求 `plans.trainee_id == sender`,否则 400
+  `plan_set_id must identify a planned set on a plan owned by the sender`。
+  ⚠️ **`plan_sets.set_number` 本来就是 1-based**(0003 `CHECK set_number >= 1`),
+  与 `set_logs.set_index` 的 0-based **相反**——planned 路径**不许 +1**,logged 路径必须 +1。
+  这是本仓第二个组号陷阱,C0 建立的 per-surface fixture 必须补一行 planned。
+- `video_id` 归属校验(`attachments.set_log_id == set_ref.set_log_id`)**仅适用 logged**;
+  `source='planned'` 时 `video_id` 必须缺省 → 400(没练过的组不可能有视频)。
+
+### 11.3 机械首行口径 v2(**替换 §3 的冻结格式**)
+
+冻结口径解冻一次,理由同 11.0(未发版)。新格式:
+
+```
+logged  有总组数: [训练分享] 硬拉 第3组/5 175kg×3 @RPE8.5 (2026-07-29)
+logged  无总组数: [训练分享] 硬拉 第3组 175kg×3 @RPE8.5 (2026-07-29)
+planned 有总组数: [训练计划] 硬拉 第3组/5 计划 175kg×3-5 @RPE8 (2026-07-29)
+```
+
+- **前缀区分是防伪装的正线**:`[训练分享]` = 真做过,`[训练计划]` = 只是计划。降级成纯文本的
+  老客户端**必须**一眼能分,否则学员能把「计划举 200」伪装成「举了 200」。前缀 + `计划` 二字冗余
+  编码,任缺其一都不收。
+- 缺省形态:weight 缺 → `-kg`;reps 缺 → `×-`;`reps_max` 非空 → `×{reps}-{reps_max}`;
+  rpe 缺 → 整段 ` @RPE…` 省略;`set_total` 缺 → 省略 `/N`。字段间单空格,无前后空白。
+- 服务端重算比对逻辑(`bodyMatchesSetRef`)不变,只换格式函数。
+- **会话列表 preview** 同步:§4 的 `[训练分享]` 硬编码要按 `source` 取前缀。
+
+### 11.4 iOS 候选集扩展(卡 B)
+
+- 候选 = **当日 logged 组 ∪ 当日 planned 组**,按 `plan_set_id` 去重:
+  **某 plan_set 已有对应 log 行 → 只出 logged,不出 planned**(否则同一组出现两次)。
+- 分区展示:「已完成」(logged,沿用既有 recent-completion 排序)在前,
+  「今日计划」(planned,按 `sequenceIndex` + `set_number` 升序)在后。
+- **eligibility 放宽**:logged 侧不再要求 `completed && !assumed`——有记录就能发
+  (David 07-29:输了重量次数但没打完成勾的组也要能问教练)。`failed` 组同样可发。
+- `plan_sets.intensity_mode` 二选一映射:`'weight'` → `weight_kg = target_value, rpe = null`;
+  `'rpe'` → `weight_kg = null, rpe = target_value`。
+- **非规范值的计划组不入候选**:计划里的 RPE 落在 0.5 步进之外(`plan_sets` 无步进约束,
+  NUMERIC(6,2) 允许 7.25)或重量超域 → **该组静默排除**,不四舍五入
+  (**永不悄悄改教练开的处方**)。全部被排除时按既有空态文案走。
+
+### 11.5 卡片视觉重做(卡 B iOS + 卡 C plan-web,一比一照参考设计)
+
+现行卡是金底黑字整块;改为 **深色卡 + 金色侧边条**,结构自上而下:
+
+1. **表头行**:金色小杠铃字形 + 标签 + 右侧时间戳(muted,等宽数字)。
+   标签按 source:logged → 「我记录的一组」;planned → 「我今天的计划」。
+2. **标题行**:动作名(大号粗体 primary)+ 同行尾随 `第 N 组 / M`(小号 tertiary,等宽数字)。
+3. **数据行**:两列,列间一道细竖分隔线。列头是**小号大写字母间距**的微标签
+   (`WEIGHT × REPS` / `RPE`),列值大号粗体;**RPE 值用金色**,其余 primary。
+   `kg` 后缀比数字小一号。
+4. **备注**:非空时落在卡内**嵌套气泡**(surfaceElevated,radius md),不与数据行同层。
+5. **页脚**:仅自己发的卡显示,与主体间一道分隔;`✓ 已送达 · 等教练看` / 已读态改文案。
+   复用既有 `deliveryStatus` 的 `.delivered`/`.read`,不新造状态。
+6. **金色侧边条**:约 3pt,贴**外侧**——自己发的贴 trailing,收到的贴 leading。
+   (组卡片永远是学员发的,所以学员端恒 trailing、教练端恒 leading。)
+
+**不做,另开卡**(参考设计里出现但当前无数据支撑,不许 Codex 顺手编):
+
+- **「新纪录」金色 badge** —— 需要与历史最好成绩比对的 PR 判定,`set_ref` 里没有、
+  当日 log 里也算不出。**整条 deferred**,不许用任何近似规则冒充。
+- **连发折叠为紧凑行** —— 需要消息列表按发送者+时间窗分组归并,属列表层重构,不在本卡。
+
+### 11.6 分卡(承 §9)
+
+| 卡      | 级  | 端       | 范围                                                                                     | 依赖     |
+| ------- | --- | -------- | ---------------------------------------------------------------------------------------- | -------- |
+| **R3a** | T2  | backend  | §11.1 schema 扩展 + §11.2 归属校验 + §11.3 首行 v2 + preview 前缀 + fixtures。**无迁移** | 无       |
+| **R3b** | T2  | iOS      | `SetRefV1`/formatter 扩展 + §11.4 候选集 + §11.5 卡片重做 + 选择器分区                   | R3a 部署 |
+| **R3c** | T1  | plan-web | §11.5 卡片重做 + 新字段渲染 + planned 形态                                               | R3a 部署 |
+
+- **无迁移**:`messages.set_ref` 是 JSONB,形状变化不碰 DDL;0051 的两条 CHECK 原样有效。
+- 部署顺序:R3a 必须先上 staging,否则 R3b/R3c 发出的新形状被 strict schema 打 400。
+- R3b 基于 PR #287 分支叠层(#287 已把 ChatUI 搬上黑金 token,R3b 在其上重做结构)。
