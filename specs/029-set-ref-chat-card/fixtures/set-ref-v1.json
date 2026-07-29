@@ -18,75 +18,149 @@
       }
     ]
   },
-  "invalid_names": ["含\u2028的名", "含\u2029的名"],
+  "invalid_names": ["含 的名", "含 的名"],
   "valid": [
     {
-      "name": "all-null",
+      "name": "logged-all-null",
       "set_ref": {
         "v": 1,
+        "source": "logged",
         "exercise_name": "低杠位深蹲",
         "set_number": 1,
+        "set_total": null,
         "weight_kg": null,
         "reps": null,
+        "reps_max": null,
         "rpe": null,
         "day_date": "2026-07-27",
-        "set_log_id": "70000000-0000-4000-8000-000000000001"
+        "set_log_id": "70000000-0000-4000-8000-000000000001",
+        "plan_set_id": null
       },
       "first_line": "[训练分享] 低杠位深蹲 第1组 -kg×- (2026-07-27)"
     },
     {
-      "name": "weight-null",
+      "name": "planned-all-null",
       "set_ref": {
         "v": 1,
+        "source": "planned",
         "exercise_name": "低杠位深蹲",
-        "set_number": 3,
+        "set_number": 1,
+        "set_total": null,
         "weight_kg": null,
-        "reps": 5,
-        "rpe": "8.5",
+        "reps": null,
+        "reps_max": null,
+        "rpe": null,
         "day_date": "2026-07-27",
-        "set_log_id": "70000000-0000-4000-8000-000000000001"
+        "set_log_id": null,
+        "plan_set_id": "71000000-0000-4000-8000-000000000001"
       },
-      "first_line": "[训练分享] 低杠位深蹲 第3组 -kg×5 @RPE8.5 (2026-07-27)"
+      "first_line": "[训练计划] 低杠位深蹲 第1组 计划 -kg×- (2026-07-27)"
     },
     {
-      "name": "reps-null",
+      "name": "logged-full",
       "set_ref": {
         "v": 1,
+        "source": "logged",
         "exercise_name": "低杠位深蹲",
         "set_number": 3,
+        "set_total": 5,
         "weight_kg": "100",
-        "reps": null,
+        "reps": 3,
+        "reps_max": 5,
         "rpe": "8.5",
         "day_date": "2026-07-27",
-        "set_log_id": "70000000-0000-4000-8000-000000000001"
+        "set_log_id": "70000000-0000-4000-8000-000000000001",
+        "plan_set_id": null
+      },
+      "first_line": "[训练分享] 低杠位深蹲 第3组/5 100kg×3-5 @RPE8.5 (2026-07-27)"
+    },
+    {
+      "name": "planned-full",
+      "set_ref": {
+        "v": 1,
+        "source": "planned",
+        "exercise_name": "硬拉",
+        "set_number": 3,
+        "set_total": 5,
+        "weight_kg": "175",
+        "reps": 3,
+        "reps_max": 5,
+        "rpe": "8",
+        "day_date": "2026-07-29",
+        "set_log_id": null,
+        "plan_set_id": "71000000-0000-4000-8000-000000000001"
+      },
+      "first_line": "[训练计划] 硬拉 第3组/5 计划 175kg×3-5 @RPE8 (2026-07-29)"
+    },
+    {
+      "name": "logged-weight-null",
+      "set_ref": {
+        "v": 1,
+        "source": "logged",
+        "exercise_name": "低杠位深蹲",
+        "set_number": 3,
+        "set_total": 5,
+        "weight_kg": null,
+        "reps": 5,
+        "reps_max": null,
+        "rpe": "8.5",
+        "day_date": "2026-07-27",
+        "set_log_id": "70000000-0000-4000-8000-000000000001",
+        "plan_set_id": null
+      },
+      "first_line": "[训练分享] 低杠位深蹲 第3组/5 -kg×5 @RPE8.5 (2026-07-27)"
+    },
+    {
+      "name": "logged-reps-null",
+      "set_ref": {
+        "v": 1,
+        "source": "logged",
+        "exercise_name": "低杠位深蹲",
+        "set_number": 3,
+        "set_total": null,
+        "weight_kg": "100",
+        "reps": null,
+        "reps_max": null,
+        "rpe": "8.5",
+        "day_date": "2026-07-27",
+        "set_log_id": "70000000-0000-4000-8000-000000000001",
+        "plan_set_id": null
       },
       "first_line": "[训练分享] 低杠位深蹲 第3组 100kg×- @RPE8.5 (2026-07-27)"
     },
     {
-      "name": "rpe-null",
+      "name": "planned-rpe-null",
       "set_ref": {
         "v": 1,
+        "source": "planned",
         "exercise_name": "低杠位深蹲",
         "set_number": 3,
+        "set_total": 5,
         "weight_kg": "100",
         "reps": 5,
+        "reps_max": null,
         "rpe": null,
         "day_date": "2026-07-27",
-        "set_log_id": "70000000-0000-4000-8000-000000000001"
+        "set_log_id": null,
+        "plan_set_id": "71000000-0000-4000-8000-000000000001"
       },
-      "first_line": "[训练分享] 低杠位深蹲 第3组 100kg×5 (2026-07-27)"
+      "first_line": "[训练计划] 低杠位深蹲 第3组/5 计划 100kg×5 (2026-07-27)"
     },
     {
       "name": "floating-trap-0.29",
       "set_ref": {
         "v": 1,
+        "source": "logged",
         "exercise_name": "哑铃飞鸟",
         "set_number": 2,
+        "set_total": null,
         "weight_kg": "0.29",
         "reps": 8,
+        "reps_max": null,
         "rpe": "8.5",
         "day_date": "2026-07-27",
-        "set_log_id": "70000000-0000-4000-8000-000000000001"
+        "set_log_id": "70000000-0000-4000-8000-000000000001",
+        "plan_set_id": null
       },
       "first_line": "[训练分享] 哑铃飞鸟 第2组 0.29kg×8 @RPE8.5 (2026-07-27)"
     },
@@ -94,13 +168,17 @@
       "name": "floating-trap-1.15-and-zero-reps",
       "set_ref": {
         "v": 1,
+        "source": "logged",
         "exercise_name": "失败组",
         "set_number": 2,
+        "set_total": null,
         "weight_kg": "1.15",
         "reps": 0,
+        "reps_max": null,
         "rpe": "0",
         "day_date": "2026-07-27",
-        "set_log_id": "70000000-0000-4000-8000-000000000001"
+        "set_log_id": "70000000-0000-4000-8000-000000000001",
+        "plan_set_id": null
       },
       "first_line": "[训练分享] 失败组 第2组 1.15kg×0 @RPE0 (2026-07-27)"
     },
@@ -108,41 +186,146 @@
       "name": "upper-boundary",
       "set_ref": {
         "v": 1,
+        "source": "logged",
         "exercise_name": "极限组",
         "set_number": 2147483648,
+        "set_total": null,
         "weight_kg": "9999.99",
         "reps": 99,
+        "reps_max": null,
         "rpe": "10",
         "day_date": "2024-02-29",
-        "set_log_id": "70000000-0000-4000-8000-000000000001"
+        "set_log_id": "70000000-0000-4000-8000-000000000001",
+        "plan_set_id": null
       },
       "first_line": "[训练分享] 极限组 第2147483648组 9999.99kg×99 @RPE10 (2024-02-29)"
     }
   ],
   "invalid": [
     {
+      "name": "missing-source",
+      "omit": ["source"],
+      "scope": "both"
+    },
+    {
+      "name": "missing-set-total",
+      "omit": ["set_total"],
+      "scope": "both"
+    },
+    {
+      "name": "missing-reps-max",
+      "omit": ["reps_max"],
+      "scope": "both"
+    },
+    {
+      "name": "missing-plan-set-id",
+      "omit": ["plan_set_id"],
+      "scope": "both"
+    },
+    {
+      "name": "logged-missing-set-log-id",
+      "patch": {
+        "set_log_id": null
+      },
+      "scope": "both"
+    },
+    {
+      "name": "logged-has-plan-set-id",
+      "patch": {
+        "plan_set_id": "71000000-0000-4000-8000-000000000001"
+      },
+      "scope": "both"
+    },
+    {
+      "name": "planned-missing-plan-set-id",
+      "patch": {
+        "source": "planned",
+        "set_log_id": null,
+        "plan_set_id": null
+      },
+      "scope": "both"
+    },
+    {
+      "name": "planned-has-set-log-id",
+      "patch": {
+        "source": "planned",
+        "plan_set_id": "71000000-0000-4000-8000-000000000001"
+      },
+      "scope": "both"
+    },
+    {
+      "name": "set-number-exceeds-set-total",
+      "patch": {
+        "set_number": 6,
+        "set_total": 5
+      },
+      "scope": "both"
+    },
+    {
+      "name": "reps-max-without-reps",
+      "patch": {
+        "reps": null,
+        "reps_max": 5
+      },
+      "scope": "both"
+    },
+    {
+      "name": "reps-max-equals-reps",
+      "patch": {
+        "reps": 5,
+        "reps_max": 5
+      },
+      "scope": "both"
+    },
+    {
+      "name": "reps-max-below-reps",
+      "patch": {
+        "reps": 5,
+        "reps_max": 4
+      },
+      "scope": "both"
+    },
+    {
       "name": "weight-trailing-zero",
-      "patch": { "weight_kg": "100.10" }
+      "patch": {
+        "weight_kg": "100.10"
+      },
+      "scope": "both"
     },
     {
       "name": "weight-leading-zero",
-      "patch": { "weight_kg": "08" }
+      "patch": {
+        "weight_kg": "08"
+      },
+      "scope": "both"
     },
     {
       "name": "rpe-dot-zero",
-      "patch": { "rpe": "8.0" }
+      "patch": {
+        "rpe": "8.0"
+      },
+      "scope": "both"
     },
     {
       "name": "rpe-non-half-step",
-      "patch": { "rpe": "8.3" }
+      "patch": {
+        "rpe": "8.3"
+      },
+      "scope": "both"
     },
     {
       "name": "invalid-calendar-date",
-      "patch": { "day_date": "2026-02-30" }
+      "patch": {
+        "day_date": "2026-02-30"
+      },
+      "scope": "both"
     },
     {
       "name": "unknown-field",
-      "patch": { "unknown": true }
+      "patch": {
+        "unknown": true
+      },
+      "scope": "write-only"
     }
   ],
   "exercise_name_code_point_boundaries": [

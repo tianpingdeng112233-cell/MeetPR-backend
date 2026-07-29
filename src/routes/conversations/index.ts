@@ -361,7 +361,9 @@ async function fetchConversationWire(
           kind: lastMessage.kind,
           preview:
             lastMessage.set_ref !== null
-              ? '[训练分享]'
+              ? lastMessage.set_ref.source === 'planned'
+                ? '[训练计划]'
+                : '[训练分享]'
               : lastMessage.kind === 'image'
                 ? '[图片]'
                 : (lastMessage.body ?? ''),
@@ -765,31 +767,62 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
                 };
               }
 
-              const sourceSet = await trx
-                .selectFrom('set_logs')
-                .select('id')
-                .where('id', '=', setRef.set_log_id)
-                .where('student_id', '=', user.id)
-                .executeTakeFirst();
-              if (!sourceSet) {
-                return {
-                  outcome: 'validation_error',
-                  error: messageValidationError(
-                    ['set_ref', 'set_log_id'],
-                    'set_log_id must identify a set owned by the sender',
-                  ),
-                };
-              }
-
-              if (body.data.video_id !== undefined) {
-                const parsedVideoId = UuidSchema.safeParse(body.data.video_id);
-                if (!parsedVideoId.success) {
+              if (setRef.source === 'logged') {
+                const sourceSet = await trx
+                  .selectFrom('set_logs')
+                  .select('id')
+                  .where('id', '=', setRef.set_log_id)
+                  .where('student_id', '=', user.id)
+                  .executeTakeFirst();
+                if (!sourceSet) {
                   return {
                     outcome: 'validation_error',
-                    error: validationEnvelope(parsedVideoId.error),
+                    error: messageValidationError(
+                      ['set_ref', 'set_log_id'],
+                      'set_log_id must identify a set owned by the sender',
+                    ),
                   };
                 }
-                videoId = parsedVideoId.data;
+
+                if (body.data.video_id !== undefined) {
+                  const parsedVideoId = UuidSchema.safeParse(body.data.video_id);
+                  if (!parsedVideoId.success) {
+                    return {
+                      outcome: 'validation_error',
+                      error: validationEnvelope(parsedVideoId.error),
+                    };
+                  }
+                  videoId = parsedVideoId.data;
+                }
+              } else {
+                const sourceSet = await trx
+                  .selectFrom('plan_sets')
+                  .innerJoin('plan_exercises', 'plan_exercises.id', 'plan_sets.plan_exercise_id')
+                  .innerJoin('plan_days', 'plan_days.id', 'plan_exercises.plan_day_id')
+                  .innerJoin('plans', 'plans.id', 'plan_days.plan_id')
+                  .select('plan_sets.id')
+                  .where('plan_sets.id', '=', setRef.plan_set_id)
+                  .where('plans.trainee_id', '=', user.id)
+                  .executeTakeFirst();
+                if (!sourceSet) {
+                  return {
+                    outcome: 'validation_error',
+                    error: messageValidationError(
+                      ['set_ref', 'plan_set_id'],
+                      'plan_set_id must identify a planned set on a plan owned by the sender',
+                    ),
+                  };
+                }
+
+                if (body.data.video_id !== undefined) {
+                  return {
+                    outcome: 'validation_error',
+                    error: messageValidationError(
+                      ['video_id'],
+                      'video_id is not allowed for source=planned',
+                    ),
+                  };
+                }
               }
             }
           }

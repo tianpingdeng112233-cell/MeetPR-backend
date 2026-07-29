@@ -70,6 +70,7 @@ const CanonicalRpeSchema = z
 export const SetRefV1Schema = z
   .object({
     v: z.literal(1),
+    source: z.enum(['logged', 'planned']),
     exercise_name: z
       .string()
       .min(1)
@@ -80,24 +81,66 @@ export const SetRefV1Schema = z
         message: 'exercise_name must not contain newlines or control characters',
       }),
     set_number: z.number().int().min(1).max(2_147_483_648),
+    set_total: z.number().int().min(1).max(999).nullable(),
     weight_kg: CanonicalWeightSchema.nullable(),
     reps: z.number().int().min(0).max(99).nullable(),
+    reps_max: z.number().int().min(0).max(99).nullable(),
     rpe: CanonicalRpeSchema.nullable(),
     day_date: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD')
       .refine(isIsoCalendarDate, isoCalendarDateSchemaMessage()),
-    set_log_id: z.string().uuid(),
+    set_log_id: z.string().uuid().nullable(),
+    plan_set_id: z.string().uuid().nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((setRef, context) => {
+    if (setRef.source === 'logged' && (setRef.set_log_id === null || setRef.plan_set_id !== null)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['source'],
+        message: 'source=logged requires set_log_id and forbids plan_set_id',
+      });
+    }
+    if (
+      setRef.source === 'planned' &&
+      (setRef.plan_set_id === null || setRef.set_log_id !== null)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['source'],
+        message: 'source=planned requires plan_set_id and forbids set_log_id',
+      });
+    }
+    if (setRef.set_total !== null && setRef.set_total < setRef.set_number) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['set_total'],
+        message: 'set_total must be greater than or equal to set_number',
+      });
+    }
+    if (setRef.reps_max !== null && (setRef.reps === null || setRef.reps_max <= setRef.reps)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reps_max'],
+        message: 'reps_max requires reps and must be strictly greater than reps',
+      });
+    }
+  });
 
 export type SetRefV1 = z.infer<typeof SetRefV1Schema>;
 
 export function formatSetRefFirstLine(setRef: SetRefV1): string {
+  const prefix = setRef.source === 'logged' ? '[训练分享]' : '[训练计划]';
+  const setTotal = setRef.set_total === null ? '' : `/${String(setRef.set_total)}`;
+  const planned = setRef.source === 'planned' ? ' 计划' : '';
   const weight = setRef.weight_kg ?? '-';
-  const reps = String(setRef.reps ?? '-');
+  const reps =
+    setRef.reps === null
+      ? '-'
+      : `${String(setRef.reps)}${setRef.reps_max === null ? '' : `-${String(setRef.reps_max)}`}`;
   const rpe = setRef.rpe === null ? '' : ` @RPE${setRef.rpe}`;
-  return `[训练分享] ${setRef.exercise_name} 第${String(setRef.set_number)}组 ${weight}kg×${reps}${rpe} (${setRef.day_date})`;
+  return `${prefix} ${setRef.exercise_name} 第${String(setRef.set_number)}组${setTotal}${planned} ${weight}kg×${reps}${rpe} (${setRef.day_date})`;
 }
 
 export function bodyMatchesSetRef(body: string, setRef: SetRefV1): boolean {

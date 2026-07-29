@@ -12,7 +12,11 @@ import {
 
 interface GoldenFixtures {
   valid: { name: string; set_ref: unknown; first_line: string }[];
-  invalid: { name: string; patch: Record<string, unknown> }[];
+  invalid: {
+    name: string;
+    patch?: Record<string, unknown>;
+    omit?: string[];
+  }[];
   exercise_name_code_point_boundaries: {
     name: string;
     unit: string;
@@ -25,6 +29,12 @@ const fixtures = JSON.parse(
   fs.readFileSync('specs/029-set-ref-chat-card/fixtures/set-ref-v1.json', 'utf8'),
 ) as GoldenFixtures;
 
+function loggedFullFixture(): Record<string, unknown> {
+  const base = fixtures.valid.find((fixture) => fixture.name === 'logged-full')?.set_ref;
+  if (!base || typeof base !== 'object') throw new Error('missing logged-full golden fixture');
+  return base as Record<string, unknown>;
+}
+
 describe('set_ref v1 shared golden fixtures', () => {
   it.each(fixtures.valid)('accepts and formats $name byte-for-byte', (fixture) => {
     const parsed = SetRefV1Schema.parse(fixture.set_ref);
@@ -32,22 +42,27 @@ describe('set_ref v1 shared golden fixtures', () => {
   });
 
   it.each(fixtures.invalid)('rejects $name', (fixture) => {
-    const base = fixtures.valid[1]?.set_ref;
-    if (!base || typeof base !== 'object') throw new Error('missing valid golden fixture');
-    expect(SetRefV1Schema.safeParse({ ...base, ...fixture.patch }).success).toBe(false);
+    const omittedFields = new Set(fixture.omit ?? []);
+    const candidate = Object.fromEntries(
+      Object.entries({ ...loggedFullFixture(), ...fixture.patch }).filter(
+        ([field]) => !omittedFields.has(field),
+      ),
+    );
+    expect(SetRefV1Schema.safeParse(candidate).success).toBe(false);
   });
 
   it.each(fixtures.exercise_name_code_point_boundaries)(
     'checks $name by Unicode code points',
     (fixture) => {
-      const base = fixtures.valid[1]?.set_ref;
-      if (!base || typeof base !== 'object') throw new Error('missing valid golden fixture');
       const exerciseName = fixture.unit.repeat(fixture.repeat);
 
       expect(Array.from(exerciseName)).toHaveLength(fixture.repeat);
-      expect(SetRefV1Schema.safeParse({ ...base, exercise_name: exerciseName }).success).toBe(
-        fixture.valid,
-      );
+      expect(
+        SetRefV1Schema.safeParse({
+          ...loggedFullFixture(),
+          exercise_name: exerciseName,
+        }).success,
+      ).toBe(fixture.valid);
     },
   );
 
@@ -67,7 +82,7 @@ describe('set_ref v1 shared golden fixtures', () => {
   });
 
   it('rejects control characters, JSON numbers, oversized set numbers, and extra keys', () => {
-    const base = SetRefV1Schema.parse(fixtures.valid[1]?.set_ref) satisfies SetRefV1;
+    const base = SetRefV1Schema.parse(loggedFullFixture()) satisfies SetRefV1;
     for (const candidate of [
       { ...base, exercise_name: '深蹲\n伪造首行' },
       { ...base, weight_kg: 100 },
