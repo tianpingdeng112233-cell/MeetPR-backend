@@ -137,6 +137,19 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-29(三) — `sha-267d61a`(=staging HEAD,#135 spec 029 §11 修订 R3a:`set_ref` v1 就地扩
+  四字段(`source`/`set_total`/`reps_max`/`plan_set_id`)+ 计划组四表归属校验 + 机械首行 v2)经
+  deploy-staging.yml(`migrations_applied=true`,**本波无迁移**——`messages.set_ref` 是 JSONB,形状
+  变化不碰 DDL,0051 两条 CHECK 原样有效)部署 `meetpr-backend-staging`;env 未动。
+  curl 验证:/health 200、未带 token 的 POST /conversations/:id/messages 回 401(路由在);
+  工作流自带部署后 smoke(health + login route + web bundle)全过。
+  ⚠️ 口径备忘:`plan_sets.set_number` 本来就是 **1-based**(0003 `CHECK >= 1`),与 `set_logs.set_index`
+  的 0-based **相反**——backend 侧 planned 路径**不 +1**、logged 才 +1;iOS 侧因投影层已转 0-based,
+  **两条都 +1**。照搬会把第 2 组发成第 1 组。
+  ⚠️ `set_ref` 就地扩 v1 不升版本的前提是「该形状从未发过版」——**随 iOS 1.0(15) 切包即失效**,
+  之后再改必须升版本 + 降级路径。
+  配套:iOS #287+#288 已合 `release/1.0`(1.0(15) 候选)、plan-web #48 已合 main(**web 换装待做**)。
+
 - 2026-07-28(一) — `sha-60ba916`(=staging HEAD,#125 spec 030 教练 RPE 校准+取消 e1RM 低 RPE 拒收:
   set_logs 加 coach_rpe 列 + PATCH /coach/set-logs/:id/coach-rpe + 统计/PR 检测 coalesce(coach_rpe,rpe) +
   set_logs/videos 响应 additive 补 rpe/coach_rpe)经 deploy-staging.yml(`migrations_applied=true`)部署;
