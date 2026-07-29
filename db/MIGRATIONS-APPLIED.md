@@ -137,7 +137,16 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
-- 2026-07-29(三) — `sha-c58b7d9`(=staging HEAD,#139 纯 web/ 换装:plan-web 训练日选中态修复 #49,
+- 2026-07-29(三) — `sha-7a79a17`(=staging HEAD,#142 纯 web/ 换装:plan-web 撰写上下文面板回归修复
+  #51,plan-web main 76ad8d7/入口 index-VbNWE0LL.js + index-CspPujRY.css)经 deploy-staging.yml
+  (`migrations_applied=true`,**无迁移**——与上次部署的 c58b7d9 相比只差 `web/` 与本账本)部署
+  `meetpr-backend-staging`;env 未动。curl 验证:GET / 已回新入口,线上产物里
+  「学员画像 · ONBOARDING」「登记 1RM」「后端滚动值」「次数 PR」「显示撰写上下文」等串都在。当日第四次部署。
+  ⚠️ **这次修的是一次静默回归**:plan-web `cb1a40f`(card 3 编辑器重做)删掉了 `<WritingContextPanel>`
+  的挂载但留下文件——编译过、测试绿(该文件的单测只覆盖纯函数)、Rollup 直接把整个面板连同只有它在用的
+  `RmStrip`/`SessionDetail` tree-shake 掉。教练从 `sha-09a5f52`(07-28 10:23 换装)起就没有学员画像/
+  次数 PR/e1RM 条/最近训练记录,全程零报错。**换装反回退比对必须比字符串,不能只看 diff 体积**:
+  本次比对显示线上包 1032 条中文串丢失 0、恰好找回 card 3 丢掉的 21 条。
   plan-web main d3c1f28/入口 index-DSxyWe4K.js + index-CspPujRY.css)经 deploy-staging.yml
   (`migrations_applied=true`,**无迁移**——与上次部署的 de9c15a 相比只差 `web/`)部署
   `meetpr-backend-staging`;env 未动。curl 验证:GET / 已回新入口、线上 CSS 里
