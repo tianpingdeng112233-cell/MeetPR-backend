@@ -137,6 +137,15 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-29(三) — `sha-c58b7d9`(=staging HEAD,#139 纯 web/ 换装:plan-web 训练日选中态修复 #49,
+  plan-web main d3c1f28/入口 index-DSxyWe4K.js + index-CspPujRY.css)经 deploy-staging.yml
+  (`migrations_applied=true`,**无迁移**——与上次部署的 de9c15a 相比只差 `web/`)部署
+  `meetpr-backend-staging`;env 未动。curl 验证:GET / 已回新入口、线上 CSS 里
+  `.day.sel{outline:2px solid var(--ink)` 与 `.day input:disabled` 两条规则都在。当日第三次部署。
+  换装前对着线上正在跑的 `index-Bi1X1MtJ.js` 逐条比对,912 条中文特征串一条不少,无静默回退。
+- 2026-07-29(三) — `sha-de9c15a`(#137 纯 web/ 换装:plan-web spec 029 组卡重设计 #48,
+  入口 index-Bi1X1MtJ.js)经 deploy-staging.yml 部署,工作流 12:20 成功。
+  ⚠️ **补记**:当时漏了这一行,由下一次换装(`sha-c58b7d9`)回填;账本因此一度落后于线上实际镜像。
 - 2026-07-29(三) — `sha-267d61a`(=staging HEAD,#135 spec 029 §11 修订 R3a:`set_ref` v1 就地扩
   四字段(`source`/`set_total`/`reps_max`/`plan_set_id`)+ 计划组四表归属校验 + 机械首行 v2)经
   deploy-staging.yml(`migrations_applied=true`,**本波无迁移**——`messages.set_ref` 是 JSONB,形状
