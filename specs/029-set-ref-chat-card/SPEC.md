@@ -298,9 +298,15 @@ visible(viewer, message) =
 - `source='planned'`:`plan_sets → plan_exercises → plan_days → plans` 四表 join,
   要求 `plans.trainee_id == sender`,否则 400
   `plan_set_id must identify a planned set on a plan owned by the sender`。
-  ⚠️ **`plan_sets.set_number` 本来就是 1-based**(0003 `CHECK set_number >= 1`),
-  与 `set_logs.set_index` 的 0-based **相反**——planned 路径**不许 +1**,logged 路径必须 +1。
-  这是本仓第二个组号陷阱,C0 建立的 per-surface fixture 必须补一行 planned。
+  ⚠️ **组号三方口径,极易读反,逐端写死**:
+  - **backend 写侧(本卡)**:`plan_sets.set_number` 本来就是 1-based(0003 `CHECK >= 1`),
+    直接用;`set_logs.set_index` 是 0-based(0005 `CHECK >= 0`)。故 backend 侧
+    **planned 不 +1、logged 才 +1**。
+  - **iOS 侧(R3b)**:投影层已把 1-based 的 `plan_sets.set_number` 转成 0-based 的
+    `PrescribedSet.setIndex`(C0 正典),而 `StudentSetLog.setIndex` 同样 0-based。故 iOS 侧
+    **planned 与 logged 两条路径都要 +1**。
+  - 一句话:**「planned 不 +1」只对 backend 成立**,照搬到 iOS 就会把第 2 组发成第 1 组。
+    这是本仓第二个组号陷阱,C0 建立的 per-surface fixture 必须补一行 planned。
 - `video_id` 归属校验(`attachments.set_log_id == set_ref.set_log_id`)**仅适用 logged**;
   `source='planned'` 时 `video_id` 必须缺省 → 400(没练过的组不可能有视频)。
 
@@ -367,5 +373,10 @@ planned 有总组数: [训练计划] 硬拉 第3组/5 计划 175kg×3-5 @RPE8 (2
 | **R3c** | T1  | plan-web | §11.5 卡片重做 + 新字段渲染 + planned 形态                                               | R3a 部署 |
 
 - **无迁移**:`messages.set_ref` 是 JSONB,形状变化不碰 DDL;0051 的两条 CHECK 原样有效。
+- **golden fixtures 三仓逐字节相同**(正典 = 本仓 `specs/029-set-ref-chat-card/fixtures/set-ref-v1.json`,
+  iOS 与 plan-web 各存一份**同内容**副本)。R3 开工时实测三份互不相同(backend 10/18、iOS 7/13、
+  plan-web 6/13,连用例名都各不一样)——三个会话各自发明了一套,「共享 fixtures」是虚构的,
+  跨端逐字节首行契约从未被真正验证。现已统一,**跨仓一致性用 `shasum -a 256` 三份比对即可机械核验**。
+  各端只消费自己关心的节(渲染端不读 `normalization`/`invalid_names`),但**文件本身不许裁剪**。
 - 部署顺序:R3a 必须先上 staging,否则 R3b/R3c 发出的新形状被 strict schema 打 400。
 - R3b 基于 PR #287 分支叠层(#287 已把 ChatUI 搬上黑金 token,R3b 在其上重做结构)。
