@@ -1,5 +1,6 @@
 import path from 'node:path';
 
+import compression from 'compression';
 import cors from 'cors';
 import express, { type Express } from 'express';
 import helmet from 'helmet';
@@ -46,6 +47,16 @@ export function createApp(deps: AppDeps): Express {
         config.CORS_ORIGIN === '*' ? true : config.CORS_ORIGIN.split(',').map((s) => s.trim()),
     }),
   );
+  // Compress every sizeable response, negotiating br or gzip per the client's
+  // Accept-Encoding. The student app's cold start pulls the whole exercise
+  // catalogue (~1200 rows) on the critical path of its first paint, and that
+  // JSON gzips ~17:1 — the cheapest win available on a link whose round trips
+  // were measured between 0.4s and 2.9s. Transparent to live clients: the
+  // entity body is unchanged, and a client that only accepts identity still
+  // gets an uncompressed response. ETags stay stable because Express derives
+  // them from the pre-compression body, which is what lets the iOS catalogue
+  // cache revalidate with If-None-Match.
+  app.use(compression());
   app.use(express.json({ limit: '1mb' }));
   if (config.FORCE_HTTPS) {
     app.use((req, res, next) => {
