@@ -137,6 +137,24 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-30(四) — `sha-6c65173`(=staging HEAD,#141 全局响应压缩:挂 `compression()` 中间件,
+  位置在 helmet/cors 之后、`express.json()` 之前)经 deploy-staging.yml
+  (`migrations_applied=true`,**本波无迁移**——纯中间件,schema head 仍 0052)部署
+  `meetpr-backend-staging`;env 未动。
+  curl 实证(部署前后同一 URL 对比,取公开的 plan-web JS bundle,`/exercises` 需 token 不便直连,
+  但同走一个中间件):
+  - `Accept-Encoding: gzip, br` → `Content-Encoding: br`、`Vary: Origin, Accept-Encoding`,
+    传输 **433,732 → 135,803 字节(省 69%,3.19:1)**;部署前该响应无任何 `Content-Encoding`。
+  - `Accept-Encoding: identity` → 仍回 433,732 明文、无 `Content-Encoding`(hard rule 8 向后兼容成立)。
+  - `/health` 200;web 入口哈希 `index-C_RhbZi2.js` 与部署前一致(未误换 web 产物)。
+    ⚠️ 口径备忘:**ETag 取自压缩前 body**(Express 默认)——这是 iOS 侧动作库缓存能用 `If-None-Match`
+    跨编码命中 304 的前提。实证:压缩后 ETag 的 size 段仍是 `69e44`(=433732 的十六进制)。
+    将来换压缩方案或自定义 ETag 生成会让这条链**静默失效**(表现为 iOS 每次冷启动全量重下动作库 518KB)。
+    ⚠️ `compression@1.8` **优先协商 br 而非 gzip**,写测试/文档别默认 gzip。
+    ⚠️ 压缩响应移除 `Content-Length`(改 `Transfer-Encoding: chunked`),若日志分析依赖该头统计流量需另行采集。
+    配套:iOS #289(学员端首屏保鲜加载+并发化+动作库磁盘缓存+`If-None-Match`)同日合入 `release/1.0`
+    (`aa54155`),David 真机验收通过;**该 iOS 改动尚未切包**,待 1.0(16)。
+
 - 2026-07-29(三) — `sha-e8adf25`(=staging HEAD,#143 纯 web/ 换装:plan-web 聊天视频弹窗样式回归修复
   #50,plan-web main 2ad19f2/入口 index-C_RhbZi2.js + index-iGzXtTky.css)经 deploy-staging.yml
   (`migrations_applied=true`,**无迁移**——与上次部署的 7a79a17 相比只差 `web/`)部署
