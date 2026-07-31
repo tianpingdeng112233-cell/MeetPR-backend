@@ -138,6 +138,10 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-31 — `sha-ce0b798`(=staging HEAD,#152 overview 逐 family 滚动 e1RM(零查询无迁移) + #153 纯
+  web/ 换装:plan-web 数字带换三大项 e1RM #55,bundle 6db8a32/入口 index-DAt6sO8B.js→index-CsAtFSgW.js)
+  经 deploy-staging.yml(migrations_applied=true,无迁移)部署;curl 验证:GET / 回新入口、bundle 含
+  「深蹲 e1RM」与「自报」、/plans/nope 仍 401 JSON。overview e1rm 字段 shape 由 769 测试锁定。
 - 2026-07-31 — `sha-aff0c18`(=staging HEAD,#150 视频打点存储+教练 CRUD,迁移 0054;#116 重启复活,
   0051→0054 改号)经 deploy-staging.yml(migrations_applied=true)部署 `meetpr-backend-staging`;
   env 未动。**先应用 0054 再滚镜像**(psql 本地→xo 外网,Claude;schema head 0052→0054);
