@@ -138,6 +138,11 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-31 — `sha-e9f1d25`(=staging HEAD,#155 纯 web/ 换装:plan-web 打点砍单一档 #56,
+  bundle 9e82020/入口 index-kRsJpqIH.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
+  `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口 index-kRsJpqIH.js(与本地 dist 逐字节核对一致)。
+  同日第三次部署(aff0c18 打点后端 → ce0b798 e1RM rail 换装 → 本次)。
+
 - 2026-07-31 — `sha-ce0b798`(=staging HEAD,#152 overview 逐 family 滚动 e1RM(零查询无迁移) + #153 纯
   web/ 换装:plan-web 数字带换三大项 e1RM #55,bundle 6db8a32/入口 index-DAt6sO8B.js→index-CsAtFSgW.js)
   经 deploy-staging.yml(migrations_applied=true,无迁移)部署;curl 验证:GET / 回新入口、bundle 含
