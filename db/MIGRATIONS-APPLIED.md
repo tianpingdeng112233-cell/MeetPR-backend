@@ -137,6 +137,10 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-07-31 — `sha-11e0088`(=staging HEAD,#148 纯 web/ 换装:plan-web 撰写上下文栏 #54 + 多行选择
+  与批量复制 #52,bundle c6cb170/入口 index-C_RhbZi2.js→index-DAt6sO8B.js)经 deploy-staging.yml
+  (migrations_applied=true,无迁移)部署;curl 验证:GET / 回新入口、bundle 内含「改为跟着选中日」
+  与 selectedRowIds、旧 exercise-info-tokens 归零、/plans/nope 仍 401 JSON(SPA 未吞 API)。
 - 2026-07-29(三) — `sha-e8adf25`(=staging HEAD,#143 纯 web/ 换装:plan-web 聊天视频弹窗样式回归修复
   #50,plan-web main 2ad19f2/入口 index-C_RhbZi2.js + index-iGzXtTky.css)经 deploy-staging.yml
   (`migrations_applied=true`,**无迁移**——与上次部署的 7a79a17 相比只差 `web/`)部署
