@@ -135,6 +135,18 @@ export async function fetchExerciseStatsOverview(
       )
       .map((log) => dateOnly(log.logged_date)),
   ).size;
+  const logsForFamily = (family: LiftFamily) =>
+    logs.filter(
+      (log) =>
+        resolveCompetitionFamily(
+          {
+            main_lift_family: log.main_lift_family,
+            is_competition_lift: log.is_competition_lift,
+            competition_stance: log.competition_stance,
+          },
+          onboarding,
+        ) === family,
+    );
 
   return {
     exercises: [...byExercise.entries()].map(([exerciseId, value]) => ({
@@ -144,6 +156,11 @@ export async function fetchExerciseStatsOverview(
       last_logged_at: timestamp(value.lastLoggedAt),
     })),
     one_rm: onboarding.oneRm,
+    e1rm: {
+      squat: currentE1rm(logsForFamily('squat'), 'squat'),
+      bench: currentE1rm(logsForFamily('bench'), 'bench'),
+      deadlift: currentE1rm(logsForFamily('deadlift'), 'deadlift'),
+    },
     last_trained_at: logs[0] ? timestamp(logs[0].logged_at) : null,
     recent_4w: {
       trained_days: trainedDays,

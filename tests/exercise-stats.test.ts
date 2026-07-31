@@ -314,9 +314,214 @@ describe('GET /coach/students/:id/exercise-stats', () => {
         },
       ],
       one_rm: { squat: '180.00', bench: '120.00', deadlift: '220.00' },
+      e1rm: {
+        squat: {
+          value: '116.67',
+          computed_at: atTenUtc(daysFromToday(-2)).toISOString(),
+        },
+        bench: null,
+        deadlift: null,
+      },
       last_trained_at: atTenUtc(daysFromToday(-2)).toISOString(),
       recent_4w: { trained_days: 1, total_planned_days: 6, completion_rate: 0.1667 },
     });
+  });
+
+  it('returns null overview e1RM values when the student has no logs', async () => {
+    const ctx = await makeContext();
+
+    const response = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/exercise-stats`)
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(200);
+    expect(response.body.e1rm).toEqual({ squat: null, bench: null, deadlift: null });
+  });
+
+  it('matches detail e1RM and excludes logs outside the student competition stance', async () => {
+    const ctx = await makeContext();
+    const lowBarSquatId = '74000000-0000-4000-8000-000000000001';
+    const highBarSquatId = '74000000-0000-4000-8000-000000000002';
+    const conventionalDeadliftId = '74000000-0000-4000-8000-000000000003';
+    const sumoDeadliftId = '74000000-0000-4000-8000-000000000004';
+    await addExercise(ctx, lowBarSquatId, '低杠位深蹲', 'squat', {
+      isCompetitionLift: false,
+      competitionStance: 'low_bar',
+    });
+    await addExercise(ctx, highBarSquatId, '高杠位深蹲', 'squat', {
+      isCompetitionLift: false,
+      competitionStance: 'high_bar',
+    });
+    await addExercise(ctx, conventionalDeadliftId, '传统硬拉', 'deadlift', {
+      competitionStance: 'conventional',
+    });
+    await addExercise(ctx, sumoDeadliftId, '相扑硬拉', 'deadlift', {
+      competitionStance: 'sumo',
+    });
+    const [lowBarPlanExercise] = await addPlanExercise(ctx, lowBarSquatId);
+    const [highBarPlanExercise] = await addPlanExercise(ctx, highBarSquatId);
+    const [conventionalPlanExercise] = await addPlanExercise(ctx, conventionalDeadliftId);
+    const [sumoPlanExercise] = await addPlanExercise(ctx, sumoDeadliftId);
+    if (
+      lowBarPlanExercise === undefined ||
+      highBarPlanExercise === undefined ||
+      conventionalPlanExercise === undefined ||
+      sumoPlanExercise === undefined
+    ) {
+      throw new Error('Missing plan exercise fixture');
+    }
+    await ctx.db
+      .insertInto('student_onboarding_profiles')
+      .values({
+        user_id: ids.trainee,
+        squat_stance: 'low_bar',
+        deadlift_style: 'conventional',
+      })
+      .execute();
+    await ctx.db
+      .insertInto('set_logs')
+      .values([
+        {
+          student_id: ids.trainee,
+          plan_exercise_id: lowBarPlanExercise,
+          exercise_id: lowBarSquatId,
+          logged_date: daysFromToday(-2),
+          set_index: 0,
+          weight_kg: '100.00',
+          reps: 5,
+          rpe: '8.0',
+          completed: true,
+          logged_at: atTenUtc(daysFromToday(-2)),
+        },
+        {
+          student_id: ids.trainee,
+          plan_exercise_id: highBarPlanExercise,
+          exercise_id: highBarSquatId,
+          logged_date: daysFromToday(-1),
+          set_index: 0,
+          weight_kg: '300.00',
+          reps: 1,
+          rpe: '10.0',
+          completed: true,
+          logged_at: atTenUtc(daysFromToday(-1)),
+        },
+        {
+          student_id: ids.trainee,
+          plan_exercise_id: conventionalPlanExercise,
+          exercise_id: conventionalDeadliftId,
+          logged_date: daysFromToday(-2),
+          set_index: 0,
+          weight_kg: '180.00',
+          reps: 3,
+          rpe: '8.0',
+          completed: true,
+          logged_at: atTenUtc(daysFromToday(-2)),
+        },
+        {
+          student_id: ids.trainee,
+          plan_exercise_id: sumoPlanExercise,
+          exercise_id: sumoDeadliftId,
+          logged_date: daysFromToday(-1),
+          set_index: 0,
+          weight_kg: '300.00',
+          reps: 1,
+          rpe: '10.0',
+          completed: true,
+          logged_at: atTenUtc(daysFromToday(-1)),
+        },
+      ])
+      .execute();
+
+    const overview = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/exercise-stats`)
+      .set(auth(ctx.coachToken));
+    const deadliftDetail = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/exercise-stats?exercise_id=${conventionalDeadliftId}`)
+      .set(auth(ctx.coachToken));
+    const mismatchedDetail = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/exercise-stats?exercise_id=${sumoDeadliftId}`)
+      .set(auth(ctx.coachToken));
+
+    expect(overview.status).toBe(200);
+    expect(deadliftDetail.status).toBe(200);
+    expect(mismatchedDetail.status).toBe(200);
+    expect(overview.body.e1rm).toMatchObject({
+      squat: { value: '128.21' },
+      bench: null,
+      deadlift: { value: '214.29' },
+    });
+    expect(overview.body.e1rm.deadlift.value).toBe(deadliftDetail.body.e1rm.value);
+    expect(mismatchedDetail.body.e1rm).toBeNull();
+  });
+
+  it('anchors the family rolling window on the newest log across exercises', async () => {
+    const ctx = await makeContext();
+    // Two exercises resolving to the same deadlift family: the stale one holds a
+    // stronger point, but it fell out of the family window once the newer
+    // exercise logged. Detail keeps its own per-exercise anchor.
+    const competitionDeadliftId = '75000000-0000-4000-8000-000000000001';
+    const deadliftVariantId = '75000000-0000-4000-8000-000000000002';
+    await addExercise(ctx, competitionDeadliftId, '传统硬拉', 'deadlift');
+    await addExercise(ctx, deadliftVariantId, '暂停硬拉', 'deadlift');
+    const [strongPlanExercise] = await addPlanExercise(ctx, competitionDeadliftId);
+    const [recentPlanExercise] = await addPlanExercise(ctx, deadliftVariantId);
+    if (strongPlanExercise === undefined || recentPlanExercise === undefined) {
+      throw new Error('Missing plan exercise fixture');
+    }
+    await ctx.db
+      .insertInto('set_logs')
+      .values([
+        {
+          student_id: ids.trainee,
+          plan_exercise_id: strongPlanExercise,
+          exercise_id: competitionDeadliftId,
+          logged_date: daysFromToday(-40),
+          set_index: 0,
+          weight_kg: '220.00',
+          reps: 1,
+          rpe: '9.0',
+          completed: true,
+          logged_at: atTenUtc(daysFromToday(-40)),
+        },
+        {
+          student_id: ids.trainee,
+          plan_exercise_id: recentPlanExercise,
+          exercise_id: deadliftVariantId,
+          logged_date: daysFromToday(-1),
+          set_index: 0,
+          weight_kg: '180.00',
+          reps: 3,
+          rpe: '8.0',
+          completed: true,
+          logged_at: atTenUtc(daysFromToday(-1)),
+        },
+      ])
+      .execute();
+
+    const overview = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/exercise-stats`)
+      .set(auth(ctx.coachToken));
+    const staleDetail = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/exercise-stats?exercise_id=${competitionDeadliftId}`)
+      .set(auth(ctx.coachToken));
+    const recentDetail = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/exercise-stats?exercise_id=${deadliftVariantId}`)
+      .set(auth(ctx.coachToken));
+
+    expect(overview.status).toBe(200);
+    // The family window is anchored on the newest family log, so the 40-day-old
+    // 220kg point is out and the overview equals the recent exercise's detail…
+    expect(overview.body.e1rm.deadlift).toEqual(recentDetail.body.e1rm);
+    expect(overview.body.e1rm.deadlift).toEqual({
+      value: recentDetail.body.e1rm.value,
+      computed_at: atTenUtc(daysFromToday(-1)).toISOString(),
+    });
+    // …while the stale exercise's own detail still anchors on its own last log.
+    expect(staleDetail.body.e1rm).toEqual({
+      value: '229.17',
+      computed_at: atTenUtc(daysFromToday(-40)).toISOString(),
+    });
+    expect(overview.body.e1rm.deadlift.value).not.toBe(staleDetail.body.e1rm.value);
   });
 
   it('returns PRs, five recent sessions, set-count buckets, e1RM, and video flags', async () => {
