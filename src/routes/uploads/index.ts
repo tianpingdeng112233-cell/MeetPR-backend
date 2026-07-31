@@ -5,6 +5,7 @@ import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 
 import type { Database } from '../../db/types';
+import { resolveSetVideoAccess } from '../../handlers/set-video-access';
 import {
   coachHasAcceptedBind,
   deleteAttachmentMetadata,
@@ -648,7 +649,13 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
         return;
       }
 
-      if (!uuidEquals(attachment.owner_id, req.user.id)) {
+      if (attachment.kind === 'set_video') {
+        const access = await resolveSetVideoAccess(db, req.user, attachment.id);
+        if (access.outcome !== 'allowed') {
+          res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
+          return;
+        }
+      } else if (!uuidEquals(attachment.owner_id, req.user.id)) {
         if (attachment.kind === 'chat_image') {
           res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
           return;
@@ -660,9 +667,7 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
           res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
           return;
         }
-        // A linked video is scoped by immutable provenance, not a mutable join
-        // through set_logs. Only explicitly-created unlinked uploads can be
-        // shared with any accepted coach; legacy/unproven orphans stay private.
+        // Non-video attachment sharing retains its existing provenance rule.
         const isExplicitlyUnlinked =
           attachment.is_unlinked_explicit && attachment.source_coach_id === null;
         if (!isExplicitlyUnlinked && !uuidEquals(attachment.source_coach_id, req.user.id)) {
