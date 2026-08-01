@@ -138,6 +138,10 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-08-01 — `sha-3ec80fe`(=staging HEAD,#159 纯 web/ 换装:plan-web 播放器底部三卡换行修复 #58,
+  bundle 522fc88/入口 index-6mVfpqw9.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
+  `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口 index-6mVfpqw9.js(与本地 dist 逐字节一致)。
+
 - 2026-07-31 — `sha-d5d1260`(=staging HEAD,#157 纯 web/ 换装:plan-web 学员工作台 #57——消息+训练视频
   合并单一「学员」tab(⚖️07-31 拍板 B),含走查反馈的列表常驻右栏+播放器按需;bundle ec8fe83/
   入口 index-D0QTgMyj.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
