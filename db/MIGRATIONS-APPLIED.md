@@ -138,6 +138,11 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-08-01 — `sha-696af92`(=staging HEAD,纯 web/ 换装:plan-web 播放器专业化 #60——0.25×/逐帧步进/
+  冻结帧标注发聊天+web 聊天发图管线,bundle 4f11908/入口 index-D2sZi7cW.js)经 deploy-staging.yml
+  (migrations_applied=true,无迁移)部署 `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口
+  index-D2sZi7cW.js(与本地 dist 逐字节一致)。
+
 - 2026-08-01 — `sha-bdbb1b0`(=staging HEAD,纯 web/ 换装:plan-web 播放器全屏+进度条拖拽 #59,
   bundle e1bdffb/入口 index-DFNJlZ7J.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
   `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口 index-DFNJlZ7J.js(与本地 dist 逐字节一致)。
