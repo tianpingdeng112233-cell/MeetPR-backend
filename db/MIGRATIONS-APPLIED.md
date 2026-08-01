@@ -138,6 +138,10 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-08-01 — `sha-18cf7bd`(=staging HEAD,纯 web/ 换装:plan-web 标注模式锁播控修复 #71,
+  入口 index-DyTKlLmV.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
+  `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口。
+
 - 2026-08-01 — `sha-3ebd9c7`(=staging HEAD,两级部署:①#181 打点携带标注帧,**迁移 0055 已先行应用**
   (psql 本地→xo 外网,Claude;schema head 0054→0055,IF NOT EXISTS 幂等,information_schema 验证列在);
   ②纯 web/ 换装 plan-web #70 标注帧挂打点+查看层,入口 index-UFQOFwix.js)经 deploy-staging.yml
