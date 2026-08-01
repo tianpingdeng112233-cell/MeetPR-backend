@@ -138,6 +138,10 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-08-01 — `sha-4ec9572`(=staging HEAD,纯 web/ 换装:plan-web 标注改活视频透明图层+发送时定格 #72,
+  入口见 curl)经 deploy-staging.yml(migrations_applied=true,无迁移)部署 `meetpr-backend-staging`;
+  env 未动。curl 验证:GET / 回新入口(与本地 dist 逐字节一致)。
+
 - 2026-08-01 — `sha-18cf7bd`(=staging HEAD,纯 web/ 换装:plan-web 标注模式锁播控修复 #71,
   入口 index-DyTKlLmV.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
   `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口。
