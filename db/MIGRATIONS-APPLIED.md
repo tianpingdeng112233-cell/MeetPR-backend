@@ -138,6 +138,11 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-08-01 — `sha-d99fd62`(=staging HEAD,纯 web/ 换装:plan-web 标注发图 403 修复 #67——OSS 分片 PUT
+  去 Content-Type(签名不含此头,fetch 自动补头致 SignatureDoesNotMatch;含 #66 逐帧可发现性),
+  入口 index-9lTi2aPO.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
+  `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口;无头分片管线已在 staging 全程证通。
+
 - 2026-08-01 — `sha-f8d5071`(=staging HEAD,纯 web/ 换装:plan-web 组卡片窄列收缩修复 #65,
   入口 index-CrZLIEdX.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
   `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口(与本地 dist 逐字节一致)。
