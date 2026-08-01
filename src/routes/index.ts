@@ -90,5 +90,9 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
     deps.requireAuth,
     uploadsRouter({ db: deps.db, logger: deps.logger, oss: deps.oss }),
   );
-  app.use('/videos', deps.requireAuth, videoMarkersRouter({ db: deps.db }));
+  app.use(
+    '/videos',
+    deps.requireAuth,
+    videoMarkersRouter({ db: deps.db, oss: deps.oss, logger: deps.logger }),
+  );
 }

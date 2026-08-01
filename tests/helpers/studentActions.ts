@@ -350,6 +350,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       video_id UUID NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
       coach_id UUID NOT NULL REFERENCES users(id),
+      attachment_id UUID REFERENCES attachments(id) ON DELETE SET NULL,
       time_ms INT NOT NULL CHECK (time_ms >= 0),
       level TEXT NOT NULL DEFAULT 'info' CHECK (level IN ('info', 'warn', 'bad')),
       note TEXT NOT NULL DEFAULT '' CHECK (length(note) <= 500),

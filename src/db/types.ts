@@ -574,6 +574,7 @@ export interface VideoMarkersTable {
   id: Generated<string>;
   video_id: string;
   coach_id: string;
+  attachment_id: NullableColumn<string>;
   time_ms: number;
   level: Generated<VideoMarkerLevel>;
   note: Generated<string>;
