@@ -138,6 +138,10 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-08-01 — `sha-f2d1306`(=staging HEAD,纯 web/ 换装:plan-web 进度条逐帧微调+滚轮逐帧 #64,
+  入口 index-CTnPytH0.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署
+  `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口(与本地 dist 逐字节一致)。
+
 - 2026-08-01 — `sha-abc0d79`(=staging HEAD,纯 web/ 换装:plan-web 打磨批次 #63——视频双击全屏/
   组卡片浅色重做/tab 改名「反馈工作区」,入口 index-DqeQM4-y.js)经 deploy-staging.yml
   (migrations_applied=true,无迁移)部署 `meetpr-backend-staging`;env 未动。curl 验证:GET / 回新入口。
