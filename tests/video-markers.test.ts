@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { AttachmentKind, AttachmentStatus } from '../src/db/types';
 import { auth, ids, makeContext, type TestContext } from './helpers/studentActions';
+import { makeFakeOss } from './helpers/uploads';
 
 async function seedVideo(
   ctx: TestContext,
@@ -43,6 +44,7 @@ async function seedMarker(
     timeMs?: number;
     level?: 'info' | 'warn' | 'bad';
     note?: string;
+    attachmentId?: string | null;
   } = {},
 ): Promise<string> {
   const marker = await ctx.db
@@ -50,6 +52,7 @@ async function seedMarker(
     .values({
       video_id: videoId,
       coach_id: options.coachId ?? ids.coach,
+      attachment_id: options.attachmentId ?? null,
       time_ms: options.timeMs ?? 1000,
       level: options.level ?? 'info',
       note: options.note ?? '',
@@ -57,6 +60,75 @@ async function seedMarker(
     .returning('id')
     .executeTakeFirstOrThrow();
   return marker.id;
+}
+
+async function seedAnnotation(
+  ctx: TestContext,
+  options: {
+    ownerId?: string;
+    kind?: AttachmentKind;
+    status?: AttachmentStatus;
+    /**
+     * Which student's conversation the image was sent into. Defaults to the
+     * video owner (the provenance-valid case); `null` seeds a never-sent
+     * orphan.
+     */
+    sentToStudentId?: string | null;
+  } = {},
+): Promise<{ id: string; ossKey: string }> {
+  const ossKey = `tests/marker-annotations/${randomUUID()}`;
+  const status = options.status ?? 'ready';
+  const ownerId = options.ownerId ?? ids.coach;
+  const attachment = await ctx.db
+    .insertInto('attachments')
+    .values({
+      owner_id: ownerId,
+      kind: options.kind ?? 'chat_image',
+      oss_key: ossKey,
+      content_type: 'image/png',
+      size_bytes: 1024,
+      part_count: 1,
+      actual_size_bytes: status === 'ready' ? 1024 : null,
+      status,
+      source_coach_id: ids.coach,
+      is_unlinked_explicit: false,
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+
+  const sentTo = options.sentToStudentId === undefined ? ids.trainee : options.sentToStudentId;
+  if (sentTo !== null) {
+    const conversation =
+      (await ctx.db
+        .selectFrom('conversations')
+        .select('id')
+        .where('coach_id', '=', ownerId)
+        .where('student_id', '=', sentTo)
+        .executeTakeFirst()) ??
+      (await ctx.db
+        .insertInto('conversations')
+        .values({ coach_id: ownerId, student_id: sentTo })
+        .returning('id')
+        .executeTakeFirstOrThrow());
+    const seqRow = await ctx.db
+      .selectFrom('messages')
+      .select(({ fn }) => fn.max('seq').as('max'))
+      .where('conversation_id', '=', conversation.id)
+      .executeTakeFirst();
+    await ctx.db
+      .insertInto('messages')
+      .values({
+        conversation_id: conversation.id,
+        seq: (seqRow?.max ?? 0) + 1,
+        sender_id: ownerId,
+        kind: 'image',
+        body: null,
+        attachment_id: attachment.id,
+        client_id: randomUUID(),
+      })
+      .execute();
+  }
+  return { id: attachment.id, ossKey };
 }
 
 async function removeCoachBond(ctx: TestContext, coachId = ids.otherCoach): Promise<void> {
@@ -133,6 +205,9 @@ describe('GET /videos/:videoId/markers', () => {
         expect.objectContaining({
           video_id: videoId,
           coach_id: ids.coach,
+          attachment_id: null,
+          annotation_url: null,
+          annotation_expires_in: null,
           time_ms: 800,
           level: 'bad',
           note: 'Depth',
@@ -141,6 +216,9 @@ describe('GET /videos/:videoId/markers', () => {
         expect.objectContaining({
           video_id: videoId,
           coach_id: ids.coach,
+          attachment_id: null,
+          annotation_url: null,
+          annotation_expires_in: null,
           time_ms: 3200,
           level: 'warn',
           note: 'Brace',
@@ -192,6 +270,37 @@ describe('GET /videos/:videoId/markers', () => {
     expect(response.status).toBe(404);
     expect(response.body).toEqual({ error: 'ATTACHMENT_NOT_FOUND' });
   });
+
+  it('lets the student read annotation URLs and signs each annotated marker separately', async () => {
+    const oss = makeFakeOss();
+    const ctx = await makeContext(undefined, { oss: oss.service });
+    const videoId = await seedVideo(ctx);
+    const annotation = await seedAnnotation(ctx);
+    await seedMarker(ctx, videoId, { timeMs: 100, attachmentId: annotation.id });
+    await seedMarker(ctx, videoId, { timeMs: 200, attachmentId: annotation.id });
+
+    const response = await request(ctx.app)
+      .get(`/videos/${videoId}/markers`)
+      .set(auth(ctx.traineeToken));
+
+    expect(response.status).toBe(200);
+    expect(response.body.markers).toEqual([
+      expect.objectContaining({
+        attachment_id: annotation.id,
+        annotation_url: expect.stringContaining(annotation.ossKey),
+        annotation_expires_in: 900,
+      }),
+      expect.objectContaining({
+        attachment_id: annotation.id,
+        annotation_url: expect.stringContaining(annotation.ossKey),
+        annotation_expires_in: 900,
+      }),
+    ]);
+    expect(oss.calls.signGet).toEqual([
+      { key: annotation.ossKey, expiresSeconds: 900 },
+      { key: annotation.ossKey, expiresSeconds: 900 },
+    ]);
+  });
 });
 
 describe('POST /videos/:videoId/markers', () => {
@@ -209,6 +318,9 @@ describe('POST /videos/:videoId/markers', () => {
       id: expect.any(String),
       video_id: videoId,
       coach_id: ids.coach,
+      attachment_id: null,
+      annotation_url: null,
+      annotation_expires_in: null,
       time_ms: 1250,
       level: 'info',
       note: '',
@@ -222,9 +334,110 @@ describe('POST /videos/:videoId/markers', () => {
     expect(stored).toMatchObject({
       video_id: videoId,
       coach_id: ids.coach,
+      attachment_id: null,
       time_ms: 1250,
       level: 'info',
       note: '',
+    });
+  });
+
+  it('creates a marker with a ready owned chat image and signs its annotation URL', async () => {
+    const oss = makeFakeOss();
+    const ctx = await makeContext(undefined, { oss: oss.service });
+    const videoId = await seedVideo(ctx);
+    const annotation = await seedAnnotation(ctx);
+
+    const response = await request(ctx.app)
+      .post(`/videos/${videoId}/markers`)
+      .set(auth(ctx.coachToken))
+      .send({ time_ms: 1250, attachment_id: annotation.id });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({
+      attachment_id: annotation.id,
+      annotation_url: expect.stringContaining(annotation.ossKey),
+      annotation_expires_in: 900,
+    });
+    expect(oss.calls.signGet).toEqual([{ key: annotation.ossKey, expiresSeconds: 900 }]);
+    await expect(
+      ctx.db
+        .selectFrom('video_markers')
+        .select('attachment_id')
+        .where('id', '=', response.body.id as string)
+        .executeTakeFirstOrThrow(),
+    ).resolves.toEqual({ attachment_id: annotation.id });
+  });
+
+  it('rejects foreign, non-chat-image, missing, and non-ready annotation attachments', async () => {
+    const ctx = await makeContext();
+    const videoId = await seedVideo(ctx);
+    const foreign = await seedAnnotation(ctx, { ownerId: ids.otherCoach });
+    const wrongKind = await seedAnnotation(ctx, { kind: 'set_video' });
+    const uploading = await seedAnnotation(ctx, { status: 'uploading' });
+
+    for (const attachmentId of [foreign.id, wrongKind.id, randomUUID()]) {
+      const response = await request(ctx.app)
+        .post(`/videos/${videoId}/markers`)
+        .set(auth(ctx.coachToken))
+        .send({ time_ms: 100, attachment_id: attachmentId });
+
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: 'ATTACHMENT_NOT_FOUND' });
+    }
+
+    const notReady = await request(ctx.app)
+      .post(`/videos/${videoId}/markers`)
+      .set(auth(ctx.coachToken))
+      .send({ time_ms: 100, attachment_id: uploading.id });
+    expect(notReady.status).toBe(409);
+    expect(notReady.body).toEqual({ error: 'ATTACHMENT_NOT_READY', status: 'uploading' });
+    expect(await ctx.db.selectFrom('video_markers').select('id').execute()).toEqual([]);
+  });
+
+  it('rejects an image from another student\u2019s conversation and a never-sent orphan', async () => {
+    const ctx = await makeContext();
+    const videoId = await seedVideo(ctx);
+    // Same coach, but the image rode the OTHER student's thread.
+    const crossStudent = await seedAnnotation(ctx, { sentToStudentId: ids.otherStudent });
+    const orphan = await seedAnnotation(ctx, { sentToStudentId: null });
+
+    for (const attachmentId of [crossStudent.id, orphan.id]) {
+      const response = await request(ctx.app)
+        .post(`/videos/${videoId}/markers`)
+        .set(auth(ctx.coachToken))
+        .send({ time_ms: 100, attachment_id: attachmentId });
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: 'ATTACHMENT_NOT_FOUND' });
+    }
+    expect(await ctx.db.selectFrom('video_markers').select('id').execute()).toEqual([]);
+  });
+
+  it('degrades signing failures to plain markers instead of failing the request', async () => {
+    const oss = makeFakeOss();
+    oss.service.signGetUrl = () => Promise.reject(new Error('oss down'));
+    const ctx = await makeContext(undefined, { oss: oss.service });
+    const videoId = await seedVideo(ctx);
+    const annotation = await seedAnnotation(ctx);
+
+    const created = await request(ctx.app)
+      .post(`/videos/${videoId}/markers`)
+      .set(auth(ctx.coachToken))
+      .send({ time_ms: 1250, attachment_id: annotation.id });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({
+      attachment_id: annotation.id,
+      annotation_url: null,
+      annotation_expires_in: null,
+    });
+
+    const listed = await request(ctx.app)
+      .get(`/videos/${videoId}/markers`)
+      .set(auth(ctx.coachToken));
+    expect(listed.status).toBe(200);
+    expect(listed.body.markers).toHaveLength(1);
+    expect(listed.body.markers[0]).toMatchObject({
+      attachment_id: annotation.id,
+      annotation_url: null,
     });
   });
 
@@ -307,6 +520,7 @@ describe('POST /videos/:videoId/markers', () => {
     [{ time_ms: 2_147_483_648 }, 'time_ms above PostgreSQL INT'],
     [{ time_ms: 0, level: 'urgent' }, 'unknown level'],
     [{ time_ms: 0, note: null }, 'non-string note'],
+    [{ time_ms: 0, attachment_id: 'not-a-uuid' }, 'invalid attachment_id'],
     [{ timeMs: 0 }, 'camelCase field'],
     [{ time_ms: 0, extra: true }, 'unknown field'],
   ])('returns 422 for %s (%s)', async (body, _description) => {
@@ -325,6 +539,26 @@ describe('POST /videos/:videoId/markers', () => {
 });
 
 describe('DELETE /videos/:videoId/markers/:markerId', () => {
+  it('deletes an annotated marker without deleting its attachment', async () => {
+    const ctx = await makeContext();
+    const videoId = await seedVideo(ctx);
+    const annotation = await seedAnnotation(ctx);
+    const markerId = await seedMarker(ctx, videoId, { attachmentId: annotation.id });
+
+    const response = await request(ctx.app)
+      .delete(`/videos/${videoId}/markers/${markerId}`)
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(204);
+    await expect(
+      ctx.db
+        .selectFrom('attachments')
+        .select('id')
+        .where('id', '=', annotation.id)
+        .executeTakeFirst(),
+    ).resolves.toEqual({ id: annotation.id });
+  });
+
   it('allows only the creating coach to delete a marker', async () => {
     const ctx = await makeContext();
     const videoId = await seedVideo(ctx, {
