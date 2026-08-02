@@ -57,12 +57,25 @@
 | 0051-add-message-set-ref                        | ✅ 2026-07-28 手动应用(DMS,David;详见下方 sha-e2f32b2 部署条目,此行为表格回补)                                |
 | 0052-add-set-log-coach-rpe                      | ✅ 2026-07-28 手动应用(psql 本地→RDS xo 外网,Claude;ALTER+CHECK,information_schema 验证列与约束在)            |
 | 0054-video-markers                              | ✅ 2026-07-31 手动应用(psql 本地→RDS xo 外网,Claude;CREATE TABLE+INDEX,to_regclass/pg_indexes 验证表与索引在) |
+| 0055-marker-annotation-attachment               | ✅ 2026-08-01 手动应用(psql 本地→RDS xo 外网,Claude;详见下方 sha-3ebd9c7 部署条目,此行为表格回补)             |
+| 0056-promote-barbell-bench-main-lift-variation  | ✅ 2026-08-02 手动应用(psql 本地→RDS xo 外网,Claude;UPDATE 1 行 + 存在性护栏,SELECT 验证两条卧推口径正确)     |
 
 > 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。0043 现由 open PR #77/#79(账本扩展)占号,0044 先行落库,库内号段暂跳 0043——#77/#79 合并应用后回续。0047 已被 open PR #95、0048 已被 #99 占用,因此下一份空号取 0049。
 
-**当前 staging schema head = 0052（0043 缺位由 open PR #77/#79 占,0047 由 open PR #95 占,0048 由 #99 占,0050 由 open PR #110 占,合并应用后回续;0051-video-markers 随 #116 关闭释放,0051 已归 add-message-set-ref)。**
+**当前 staging schema head = 0056（0043 缺位由 open PR #77/#79 占,0047 由 open PR #95 占,0048 由 #99 占,0050 由 open PR #110 占,合并应用后回续;0053 空号未用)。**
+(此行 2026-08-02 修正:此前长期停在 0052,0054/0055 只记在变更历史漏更此行。)
 
 ## 变更历史
+
+- **2026-08-02** — `sha-2adbbeb`(=staging HEAD,#188 仅新增迁移 0056 与测试,无 src 改动)经
+  deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`。
+  **先应用 0056 再滚镜像**(psql 本地→xo 外网,Claude;schema head 0055→0056):
+  杠铃卧推(ca70-…01b4)accessory→main_lift_variation/bench,竞技卧推不动;
+  UPDATE 1 行,SELECT 验证「竞技卧推=main_lift/bench」「杠铃卧推=main_lift_variation/bench,非比赛」。
+  迁移前全量备份 `backups/staging-pre-0056-20260802T120758.sql.gz`(720K,本地)。
+  curl 验证:/health 200、/auth/login 空 body 400(非 5xx,登录红线守住)。env 未动。
+  ⚠️ 备注:`scripts/backup-db.ts` 在 pg_dump 18 下失效(PGDATABASE 不展开 URL),本次为手动
+  `pg_dump "$DATABASE_URL" | gzip` 等价备份,脚本修复已另立任务。
 
 - **2026-07-22** — `sha-b62de27`(=staging HEAD,#97 纯 web/ 换装:三处误用品牌红的按钮改回设计系统
   规定的中性/主按钮填充——视频反馈「发送」、绑定请求「接受」、播放速度选中态,改用 `fg-primary`/`bg`
