@@ -27,6 +27,7 @@ import { hasActiveEvaluation } from '../../handlers/evaluations';
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
 import { notifyPlanPublished } from '../../services/notifications';
+import { pushDisplayName, tryEnqueuePushOutbox } from '../../services/push-outbox';
 import { calculateTrainingMaxKg, formatTrainingMaxKg } from '../../services/trainingMax';
 import { uuidEquals } from '../../utils/uuid';
 import { normalizeDateOnly, utcDate, utcDateOnly } from '../../utils/date';
@@ -66,6 +67,7 @@ import {
 interface PlansRouterDeps {
   db: Kysely<Database>;
   logger: Logger;
+  pushEnabled?: boolean;
 }
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
@@ -394,6 +396,7 @@ async function createWholePlanShift(
       batchId: string;
       shiftedDays: ShiftedDayResponse[];
       totalOffsetDays: number;
+      coachId: string;
     }
   | { type: 'error'; error: PlanShiftError }
 > {
@@ -404,6 +407,7 @@ async function createWholePlanShift(
   if (context.plan.status !== 'published') {
     return { type: 'error', error: 'PLAN_NOT_ACTIVE' };
   }
+  const coachId = context.plan.coach_id;
 
   const today = utcDateOnly(new Date());
   const effectiveDays = effectivePlanDays(context.plan, context.days, context.shifts);
@@ -439,6 +443,7 @@ async function createWholePlanShift(
     batchId,
     shiftedDays,
     totalOffsetDays: new Set(context.shifts.map((shift) => shift.batch_id)).size + 1,
+    coachId,
   };
 }
 
@@ -1584,6 +1589,18 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         },
         'whole_plan_shifted',
       );
+      if (deps.pushEnabled) {
+        await tryEnqueuePushOutbox(deps.db, deps.logger, 'plan_shift', async () => ({
+          aggregateId: result.batchId,
+          recipientId: result.coachId,
+          payload: {
+            student_name: await pushDisplayName(deps.db, user.id),
+            shift_days: result.totalOffsetDays,
+            student_id: user.id,
+            plan_id: params.data.id,
+          },
+        }));
+      }
       res.status(201).json({
         batch_id: result.batchId,
         shifted_days: result.shiftedDays,

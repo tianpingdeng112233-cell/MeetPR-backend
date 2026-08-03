@@ -33,14 +33,12 @@ function main(): void {
   });
   const wss = attachRealtimeUpgrade({ server, hub, config, logger });
   const scheduler = startActivityScheduler({ config, logger, db });
-  const pushScheduler = config.PUSH_ENABLED
-    ? startPushConsumerScheduler({
-        config,
-        logger,
-        db,
-        apnsClient: createApnsClient(config),
-      })
-    : null;
+  const pushScheduler = startPushConsumerScheduler({
+    config,
+    logger,
+    db,
+    ...(config.PUSH_ENABLED ? { apnsClient: createApnsClient(config) } : {}),
+  });
 
   const shutdown = (signal: string): void => {
     logger.info({ signal }, 'server_shutdown_start');

@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
-import { auth, ids } from './helpers/studentActions';
+import { auth, createPublishedPlan, ids } from './helpers/studentActions';
 import { initiateUpload, makeUploadsContext } from './helpers/uploads';
 
 async function initiatedAttachmentId(
@@ -21,6 +21,51 @@ const parts = {
 };
 
 describe('POST /uploads/:attachmentId/complete', () => {
+  it('enqueues video_pending for a linked set_video on complete', async () => {
+    const ctx = await makeUploadsContext({ pushEnabled: true });
+    const plan = await createPublishedPlan(ctx);
+    const setLog = await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: plan.planExerciseId,
+        exercise_id: ids.exercise,
+        set_index: 0,
+        weight_kg: '100.00',
+        reps: 5,
+        completed: true,
+        failed: false,
+        assumed: false,
+        logged_date: '2026-08-03',
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const initiated = await initiateUpload(ctx, ctx.traineeToken, {
+      part_count: 2,
+      set_log_id: setLog.id,
+    });
+    const attachmentId = initiated.body.attachment_id as string;
+
+    const completed = await request(ctx.app)
+      .post(`/uploads/${attachmentId}/complete`)
+      .set(auth(ctx.traineeToken))
+      .send(parts);
+
+    expect(completed.status).toBe(200);
+    const row = await ctx.db
+      .selectFrom('notification_outbox')
+      .selectAll()
+      .where('event_type', '=', 'video_pending')
+      .executeTakeFirstOrThrow();
+    expect(row).toMatchObject({ aggregate_id: attachmentId, recipient_id: ids.coach });
+    expect(row.payload).toEqual({
+      student_name: 'Trainee One',
+      exercise_name: 'Competition Squat',
+      student_id: ids.trainee,
+      video_id: attachmentId,
+    });
+  });
+
   it('completes the multipart upload and marks the attachment ready', async () => {
     const ctx = await makeUploadsContext();
     const attachmentId = await initiatedAttachmentId(ctx, ctx.traineeToken);
@@ -217,6 +262,53 @@ describe('POST /uploads/:attachmentId/complete', () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ id: attachmentId, status: 'ready' });
     expect(response.body.actual_size_bytes).toBe(50 * 1024 * 1024);
+  });
+
+  it('enqueues video_pending when reconcile is the path that transitions a linked video to ready', async () => {
+    const ctx = await makeUploadsContext({
+      headObjectResult: 50 * 1024 * 1024,
+      pushEnabled: true,
+    });
+    const plan = await createPublishedPlan(ctx);
+    const setLog = await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: plan.planExerciseId,
+        exercise_id: ids.exercise,
+        set_index: 0,
+        weight_kg: '100.00',
+        reps: 5,
+        completed: true,
+        failed: false,
+        assumed: false,
+        logged_date: '2026-08-03',
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    const initiated = await initiateUpload(ctx, ctx.traineeToken, {
+      part_count: 2,
+      set_log_id: setLog.id,
+    });
+    const attachmentId = initiated.body.attachment_id as string;
+    await ctx.db
+      .updateTable('attachments')
+      .set({ status: 'completing' })
+      .where('id', '=', attachmentId)
+      .execute();
+
+    const response = await request(ctx.app)
+      .post(`/uploads/${attachmentId}/reconcile`)
+      .set(auth(ctx.traineeToken))
+      .send({});
+
+    expect(response.status).toBe(200);
+    const rows = await ctx.db
+      .selectFrom('notification_outbox')
+      .select(['aggregate_id', 'recipient_id'])
+      .where('event_type', '=', 'video_pending')
+      .execute();
+    expect(rows).toEqual([{ aggregate_id: attachmentId, recipient_id: ids.coach }]);
   });
 
   it('concurrent double-complete: loser gets 409 before OSS is touched', async () => {

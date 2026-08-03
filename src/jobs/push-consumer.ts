@@ -4,20 +4,14 @@ import type { Database } from '../db/types';
 import { PUSH_POLICY } from '../domain/push-policy';
 import type { Logger } from '../logger';
 import type { ApnsClient, ApnsResult } from '../services/apns';
-
-const PUSH_EVENT_TYPE = 'coach_daily_digest';
+import {
+  buildPushPayload,
+  REGISTERED_PUSH_EVENT_TYPES,
+  type RegisteredPushEventType,
+} from './push-payloads';
 
 type PushConsumerLogger = Pick<Logger, 'warn'>;
 type PushTransaction = Transaction<Database>;
-
-function payloadValue(payload: unknown): unknown {
-  if (typeof payload !== 'string') return payload;
-  try {
-    return JSON.parse(payload) as unknown;
-  } catch {
-    return payload;
-  }
-}
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -57,16 +51,20 @@ async function markFailedAttempt(
  * same rows; pg-mem cannot execute the clause, so the test harness strips it
  * at the adapter boundary while a compile assertion keeps production honest.
  */
-export function pendingDigestRowQuery(db: Kysely<Database> | PushTransaction, outboxId: string) {
+export function pendingPushRowQuery(db: Kysely<Database> | PushTransaction, outboxId: string) {
   return db
     .selectFrom('notification_outbox')
-    .select(['id', 'recipient_id', 'payload', 'attempt_count'])
+    .select(['id', 'event_type', 'recipient_id', 'payload', 'attempt_count'])
     .where('id', '=', outboxId)
-    .where('event_type', '=', PUSH_EVENT_TYPE)
+    .where('event_type', 'in', REGISTERED_PUSH_EVENT_TYPES)
     .where('status', '=', 'pending')
     .forUpdate()
     .skipLocked();
 }
+
+// Backward-compatible export for tests/integrations that pinned the old query
+// helper name before the consumer supported multiple event types.
+export const pendingDigestRowQuery = pendingPushRowQuery;
 
 async function consumeRow(
   db: Kysely<Database>,
@@ -76,8 +74,32 @@ async function consumeRow(
   logger: PushConsumerLogger,
 ): Promise<void> {
   await db.transaction().execute(async (trx) => {
-    const outbox = await pendingDigestRowQuery(trx, outboxId).executeTakeFirst();
+    const outbox = await pendingPushRowQuery(trx, outboxId).executeTakeFirst();
     if (outbox === undefined) return;
+
+    let builtPayload;
+    try {
+      builtPayload = buildPushPayload(outbox.event_type as RegisteredPushEventType, outbox.payload);
+    } catch (err) {
+      const lastError = `payload_builder_error:${errorMessage(err)}`;
+      await trx
+        .updateTable('notification_outbox')
+        .set({ status: 'failed', last_error: lastError })
+        .where('id', '=', outbox.id)
+        .where('status', '=', 'pending')
+        .execute();
+      logger.warn({ outboxId: outbox.id, lastError }, 'push_payload_build_failed');
+      return;
+    }
+
+    const apnsPayload = {
+      aps: {
+        alert: builtPayload.alert,
+        sound: 'default',
+        ...(builtPayload.threadId === undefined ? {} : { 'thread-id': builtPayload.threadId }),
+      },
+      ...builtPayload.custom,
+    };
 
     const tokens = await trx
       .selectFrom('device_tokens')
@@ -99,8 +121,8 @@ async function consumeRow(
     const transientFailures: string[] = [];
     for (const device of tokens) {
       try {
-        const result = await apnsClient.send(device.token, payloadValue(outbox.payload), {
-          collapseId: outbox.id,
+        const result = await apnsClient.send(device.token, apnsPayload, {
+          collapseId: builtPayload.collapseId ?? outbox.id,
         });
         if (result.ok) {
           successes += 1;
@@ -158,10 +180,17 @@ export async function consumePushOutbox(
   now: Date,
   logger: PushConsumerLogger,
 ): Promise<void> {
+  await db
+    .updateTable('notification_outbox')
+    .set({ status: 'failed', last_error: 'unknown_event_type' })
+    .where('status', '=', 'pending')
+    .where('event_type', 'not in', REGISTERED_PUSH_EVENT_TYPES)
+    .execute();
+
   const candidates = await db
     .selectFrom('notification_outbox')
     .select('id')
-    .where('event_type', '=', PUSH_EVENT_TYPE)
+    .where('event_type', 'in', REGISTERED_PUSH_EVENT_TYPES)
     .where('status', '=', 'pending')
     .orderBy('created_at', 'asc')
     .limit(PUSH_POLICY.consumerBatchSize)

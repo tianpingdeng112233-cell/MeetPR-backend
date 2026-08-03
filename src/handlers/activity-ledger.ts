@@ -3,10 +3,17 @@ import { z } from 'zod';
 
 import type { Database, SessionStatus, StudentEventType } from '../db/types';
 import { SIGNAL_POLICY } from '../domain/signal-policy';
+import type { Logger } from '../logger';
+import { pushDisplayName, tryEnqueuePushOutbox } from '../services/push-outbox';
 import { normalizeDateOnly, shanghaiTrainingDay } from '../utils/date';
 import { detectSetLogPr } from './pr-detection';
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
+
+interface ActivityPushOptions {
+  enabled: boolean;
+  logger: Pick<Logger, 'warn'>;
+}
 
 const SessionEventPayloadSchema = z.object({
   session_id: z.string().uuid(),
@@ -177,6 +184,7 @@ export async function recordSetLogActivity(
   studentId: string,
   setLogId: string,
   now: Date = new Date(),
+  push?: ActivityPushOptions,
 ): Promise<void> {
   await db.transaction().execute(async (trx) => {
     const triggeringLog = await trx
@@ -298,9 +306,21 @@ export async function recordSetLogActivity(
   // machine and its fact events (the route hook only warns, so that loss would
   // be permanent for a day with no further sets). Event + signal still commit
   // atomically with each other inside this transaction.
-  await db.transaction().execute(async (trx) => {
-    await detectSetLogPr(trx, studentId, setLogId, now);
-  });
+  const prPush = await db
+    .transaction()
+    .execute((trx) => detectSetLogPr(trx, studentId, setLogId, now));
+  if (push?.enabled && prPush !== null) {
+    await tryEnqueuePushOutbox(db, push.logger, 'pr_congrats', async () => ({
+      aggregateId: prPush.signalId,
+      recipientId: prPush.coachId,
+      payload: {
+        student_name: await pushDisplayName(db, prPush.studentId),
+        lift_name: prPush.liftName,
+        increase_kg: prPush.increaseKg,
+        student_id: prPush.studentId,
+      },
+    }));
+  }
 }
 
 /** Archive every session whose inactivity is strictly over the policy timeout. */

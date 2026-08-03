@@ -15,6 +15,29 @@ async function makeCode(
 }
 
 describe('student bind requests', () => {
+  it('enqueues bind_request for the invite-code coach after creation', async () => {
+    const ctx = await makeContext(undefined, { PUSH_ENABLED: true });
+    const code = await makeCode(ctx);
+
+    const created = await request(ctx.app)
+      .post('/bind-requests')
+      .set(auth(ctx.freeStudentToken))
+      .send({ code, display_name: '陈某' });
+
+    expect(created.status).toBe(201);
+    const row = await ctx.db
+      .selectFrom('notification_outbox')
+      .selectAll()
+      .where('event_type', '=', 'bind_request')
+      .executeTakeFirstOrThrow();
+    expect(row).toMatchObject({
+      aggregate_id: created.body.id,
+      recipient_id: ids.coach,
+      status: 'pending',
+    });
+    expect(row.payload).toEqual({ student_name: '陈某', request_id: created.body.id });
+  });
+
   it('creates a pending request, bootstraps the student profile, and shows up in the roster after accept', async () => {
     const ctx = await makeContext();
     const code = await makeCode(ctx);

@@ -12,7 +12,7 @@ const logger = pino({ level: 'silent' });
 
 async function addOutbox(
   ctx: Awaited<ReturnType<typeof makeContext>>,
-  options: { eventType?: string; attemptCount?: number } = {},
+  options: { eventType?: string; attemptCount?: number; payload?: Record<string, unknown> } = {},
 ): Promise<string> {
   const row = await ctx.db
     .insertInto('notification_outbox')
@@ -20,7 +20,13 @@ async function addOutbox(
       event_type: options.eventType ?? 'coach_daily_digest',
       aggregate_id: randomUUID(),
       recipient_id: ids.coach,
-      payload: JSON.stringify({ aps: { alert: 'Daily digest' } }),
+      payload: JSON.stringify(
+        options.payload ?? {
+          aps: { alert: { title: '今日训练摘要', body: '1 缺练' } },
+          counts: { missed_training: 1 },
+          gym_day: '2026-07-17',
+        },
+      ),
       ...(options.attemptCount === undefined ? {} : { attempt_count: options.attemptCount }),
     })
     .returning('id')
@@ -44,7 +50,7 @@ function fakeClient(result: ApnsResult): { client: ApnsClient; send: ReturnType<
 }
 
 describe('consumePushOutbox', () => {
-  it('leaves non-whitelisted event types untouched', async () => {
+  it('drains unknown pending event types as terminal failures', async () => {
     const ctx = await makeContext();
     const id = await addOutbox(ctx, { eventType: 'plan_published' });
     await addToken(ctx, 'aaaa');
@@ -57,7 +63,11 @@ describe('consumePushOutbox', () => {
       .selectAll()
       .where('id', '=', id)
       .executeTakeFirstOrThrow();
-    expect(row).toMatchObject({ status: 'pending', attempt_count: 0 });
+    expect(row).toMatchObject({
+      status: 'failed',
+      attempt_count: 0,
+      last_error: 'unknown_event_type',
+    });
     expect(fake.send).not.toHaveBeenCalled();
   });
 
@@ -168,15 +178,113 @@ describe('consumePushOutbox', () => {
     });
   });
 
-  it('passes the outbox id as the APNs collapse id on every send', async () => {
+  it('passes the builder collapse id on every send', async () => {
     const ctx = await makeContext();
-    const id = await addOutbox(ctx);
+    const conversationId = randomUUID();
+    await addOutbox(ctx, {
+      eventType: 'chat_message',
+      payload: {
+        sender_name: '王晨曦',
+        preview: '今天练吗？',
+        conversation_id: conversationId,
+        seq: 3,
+      },
+    });
     await addToken(ctx, 'aaaa');
     const send = vi.fn<ApnsClient['send']>(() => Promise.resolve({ ok: true, status: 200 }));
 
     await consumePushOutbox(ctx.db, { send }, now, logger);
 
-    expect(send).toHaveBeenCalledWith('aaaa', expect.anything(), { collapseId: id });
+    expect(send).toHaveBeenCalledWith(
+      'aaaa',
+      {
+        aps: {
+          alert: { title: '王晨曦', body: '今天练吗？' },
+          sound: 'default',
+          'thread-id': 'chat_message',
+        },
+        kind: 'chat_message',
+        conversation_id: conversationId,
+        seq: 3,
+      },
+      {
+        collapseId: `conv-${conversationId}`,
+      },
+    );
+  });
+
+  it('falls back to the outbox row id as collapse id when the builder sets none', async () => {
+    const ctx = await makeContext();
+    const outboxId = await addOutbox(ctx);
+    await addToken(ctx, 'aaaa');
+    const send = vi.fn<ApnsClient['send']>(() => Promise.resolve({ ok: true, status: 200 }));
+
+    await consumePushOutbox(ctx.db, { send }, now, logger);
+
+    // Digest retries after a partial multi-device failure must keep replacing
+    // the already-delivered copy instead of stacking a duplicate banner.
+    expect(send).toHaveBeenCalledWith(
+      'aaaa',
+      expect.anything(),
+      expect.objectContaining({ collapseId: outboxId }),
+    );
+  });
+
+  it('accepts an emoji preview truncated by code points on the write side', async () => {
+    const ctx = await makeContext();
+    const conversationId = randomUUID();
+    // 31 emoji = 31 code points but 62 UTF-16 code units: a code-unit cap
+    // would permanently fail a row the write side considers valid.
+    const preview = '😀'.repeat(31);
+    await addOutbox(ctx, {
+      eventType: 'chat_message',
+      payload: {
+        sender_name: '王晨曦',
+        preview,
+        conversation_id: conversationId,
+        seq: 4,
+      },
+    });
+    await addToken(ctx, 'aaaa');
+    const send = vi.fn<ApnsClient['send']>(() => Promise.resolve({ ok: true, status: 200 }));
+
+    await consumePushOutbox(ctx.db, { send }, now, logger);
+
+    expect(send).toHaveBeenCalledWith(
+      'aaaa',
+      expect.objectContaining({
+        aps: expect.objectContaining({ alert: { title: '王晨曦', body: preview } }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it('fails one malformed row without blocking the rest of the batch', async () => {
+    const ctx = await makeContext();
+    const malformedId = await addOutbox(ctx, {
+      eventType: 'chat_message',
+      payload: { conversation_id: randomUUID() },
+    });
+    const deliveredId = await addOutbox(ctx, {
+      eventType: 'bind_request',
+      payload: { student_name: '陈某', request_id: randomUUID() },
+    });
+    await addToken(ctx, 'aaaa');
+    const fake = fakeClient({ ok: true, status: 200 });
+
+    await consumePushOutbox(ctx.db, fake.client, now, logger);
+
+    const rows = await ctx.db
+      .selectFrom('notification_outbox')
+      .select(['id', 'status', 'last_error'])
+      .where('id', 'in', [malformedId, deliveredId])
+      .execute();
+    expect(rows.find((row) => row.id === malformedId)).toMatchObject({
+      status: 'failed',
+      last_error: expect.stringContaining('payload_builder_error:'),
+    });
+    expect(rows.find((row) => row.id === deliveredId)).toMatchObject({ status: 'delivered' });
+    expect(fake.send).toHaveBeenCalledOnce();
   });
 
   it('locks pending rows with FOR UPDATE SKIP LOCKED in production SQL', async () => {

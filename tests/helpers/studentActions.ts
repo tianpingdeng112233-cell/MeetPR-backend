@@ -29,6 +29,7 @@ export const config: Config = {
   ANALYTICS_ENABLED: true,
   SIGNALS_CRON_ENABLED: true,
   PUSH_ENABLED: false,
+  PUSH_DAILY_DIGEST_ENABLED: false,
   ANALYTICS_SAMPLE_RATE: 1,
   CORS_ORIGIN: '*',
   TRUST_PROXY: 0,
@@ -521,6 +522,7 @@ export async function makeContext(
     oss?: OssService;
     hub?: RealtimeHub;
     afterQuery?: (sql: string) => Promise<void>;
+    config?: Partial<Config>;
   } = {},
 ): Promise<TestContext> {
   const mem = newDb();
@@ -677,7 +679,7 @@ export async function makeContext(
 
   return {
     app: createApp({
-      config,
+      config: { ...config, ...extras.config },
       logger,
       db,
       ...(extras.oss ? { oss: extras.oss } : {}),

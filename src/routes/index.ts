@@ -48,7 +48,15 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
 
   app.use('/auth', authRouter({ config: deps.config, db: deps.db, logger: deps.logger }));
   app.use('/admin', deps.requireAuth, adminRouter({ db: deps.db }));
-  app.use('/plans', deps.requireAuth, plansRouter({ db: deps.db, logger: deps.logger }));
+  app.use(
+    '/plans',
+    deps.requireAuth,
+    plansRouter({
+      db: deps.db,
+      logger: deps.logger,
+      pushEnabled: deps.config.PUSH_ENABLED,
+    }),
+  );
   app.use('/students', deps.requireAuth, studentPlansRouter({ db: deps.db, logger: deps.logger }));
   app.use('/students', deps.requireAuth, studentSetsRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentReadinessRouter({ db: deps.db }));
@@ -59,22 +67,48 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use('/students', deps.requireAuth, studentVideosRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentSignalsRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentTrainingStreakRouter({ db: deps.db }));
-  app.use('/bind-requests', deps.requireAuth, studentBindRequestsRouter({ db: deps.db }));
+  app.use(
+    '/bind-requests',
+    deps.requireAuth,
+    studentBindRequestsRouter({
+      db: deps.db,
+      logger: deps.logger,
+      pushEnabled: deps.config.PUSH_ENABLED,
+    }),
+  );
   app.use('/exercises', deps.requireAuth, exercisesRouter({ db: deps.db }));
-  app.use('/sets', deps.requireAuth, setsRouter({ db: deps.db }));
+  app.use(
+    '/sets',
+    deps.requireAuth,
+    setsRouter({ db: deps.db, pushEnabled: deps.config.PUSH_ENABLED }),
+  );
   app.use('/feedback', deps.requireAuth, feedbackRouter({ db: deps.db }));
   app.use('/me', deps.requireAuth, meRouter({ db: deps.db, logger: deps.logger }));
   app.use('/devices', deps.requireAuth, devicesRouter({ db: deps.db }));
   app.use(
     '/conversations',
     deps.requireAuth,
-    conversationsRouter({ db: deps.db, logger: deps.logger, oss: deps.oss, hub: deps.hub }),
+    conversationsRouter({
+      db: deps.db,
+      logger: deps.logger,
+      oss: deps.oss,
+      hub: deps.hub,
+      pushEnabled: deps.config.PUSH_ENABLED,
+    }),
   );
   app.use('/coach', deps.requireAuth, coachRouter({ db: deps.db, logger: deps.logger }));
   app.use('/coach', deps.requireAuth, coachExerciseStatsRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachFeedbackRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachInviteCodesRouter({ db: deps.db }));
-  app.use('/coach', deps.requireAuth, coachBindRequestsRouter({ db: deps.db }));
+  app.use(
+    '/coach',
+    deps.requireAuth,
+    coachBindRequestsRouter({
+      db: deps.db,
+      logger: deps.logger,
+      pushEnabled: deps.config.PUSH_ENABLED,
+    }),
+  );
   app.use('/coach', deps.requireAuth, coachEvaluationsRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachOneRmRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachSignalsRouter({ db: deps.db, logger: deps.logger }));
@@ -90,7 +124,12 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use(
     '/uploads',
     deps.requireAuth,
-    uploadsRouter({ db: deps.db, logger: deps.logger, oss: deps.oss }),
+    uploadsRouter({
+      db: deps.db,
+      logger: deps.logger,
+      oss: deps.oss,
+      pushEnabled: deps.config.PUSH_ENABLED,
+    }),
   );
   app.use(
     '/videos',

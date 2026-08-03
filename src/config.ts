@@ -53,6 +53,10 @@ export const ConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((v) => v === 'true'),
+    PUSH_DAILY_DIGEST_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
     APNS_KEY: z.string().min(1).optional(),
     APNS_KEY_ID: z.string().min(1).optional(),
     APNS_TEAM_ID: z.string().min(1).optional(),

@@ -22,6 +22,7 @@ import { route, validationEnvelope } from './http';
 
 interface SetsRouterDeps {
   db: Kysely<Database>;
+  pushEnabled?: boolean;
 }
 
 const UuidSchema = z.string().uuid();
@@ -154,7 +155,10 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
           failed: body.data.failed,
         });
         try {
-          await recordSetLogActivity(deps.db, req.user.id, result.id);
+          await recordSetLogActivity(deps.db, req.user.id, result.id, new Date(), {
+            enabled: deps.pushEnabled === true,
+            logger: req.log,
+          });
         } catch (error: unknown) {
           req.log.warn(
             { err: error, studentId: req.user.id, setLogId: result.id },
@@ -182,7 +186,10 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
         failed: body.data.failed,
       });
       try {
-        await recordSetLogActivity(deps.db, req.user.id, result.id);
+        await recordSetLogActivity(deps.db, req.user.id, result.id, new Date(), {
+          enabled: deps.pushEnabled === true,
+          logger: req.log,
+        });
       } catch (error: unknown) {
         req.log.warn(
           { err: error, studentId: req.user.id, setLogId: result.id },

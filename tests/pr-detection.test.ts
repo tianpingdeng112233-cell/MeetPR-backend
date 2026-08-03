@@ -1,4 +1,5 @@
 import { sql } from 'kysely';
+import pino from 'pino';
 import { describe, expect, it } from 'vitest';
 
 import { SIGNAL_POLICY } from '../src/domain/signal-policy';
@@ -599,7 +600,10 @@ describe('detectSetLogPr', () => {
     });
     const openedAt = new Date('2026-07-10T00:01:00.000Z');
 
-    await recordSetLogActivity(ctx.db, ids.trainee, triggerId, openedAt);
+    await recordSetLogActivity(ctx.db, ids.trainee, triggerId, openedAt, {
+      enabled: true,
+      logger: pino({ level: 'silent' }),
+    });
 
     const event = await ctx.db
       .selectFrom('student_events')
@@ -610,5 +614,17 @@ describe('detectSetLogPr', () => {
     expect(event.coach_id).toBe(ids.otherCoach);
     expect(signal.coach_id).toBe(ids.otherCoach);
     expect(signal.opened_at).toEqual(openedAt);
+    const outbox = await ctx.db
+      .selectFrom('notification_outbox')
+      .selectAll()
+      .where('event_type', '=', 'pr_congrats')
+      .executeTakeFirstOrThrow();
+    expect(outbox).toMatchObject({ aggregate_id: signal.id, recipient_id: ids.otherCoach });
+    expect(payload(outbox.payload as Record<string, unknown> | string)).toEqual({
+      student_name: 'Trainee One',
+      lift_name: '深蹲',
+      increase_kg: 5,
+      student_id: ids.trainee,
+    });
   });
 });
