@@ -2,7 +2,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createApnsClient } from '../../src/services/apns';
+import { createApnsClient, normalizeApnsKey } from '../../src/services/apns';
 import { PUSH_POLICY } from '../../src/domain/push-policy';
 
 function privateKey(): string {
@@ -20,6 +20,38 @@ const baseConfig = {
   APNS_BUNDLE_ID: 'com.example.meetpr',
   APNS_ENV: 'sandbox' as const,
 };
+
+describe('normalizeApnsKey', () => {
+  it('expands escaped newlines from single-line console inputs', () => {
+    const pem = privateKey();
+    const singleLine = pem.replaceAll('\n', '\\n');
+    expect(normalizeApnsKey(singleLine)).toBe(pem);
+  });
+
+  it('leaves a PEM with real newlines untouched', () => {
+    const pem = `${privateKey()}with\\nliteral-inside`;
+    expect(normalizeApnsKey(pem)).toBe(pem);
+  });
+
+  it('signs a verifiable provider token from an escaped key', async () => {
+    const pair = generateKeyPairSync('ec', {
+      namedCurve: 'P-256',
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+    });
+    const request = vi.fn().mockResolvedValue({ status: 200 });
+    const client = createApnsClient(
+      { ...baseConfig, APNS_KEY: pair.privateKey.replaceAll('\n', '\\n') },
+      { request, now: () => 0 },
+    );
+    await client.send('feedface', { aps: {} });
+    const call = request.mock.calls[0]?.[0] as { headers: Record<string, string> };
+    const token = (call.headers.authorization ?? '').replace('bearer ', '');
+    const verified = jwt.verify(token, pair.publicKey, { algorithms: ['ES256'], complete: true });
+    expect(verified.header.kid).toBe('KEY123');
+    expect((verified.payload as { iss: string }).iss).toBe('TEAM123');
+  });
+});
 
 describe('createApnsClient', () => {
   it('reuses its provider JWT until the 50-minute refresh boundary', async () => {
