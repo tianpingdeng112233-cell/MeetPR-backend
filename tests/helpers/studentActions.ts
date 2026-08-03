@@ -10,6 +10,7 @@ import { createApp } from '../../src/app';
 import type { Config } from '../../src/config';
 import { createDb } from '../../src/db/kysely';
 import type { Database, UserRole } from '../../src/db/types';
+import type { RealtimeHub } from '../../src/realtime/hub';
 import type { OssService } from '../../src/services/oss';
 
 export const config: Config = {
@@ -516,7 +517,11 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
 
 export async function makeContext(
   logger = pino({ level: 'silent' }),
-  extras: { oss?: OssService; afterQuery?: (sql: string) => Promise<void> } = {},
+  extras: {
+    oss?: OssService;
+    hub?: RealtimeHub;
+    afterQuery?: (sql: string) => Promise<void>;
+  } = {},
 ): Promise<TestContext> {
   const mem = newDb();
   registerPgMemFunctions(mem);
@@ -671,7 +676,13 @@ export async function makeContext(
     .execute();
 
   return {
-    app: createApp({ config, logger, db, ...(extras.oss ? { oss: extras.oss } : {}) }),
+    app: createApp({
+      config,
+      logger,
+      db,
+      ...(extras.oss ? { oss: extras.oss } : {}),
+      ...(extras.hub ? { hub: extras.hub } : {}),
+    }),
     db,
     coachToken: signToken(ids.coach, 'coach'),
     otherCoachToken: signToken(ids.otherCoach, 'coach'),

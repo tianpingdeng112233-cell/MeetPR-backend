@@ -15,6 +15,7 @@ import { createErrorHandler } from './middleware/errorHandler';
 import { notFound } from './middleware/notFound';
 import { createGlobalRateLimit } from './middleware/rateLimit';
 import { requestId } from './middleware/requestId';
+import type { RealtimeHub } from './realtime/hub';
 import { mountRoutes } from './routes';
 import type { OssService } from './services/oss';
 
@@ -24,6 +25,8 @@ export interface AppDeps {
   db: Kysely<Database>;
   /** Absent when OSS env vars are not configured — /uploads/* answers 503. */
   oss?: OssService | undefined;
+  /** Optional so HTTP-only tests and embeddings keep realtime publishing disabled. */
+  hub?: RealtimeHub | undefined;
 }
 
 export function createApp(deps: AppDeps): Express {
@@ -79,6 +82,7 @@ export function createApp(deps: AppDeps): Express {
     config,
     db: deps.db,
     logger,
+    hub: deps.hub,
     oss: deps.oss,
     requireAuth: createRequireAuth(config),
   });

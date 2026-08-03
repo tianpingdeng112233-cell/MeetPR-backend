@@ -9,6 +9,8 @@ import { loadConfig } from './config';
 import { createDb } from './db/kysely';
 import { createPool } from './db/pool';
 import { createLogger } from './logger';
+import { createRealtimeHub } from './realtime/hub';
+import { attachRealtimeUpgrade } from './realtime/upgrade';
 import { startActivityScheduler, startPushConsumerScheduler } from './jobs/scheduler';
 import { maybeCreateOssService } from './services/oss';
 import { createApnsClient } from './services/apns';
@@ -22,12 +24,14 @@ function main(): void {
   if (!oss) {
     logger.warn({}, 'oss_not_configured_uploads_disabled');
   }
+  const hub = createRealtimeHub({ logger });
 
-  const app = createApp({ config, logger, db, oss });
+  const app = createApp({ config, logger, db, oss, hub });
 
   const server = app.listen(config.PORT, () => {
     logger.info({ port: config.PORT, env: config.NODE_ENV }, 'server_listening');
   });
+  const wss = attachRealtimeUpgrade({ server, hub, config, logger });
   const scheduler = startActivityScheduler({ config, logger, db });
   const pushScheduler = config.PUSH_ENABLED
     ? startPushConsumerScheduler({
@@ -42,6 +46,10 @@ function main(): void {
     logger.info({ signal }, 'server_shutdown_start');
     scheduler?.stop();
     pushScheduler?.stop();
+    wss.close();
+    for (const socket of wss.clients) {
+      socket.terminate();
+    }
     server.close((closeErr) => {
       if (closeErr) {
         logger.error({ err: closeErr }, 'server_close_error');

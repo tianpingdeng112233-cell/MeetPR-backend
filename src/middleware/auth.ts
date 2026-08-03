@@ -53,7 +53,7 @@ interface AuthenticatedUser {
  * is rejected on both paths. A wrong `typ` never satisfies either schema, so a
  * refresh token can't cross into an access-protected surface.
  */
-function verifyBearerToken(
+export function verifyBearerToken(
   header: string | undefined,
   config: AuthConfig,
 ): AuthenticatedUser | null {
