@@ -23,7 +23,7 @@ function deps(enabled: boolean): SchedulerDeps {
   return {
     db: {} as Kysely<Database>,
     logger: {} as Logger,
-    config: { SIGNALS_CRON_ENABLED: enabled },
+    config: { SIGNALS_CRON_ENABLED: enabled, PUSH_ENABLED: false },
   };
 }
 
@@ -56,7 +56,7 @@ describe('push consumer cron registration', () => {
     createPushConsumerScheduler({
       db: {} as Kysely<Database>,
       logger: {} as Logger,
-      config: { PUSH_ENABLED: true },
+      config: { PUSH_ENABLED: true, PUSH_DAILY_DIGEST_ENABLED: true },
       apnsClient: { send: vi.fn() },
     });
 
@@ -76,6 +76,29 @@ describe('push consumer cron registration', () => {
     vi.doUnmock('node-cron');
     vi.resetModules();
   });
+
+  it('does not register the digest cron while its dedicated gate is false', async () => {
+    vi.resetModules();
+    const schedule = vi.fn(() => ({ stop: vi.fn() }));
+    vi.doMock('node-cron', () => ({ default: { schedule } }));
+    const { createPushConsumerScheduler } = await import('../../src/jobs/scheduler');
+
+    createPushConsumerScheduler({
+      db: {} as Kysely<Database>,
+      logger: {} as Logger,
+      config: { PUSH_ENABLED: true, PUSH_DAILY_DIGEST_ENABLED: false },
+      apnsClient: { send: vi.fn() },
+    });
+
+    expect(schedule).toHaveBeenCalledOnce();
+    expect(schedule).toHaveBeenCalledWith(
+      PUSH_POLICY.consumerCron,
+      expect.any(Function),
+      expect.objectContaining({ timezone: 'Asia/Shanghai', noOverlap: true }),
+    );
+    vi.doUnmock('node-cron');
+    vi.resetModules();
+  });
 });
 
 describe('push consumer scheduler gate', () => {
@@ -83,7 +106,7 @@ describe('push consumer scheduler gate', () => {
     return {
       db: {} as Kysely<Database>,
       logger: {} as Logger,
-      config: { PUSH_ENABLED: enabled },
+      config: { PUSH_ENABLED: enabled, PUSH_DAILY_DIGEST_ENABLED: false },
       apnsClient: { send: vi.fn() },
     };
   }
@@ -99,5 +122,13 @@ describe('push consumer scheduler gate', () => {
     const factory = vi.fn(() => task);
     expect(startPushConsumerScheduler(pushDeps(true), factory)).toBe(task);
     expect(factory).toHaveBeenCalledOnce();
+  });
+
+  it('mounts the digest writer independently of the consumer gate', () => {
+    const task = { stop: vi.fn() };
+    const factory = vi.fn(() => task);
+    const digestOnly = pushDeps(false);
+    digestOnly.config.PUSH_DAILY_DIGEST_ENABLED = true;
+    expect(startPushConsumerScheduler(digestOnly, factory)).toBe(task);
   });
 });

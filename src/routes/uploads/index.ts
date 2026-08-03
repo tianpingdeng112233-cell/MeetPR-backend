@@ -18,6 +18,7 @@ import {
 } from '../../handlers/attachments';
 import type { Logger } from '../../logger';
 import type { OssService } from '../../services/oss';
+import { pushDisplayName, tryEnqueuePushOutbox } from '../../services/push-outbox';
 import { uuidEquals } from '../../utils/uuid';
 import { route, validationEnvelope } from '../http';
 import {
@@ -36,6 +37,7 @@ const MAX_ACTIVE_UPLOADS_PER_OWNER = 10;
 interface UploadsRouterDeps {
   db: Kysely<Database>;
   logger: Logger;
+  pushEnabled?: boolean;
   /** Absent when OSS env vars are not configured (local dev) — routes answer 503. */
   oss?: OssService | undefined;
 }
@@ -53,6 +55,40 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
     return router;
   }
   const configuredOss = oss;
+
+  async function enqueueReadySetVideo(
+    attachment: NonNullable<Awaited<ReturnType<typeof findAttachment>>>,
+  ): Promise<void> {
+    if (
+      !deps.pushEnabled ||
+      attachment.kind !== 'set_video' ||
+      attachment.source_coach_id === null
+    ) {
+      return;
+    }
+    const recipientId = attachment.source_coach_id;
+    await tryEnqueuePushOutbox(db, logger, 'video_pending', async () => {
+      const exercise =
+        attachment.set_log_id === null
+          ? undefined
+          : await db
+              .selectFrom('set_logs as sl')
+              .innerJoin('exercises as e', 'e.id', 'sl.exercise_id')
+              .select('e.name')
+              .where('sl.id', '=', attachment.set_log_id)
+              .executeTakeFirst();
+      return {
+        aggregateId: attachment.id,
+        recipientId,
+        payload: {
+          student_name: await pushDisplayName(db, attachment.owner_id),
+          exercise_name: exercise?.name ?? '训练',
+          student_id: attachment.owner_id,
+          video_id: attachment.id,
+        },
+      };
+    });
+  }
 
   async function verifyCompletedObject(attachment: Awaited<ReturnType<typeof findAttachment>>) {
     if (!attachment) return null;
@@ -396,6 +432,7 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
       }
 
       logger.info({ attachmentId: updated.id, ownerId: req.user.id }, 'upload_completed');
+      await enqueueReadySetVideo(updated);
       res.status(200).json(serializeAttachment(updated));
     }),
   );
@@ -495,6 +532,7 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
           const object = await oss.headObject(attachment.oss_key);
           if (object?.sizeBytes === Number(attachment.size_bytes)) {
             const ready = await markAttachmentReady(db, attachment.id, object.sizeBytes);
+            if (ready) await enqueueReadySetVideo(ready);
             res.status(200).json(serializeAttachment(ready ?? attachment));
             return;
           }

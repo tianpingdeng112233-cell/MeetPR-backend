@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
+import { pushMessagePreview } from '../src/routes/conversations/index';
 import type { TestContext } from './helpers/studentActions';
 import { auth, ids, makeContext } from './helpers/studentActions';
 
@@ -41,7 +42,50 @@ async function createConversation(ctx: TestContext): Promise<string> {
   return (response.body as { conversation: { id: string } }).conversation.id;
 }
 
+describe('chat push preview', () => {
+  it('uses locked placeholders for images and training-group cards', () => {
+    expect(pushMessagePreview({ kind: 'image', body: null, set_ref: null })).toBe('[图片]');
+    expect(pushMessagePreview({ kind: 'text', body: '卡片正文', set_ref: {} })).toBe('[训练组]');
+  });
+});
+
 describe('POST /conversations/:id/messages text', () => {
+  it('enqueues one idempotent chat_message push for the conversation peer', async () => {
+    const ctx = await makeContext(undefined, { config: { PUSH_ENABLED: true } });
+    const conversationId = await createConversation(ctx);
+    const body = 'x'.repeat(61);
+
+    const created = await request(ctx.app)
+      .post(`/conversations/${conversationId}/messages`)
+      .set(auth(ctx.coachToken))
+      .send({ kind: 'text', body, client_id: 'push-chat-1' });
+    const replay = await request(ctx.app)
+      .post(`/conversations/${conversationId}/messages`)
+      .set(auth(ctx.coachToken))
+      .send({ kind: 'text', body, client_id: 'push-chat-1' });
+
+    expect(created.status).toBe(201);
+    expect(replay.status).toBe(200);
+    const message = (created.body as MessageResponse).message;
+    const rows = await ctx.db
+      .selectFrom('notification_outbox')
+      .selectAll()
+      .where('event_type', '=', 'chat_message')
+      .execute();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      aggregate_id: message.id,
+      recipient_id: ids.trainee,
+      status: 'pending',
+    });
+    expect(rows[0]?.payload).toEqual({
+      sender_name: 'Coach A',
+      preview: `${'x'.repeat(59)}…`,
+      conversation_id: conversationId,
+      seq: 1,
+    });
+  });
+
   it('writes the strict wire shape and treats client_id as payload-agnostic idempotency', async () => {
     const ctx = await makeContext();
     const conversationId = await createConversation(ctx);

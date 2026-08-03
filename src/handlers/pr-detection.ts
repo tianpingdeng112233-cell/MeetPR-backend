@@ -27,6 +27,14 @@ const PrEventPayloadSchema = LegacyPrEventPayloadSchema.extend({
 type PrEventPayload = z.infer<typeof PrEventPayloadSchema>;
 type CompatiblePrEventPayload = PrEventPayload | z.infer<typeof LegacyPrEventPayloadSchema>;
 
+export interface PrCongratsPushCandidate {
+  signalId: string;
+  studentId: string;
+  coachId: string;
+  liftName: string;
+  increaseKg: number;
+}
+
 const FAMILY_LABELS: Record<LiftFamily, string> = {
   squat: '深蹲',
   bench: '卧推',
@@ -106,7 +114,7 @@ async function upsertOpenCongrats(
     payload: PrEventPayload;
     openedAt: Date;
   },
-): Promise<void> {
+): Promise<string | null> {
   const expiresAt = new Date(input.openedAt.getTime() + SIGNAL_POLICY.signalExpiryDays * DAY_MS);
 
   // LOCK CONTRACT: every writer of open student_signals rows must take this
@@ -123,9 +131,9 @@ async function upsertOpenCongrats(
     .forUpdate()
     .executeTakeFirstOrThrow();
 
-  if (await updateOpenCongrats(db, { ...input, expiresAt })) return;
+  if (await updateOpenCongrats(db, { ...input, expiresAt })) return null;
 
-  await db
+  const inserted = await db
     .insertInto('student_signals')
     .values({
       student_id: input.studentId,
@@ -139,7 +147,9 @@ async function upsertOpenCongrats(
       expires_at: expiresAt,
       updated_at: input.openedAt,
     })
-    .execute();
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  return inserted.id;
 }
 
 /**
@@ -152,7 +162,7 @@ export async function detectSetLogPr(
   studentId: string,
   setLogId: string,
   now: Date = new Date(),
-): Promise<void> {
+): Promise<PrCongratsPushCandidate | null> {
   const trigger = await db
     .selectFrom('set_logs as sl')
     .innerJoin('exercises as e', 'e.id', 'sl.exercise_id')
@@ -175,7 +185,7 @@ export async function detectSetLogPr(
     .where('sl.id', '=', setLogId)
     .where('sl.student_id', '=', studentId)
     .executeTakeFirst();
-  if (!trigger || trigger.assumed) return;
+  if (!trigger || trigger.assumed) return null;
 
   const onboarding = await db
     .selectFrom('student_onboarding_profiles')
@@ -195,7 +205,7 @@ export async function detectSetLogPr(
     !Number.isFinite(currentWeight) ||
     currentWeight <= 0
   ) {
-    return;
+    return null;
   }
 
   const candidates = await db
@@ -242,10 +252,10 @@ export async function detectSetLogPr(
     historicalBest,
     Number.isFinite(registeredOneRm) && registeredOneRm > 0 ? registeredOneRm : null,
   ].filter((value): value is number => value !== null);
-  if (baselines.length === 0) return;
+  if (baselines.length === 0) return null;
 
   const previousBest = Math.max(...baselines);
-  if (currentWeight <= previousBest) return;
+  if (currentWeight <= previousBest) return null;
 
   const payload = PrEventPayloadSchema.parse({
     set_log_id: setLogId,
@@ -267,7 +277,7 @@ export async function detectSetLogPr(
     .select('id')
     .where('dedup_key', '=', dedupKey)
     .executeTakeFirst();
-  if (replayed) return;
+  if (replayed) return null;
 
   const coachId = await resolveEventCoachId(db, studentId, trigger.plan_coach_id);
   const insertedEvent = await db
@@ -284,12 +294,20 @@ export async function detectSetLogPr(
     .onConflict((oc) => oc.column('dedup_key').doNothing())
     .returning('id')
     .executeTakeFirst();
-  if (!insertedEvent || coachId === null) return;
+  if (!insertedEvent || coachId === null) return null;
 
-  await upsertOpenCongrats(db, {
+  const signalId = await upsertOpenCongrats(db, {
     studentId,
     coachId,
     payload,
     openedAt: now,
   });
+  if (signalId === null) return null;
+  return {
+    signalId,
+    studentId,
+    coachId,
+    liftName: FAMILY_LABELS[family],
+    increaseKg: currentWeight - previousBest,
+  };
 }

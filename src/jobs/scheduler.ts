@@ -18,7 +18,7 @@ const SESSION_SWEEP_CRON = '*/15 * * * *';
 export interface SchedulerDeps {
   db: Kysely<Database>;
   logger: Logger;
-  config: Pick<Config, 'SIGNALS_CRON_ENABLED'>;
+  config: Pick<Config, 'SIGNALS_CRON_ENABLED' | 'PUSH_ENABLED'>;
 }
 
 export interface ActivityScheduler {
@@ -30,8 +30,8 @@ export type SchedulerFactory = (deps: SchedulerDeps) => ActivityScheduler;
 export interface PushSchedulerDeps {
   db: Kysely<Database>;
   logger: Logger;
-  config: Pick<Config, 'PUSH_ENABLED'>;
-  apnsClient: ApnsClient;
+  config: Pick<Config, 'PUSH_ENABLED' | 'PUSH_DAILY_DIGEST_ENABLED'>;
+  apnsClient?: ApnsClient | undefined;
 }
 
 export type PushSchedulerFactory = (deps: PushSchedulerDeps) => ActivityScheduler;
@@ -49,7 +49,7 @@ export function createActivityScheduler(deps: SchedulerDeps): ActivityScheduler 
       const now = new Date();
       const gymDay = justClosedGymDay(now);
       try {
-        await runDailySettlement(deps.db, gymDay, now, deps.logger);
+        await runDailySettlement(deps.db, gymDay, now, deps.logger, deps.config.PUSH_ENABLED);
       } catch (err) {
         deps.logger.error({ err, gymDay }, 'activity_daily_settlement_failed');
       }
@@ -86,41 +86,54 @@ export function startActivityScheduler(
 }
 
 export function createPushConsumerScheduler(deps: PushSchedulerDeps): ActivityScheduler {
-  const digestTask = cron.schedule(
-    PUSH_POLICY.dailyDigestCron,
-    async () => {
-      const now = new Date();
-      const gymDay = justClosedGymDay(now);
-      try {
-        await runDailyDigest(deps.db, gymDay, now, deps.logger);
-      } catch (err) {
-        // Ops note: 08:00 digest assumes the 04:05 settlement finished. If a
-        // settlement failure alert fired earlier, treat this run's missed
-        // counts as suspect — the idempotent outbox row cannot be rewritten.
-        deps.logger.error({ err, gymDay }, 'coach_daily_digest_failed');
-      }
-    },
-    { timezone: SHANGHAI_TIME_ZONE, noOverlap: true },
-  );
-  const consumerTask = cron.schedule(
-    PUSH_POLICY.consumerCron,
-    async () => {
-      const now = new Date();
-      try {
-        await consumePushOutbox(deps.db, deps.apnsClient, now, deps.logger);
-      } catch (err) {
-        deps.logger.error({ err }, 'push_outbox_consumer_failed');
-      }
-    },
-    // noOverlap: a slow APNs batch must skip the next tick instead of stacking
-    // concurrent consumers on the same rows.
-    { timezone: SHANGHAI_TIME_ZONE, noOverlap: true },
-  );
+  const tasks: { stop(): unknown }[] = [];
+  if (deps.config.PUSH_DAILY_DIGEST_ENABLED) {
+    tasks.push(
+      cron.schedule(
+        PUSH_POLICY.dailyDigestCron,
+        async () => {
+          const now = new Date();
+          const gymDay = justClosedGymDay(now);
+          try {
+            await runDailyDigest(deps.db, gymDay, now, deps.logger);
+          } catch (err) {
+            // Ops note: 08:00 digest assumes the 04:05 settlement finished. If a
+            // settlement failure alert fired earlier, treat this run's missed
+            // counts as suspect — the idempotent outbox row cannot be rewritten.
+            deps.logger.error({ err, gymDay }, 'coach_daily_digest_failed');
+          }
+        },
+        { timezone: SHANGHAI_TIME_ZONE, noOverlap: true },
+      ),
+    );
+  }
+
+  if (deps.config.PUSH_ENABLED) {
+    if (deps.apnsClient === undefined) {
+      throw new Error('apnsClient is required when PUSH_ENABLED=true');
+    }
+    const apnsClient = deps.apnsClient;
+    tasks.push(
+      cron.schedule(
+        PUSH_POLICY.consumerCron,
+        async () => {
+          const now = new Date();
+          try {
+            await consumePushOutbox(deps.db, apnsClient, now, deps.logger);
+          } catch (err) {
+            deps.logger.error({ err }, 'push_outbox_consumer_failed');
+          }
+        },
+        // noOverlap: a slow APNs batch must skip the next tick instead of stacking
+        // concurrent consumers on the same rows.
+        { timezone: SHANGHAI_TIME_ZONE, noOverlap: true },
+      ),
+    );
+  }
 
   return {
     stop(): void {
-      void digestTask.stop();
-      void consumerTask.stop();
+      for (const task of tasks) void task.stop();
     },
   };
 }
@@ -129,6 +142,6 @@ export function startPushConsumerScheduler(
   deps: PushSchedulerDeps,
   factory: PushSchedulerFactory = createPushConsumerScheduler,
 ): ActivityScheduler | null {
-  if (!deps.config.PUSH_ENABLED) return null;
+  if (!deps.config.PUSH_ENABLED && !deps.config.PUSH_DAILY_DIGEST_ENABLED) return null;
   return factory(deps);
 }

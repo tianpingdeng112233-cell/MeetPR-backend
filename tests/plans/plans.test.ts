@@ -29,6 +29,7 @@ const config: Config = {
   ANALYTICS_ENABLED: true,
   SIGNALS_CRON_ENABLED: true,
   PUSH_ENABLED: false,
+  PUSH_DAILY_DIGEST_ENABLED: false,
   ANALYTICS_SAMPLE_RATE: 1,
   TRUST_PROXY: 0,
 };

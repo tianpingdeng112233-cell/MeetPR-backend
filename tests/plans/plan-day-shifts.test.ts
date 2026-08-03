@@ -29,6 +29,7 @@ const config: Config = {
   ANALYTICS_ENABLED: true,
   SIGNALS_CRON_ENABLED: true,
   PUSH_ENABLED: false,
+  PUSH_DAILY_DIGEST_ENABLED: false,
   ANALYTICS_SAMPLE_RATE: 1,
   CORS_ORIGIN: '*',
   TRUST_PROXY: 0,
@@ -73,7 +74,7 @@ function first<T>(items: T[]): T {
   return item;
 }
 
-async function makeContext(): Promise<TestContext> {
+async function makeContext(pushEnabled = false): Promise<TestContext> {
   const mem = newDb();
   mem.public.registerFunction({
     name: 'gen_random_uuid',
@@ -91,6 +92,16 @@ async function makeContext(): Promise<TestContext> {
       refresh_token_jti UUID,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE coach_profiles (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      display_name TEXT NOT NULL
+    );
+
+    CREATE TABLE student_profiles (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      display_name TEXT NOT NULL
     );
 
     CREATE TABLE plans (
@@ -167,6 +178,20 @@ async function makeContext(): Promise<TestContext> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (plan_day_id, batch_id)
     );
+
+    CREATE TABLE notification_outbox (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      event_type TEXT NOT NULL,
+      aggregate_id UUID NOT NULL,
+      recipient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      payload JSONB NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempt_count INT NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      delivered_at TIMESTAMPTZ,
+      UNIQUE (event_type, aggregate_id, recipient_id)
+    );
   `);
 
   const { Pool } = mem.adapters.createPg();
@@ -190,10 +215,22 @@ async function makeContext(): Promise<TestContext> {
       },
     ])
     .execute();
+  await db
+    .insertInto('coach_profiles')
+    .values({ user_id: coachId, display_name: 'Coach A' })
+    .execute();
+  await db
+    .insertInto('student_profiles')
+    .values({ user_id: traineeId, display_name: '小张' })
+    .execute();
 
   const now = new Date();
   return {
-    app: createApp({ config, logger: pino({ level: 'silent' }), db }),
+    app: createApp({
+      config: { ...config, PUSH_ENABLED: pushEnabled },
+      logger: pino({ level: 'silent' }),
+      db,
+    }),
     db,
     coachToken: signToken(coachId, 'coach'),
     traineeToken: signToken(traineeId, 'coached_student'),
@@ -279,6 +316,33 @@ afterEach(() => {
 });
 
 describe('coached student whole-plan shifts', () => {
+  it('enqueues plan_shift for the plan owner after the shift commits', async () => {
+    const ctx = await makeContext(true);
+    const { plan } = await seedPlan(ctx);
+
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
+
+    expect(response.status).toBe(201);
+    const row = await ctx.db
+      .selectFrom('notification_outbox')
+      .selectAll()
+      .where('event_type', '=', 'plan_shift')
+      .executeTakeFirstOrThrow();
+    expect(row).toMatchObject({
+      aggregate_id: response.body.batch_id,
+      recipient_id: coachId,
+      status: 'pending',
+    });
+    expect(row.payload).toEqual({
+      student_name: '小张',
+      shift_days: 1,
+      student_id: traineeId,
+      plan_id: plan.id,
+    });
+  });
+
   it('shifts every remaining plan day by one day and returns one batch', async () => {
     const ctx = await makeContext();
     const { plan, days } = await seedPlan(ctx, { startOffset: -1, dayOffsets: [0, 1, 3] });

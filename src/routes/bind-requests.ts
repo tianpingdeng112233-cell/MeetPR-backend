@@ -3,6 +3,7 @@ import type { Kysely } from 'kysely';
 import { z } from 'zod';
 
 import type { Database } from '../db/types';
+import type { Logger } from '../logger';
 import {
   cancelBindRequest,
   createBindRequest,
@@ -15,10 +16,13 @@ import {
   type RespondBindRequestResult,
 } from '../handlers/coach-bind-requests';
 import { requireRole } from '../middleware/auth';
+import { tryEnqueuePushOutbox } from '../services/push-outbox';
 import { route, validationEnvelope } from './http';
 
 interface BindRequestsRouterDeps {
   db: Kysely<Database>;
+  logger: Logger;
+  pushEnabled?: boolean;
 }
 
 const IdParamSchema = z.object({
@@ -70,9 +74,20 @@ export function studentBindRequestsRouter(deps: BindRequestsRouterDeps): Express
 
       const result = await createBindRequest(deps.db, req.user.id, body.data);
       switch (result.type) {
-        case 'created':
+        case 'created': {
+          if (deps.pushEnabled) {
+            await tryEnqueuePushOutbox(deps.db, deps.logger, 'bind_request', () => ({
+              aggregateId: result.bindRequest.id,
+              recipientId: result.bindRequest.coach_id,
+              payload: {
+                student_name: body.data.display_name,
+                request_id: result.bindRequest.id,
+              },
+            }));
+          }
           res.status(201).json(result.bindRequest);
           return;
+        }
         case 'already-pending':
           res.status(409).json({ error: 'BIND_REQUEST_ALREADY_PENDING' });
           return;

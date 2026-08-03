@@ -7,6 +7,7 @@ import { effectivePlanDays } from '../domain/plan-calendar';
 import { SIGNAL_POLICY } from '../domain/signal-policy';
 import { sweepTimedOutSessions } from '../handlers/activity-ledger';
 import type { Logger } from '../logger';
+import { pushDisplayName, tryEnqueuePushOutbox } from '../services/push-outbox';
 import { isIsoCalendarDate, normalizeDateOnly } from '../utils/date';
 
 type SettlementLogger = Pick<Logger, 'warn'>;
@@ -34,6 +35,13 @@ const MissedTrainingPayloadSchema = z
   });
 
 type MissedTrainingPayload = z.infer<typeof MissedTrainingPayloadSchema>;
+
+interface MissedTrainingPushCandidate {
+  signalId: string;
+  studentId: string;
+  coachId: string;
+  consecutiveDays: number;
+}
 
 function parseMissedPayload(value: Record<string, unknown> | string): MissedTrainingPayload | null {
   try {
@@ -126,7 +134,7 @@ async function upsertMissedSignal(
     payload: MissedTrainingPayload;
     now: Date;
   },
-): Promise<void> {
+): Promise<MissedTrainingPushCandidate | null> {
   const signals = await trx
     .selectFrom('student_signals')
     .select(['id', 'status', 'payload'])
@@ -149,7 +157,7 @@ async function upsertMissedSignal(
     .map(epochRank);
   // A settlement older than anything already recorded is a historical rerun —
   // it must never regress newer state (§5 rerun safety).
-  if (knownRanks.some((rank) => rank > incomingRank)) return;
+  if (knownRanks.some((rank) => rank > incomingRank)) return null;
 
   const sameEpoch = signals.filter(
     (signal) => parseMissedPayload(signal.payload)?.absence_epoch === input.payload.absence_epoch,
@@ -162,13 +170,13 @@ async function upsertMissedSignal(
     // not roll the winner or the count backwards (§5 rerun safety).
     const incomingThrough = input.payload.missed_dates.at(-1) ?? '';
     const existingThrough = existingPayload?.missed_dates.at(-1) ?? '';
-    if (existingPayload !== null && incomingThrough < existingThrough) return;
+    if (existingPayload !== null && incomingThrough < existingThrough) return null;
     if (
       existingPayload !== null &&
       existingPayload.consecutive_count === input.payload.consecutive_count &&
       existingPayload.plan_id === input.payload.plan_id
     ) {
-      return;
+      return null;
     }
     await trx
       .updateTable('student_signals')
@@ -181,9 +189,9 @@ async function upsertMissedSignal(
       .where('id', '=', sameEpochOpen.id)
       .where('status', '=', 'open')
       .execute();
-    return;
+    return null;
   }
-  if (sameEpoch.length > 0) return;
+  if (sameEpoch.length > 0) return null;
 
   // A different epoch means the student actually trained in between — the old
   // open signal (if any) is superseded by the new absence period.
@@ -197,7 +205,7 @@ async function upsertMissedSignal(
       .execute();
   }
 
-  await trx
+  const inserted = await trx
     .insertInto('student_signals')
     .values({
       student_id: input.studentId,
@@ -211,7 +219,14 @@ async function upsertMissedSignal(
       expires_at: new Date(input.now.getTime() + SIGNAL_POLICY.signalExpiryDays * DAY_MS),
       updated_at: input.now,
     })
-    .execute();
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  return {
+    signalId: inserted.id,
+    studentId: input.studentId,
+    coachId: input.coachId,
+    consecutiveDays: input.payload.consecutive_count,
+  };
 }
 
 async function settleStudent(
@@ -219,9 +234,9 @@ async function settleStudent(
   studentId: string,
   gymDay: string,
   now: Date,
-): Promise<void> {
+): Promise<MissedTrainingPushCandidate[]> {
   // LOCK CONTRACT: every student_signals mutation is below this row lock.
-  if (!(await lockStudent(trx, studentId))) return;
+  if (!(await lockStudent(trx, studentId))) return [];
 
   const acceptedBonds = await trx
     .selectFrom('bind_requests')
@@ -230,7 +245,7 @@ async function settleStudent(
     .where('status', '=', 'accepted')
     .execute();
   const coachIds = [...new Set(acceptedBonds.map((bond) => bond.coach_id))];
-  if (coachIds.length === 0) return;
+  if (coachIds.length === 0) return [];
 
   const currentDayStarted = await autoResolveCurrentDay(trx, studentId, gymDay, now);
   const evaluationExempt =
@@ -317,6 +332,7 @@ async function settleStudent(
     }
   }
 
+  const pushCandidates: MissedTrainingPushCandidate[] = [];
   for (const { plan, judgement } of winnerByCoach.values()) {
     if (plan.coach_id === null || judgement.streakStartDate === null) continue;
     const payload = MissedTrainingPayloadSchema.parse({
@@ -326,13 +342,15 @@ async function settleStudent(
       streak_start_date: judgement.streakStartDate,
       absence_epoch: judgement.lastTrainedDate ?? 'never',
     });
-    await upsertMissedSignal(trx, {
+    const pushCandidate = await upsertMissedSignal(trx, {
       studentId,
       coachId: plan.coach_id,
       payload,
       now,
     });
+    if (pushCandidate !== null) pushCandidates.push(pushCandidate);
   }
+  return pushCandidates;
 }
 
 async function expireOpenSignals(
@@ -374,6 +392,7 @@ export async function runDailySettlement(
   gymDay: string,
   now: Date = new Date(),
   logger?: SettlementLogger,
+  pushEnabled = false,
 ): Promise<void> {
   const students = await db
     .selectFrom('bind_requests as br')
@@ -386,9 +405,22 @@ export async function runDailySettlement(
 
   for (const student of students) {
     try {
-      await db.transaction().execute(async (trx) => {
-        await settleStudent(trx, student.student_id, gymDay, now);
-      });
+      const pushCandidates = await db
+        .transaction()
+        .execute((trx) => settleStudent(trx, student.student_id, gymDay, now));
+      if (pushEnabled && logger !== undefined) {
+        for (const candidate of pushCandidates) {
+          await tryEnqueuePushOutbox(db, logger, 'missed_training', async () => ({
+            aggregateId: candidate.signalId,
+            recipientId: candidate.coachId,
+            payload: {
+              student_name: await pushDisplayName(db, candidate.studentId),
+              consecutive_days: candidate.consecutiveDays,
+              student_id: candidate.studentId,
+            },
+          }));
+        }
+      }
     } catch (err) {
       logger?.warn(
         { err, studentId: student.student_id, gymDay },

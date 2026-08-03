@@ -20,6 +20,7 @@ describe('config', () => {
     expect(config.RATE_LIMIT_MAX).toBe(100);
     expect(config.LOG_LEVEL).toBe('info');
     expect(config.PUSH_ENABLED).toBe(false);
+    expect(config.PUSH_DAILY_DIGEST_ENABLED).toBe(false);
   });
 
   it('throws when DATABASE_URL is missing', () => {

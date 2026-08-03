@@ -14,6 +14,7 @@ import { requireRole } from '../../middleware/auth';
 import { chatMessageEvent, chatReadEvent } from '../../realtime/events';
 import type { RealtimeHub } from '../../realtime/hub';
 import type { OssService } from '../../services/oss';
+import { pushDisplayName, tryEnqueuePushOutbox } from '../../services/push-outbox';
 import { uuidEquals } from '../../utils/uuid';
 import { route, validationEnvelope } from '../http';
 import {
@@ -46,6 +47,7 @@ type SendMessageResult =
 interface ConversationsRouterDeps {
   db: Kysely<Database>;
   logger: Logger;
+  pushEnabled?: boolean;
   hub?: RealtimeHub | undefined;
   oss?: OssService | undefined;
 }
@@ -103,6 +105,17 @@ function otherParticipantId(conversation: ConversationRow, userId: string): stri
   return uuidEquals(conversation.coach_id, userId)
     ? conversation.student_id
     : conversation.coach_id;
+}
+
+export function pushMessagePreview(message: {
+  kind: 'text' | 'image';
+  body: string | null;
+  set_ref: unknown;
+}): string {
+  if (message.kind === 'image') return '[图片]';
+  if (message.set_ref !== null) return '[训练组]';
+  const characters = Array.from(message.body ?? '');
+  return characters.length <= 60 ? characters.join('') : `${characters.slice(0, 59).join('')}…`;
 }
 
 function isConversationMember(conversation: ConversationRow, userId: string): boolean {
@@ -1039,6 +1052,18 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
         });
         hub?.publish(conversation.coach_id, event);
         hub?.publish(conversation.student_id, event);
+        if (deps.pushEnabled) {
+          await tryEnqueuePushOutbox(db, logger, 'chat_message', async () => ({
+            aggregateId: result.message.id,
+            recipientId: otherParticipantId(conversation, user.id),
+            payload: {
+              sender_name: await pushDisplayName(db, user.id),
+              preview: pushMessagePreview(result.message),
+              conversation_id: conversation.id,
+              seq: result.message.seq,
+            },
+          }));
+        }
       }
 
       const message = await fetchMessageWire(db, result.message.id, oss);

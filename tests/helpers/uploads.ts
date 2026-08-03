@@ -26,6 +26,7 @@ export interface FakeOssOptions {
   completeGate?: () => Promise<void>;
   /** Add a HEAD implementation; null simulates a missing completed object. */
   headObjectResult?: number | null;
+  pushEnabled?: boolean;
 }
 
 export function makeFakeOss(options: FakeOssOptions = {}): FakeOss {
@@ -95,7 +96,10 @@ export interface UploadsContext extends TestContext {
 
 export async function makeUploadsContext(options: FakeOssOptions = {}): Promise<UploadsContext> {
   const oss = makeFakeOss(options);
-  const ctx = await makeContext(undefined, { oss: oss.service });
+  const ctx = await makeContext(undefined, {
+    oss: oss.service,
+    ...(options.pushEnabled === undefined ? {} : { config: { PUSH_ENABLED: options.pushEnabled } }),
+  });
   return { ...ctx, oss };
 }
 

@@ -26,6 +26,7 @@ export const config: Config = {
   ANALYTICS_ENABLED: true,
   SIGNALS_CRON_ENABLED: true,
   PUSH_ENABLED: false,
+  PUSH_DAILY_DIGEST_ENABLED: false,
   ANALYTICS_SAMPLE_RATE: 1,
   TRUST_PROXY: 0,
 };
@@ -315,7 +316,10 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
   `);
 }
 
-export async function makeContext(logger = pino({ level: 'silent' })): Promise<TestContext> {
+export async function makeContext(
+  logger = pino({ level: 'silent' }),
+  configOverride: Partial<Config> = {},
+): Promise<TestContext> {
   const mem = newDb();
   registerPgMemFunctions(mem);
   createSchema(mem);
@@ -393,7 +397,7 @@ export async function makeContext(logger = pino({ level: 'silent' })): Promise<T
     .execute();
 
   return {
-    app: createApp({ config, logger, db }),
+    app: createApp({ config: { ...config, ...configOverride }, logger, db }),
     db,
     coachToken: signToken(ids.coach, 'coach'),
     otherCoachToken: signToken(ids.otherCoach, 'coach'),

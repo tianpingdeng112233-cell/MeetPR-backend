@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Kysely } from 'kysely';
+import pino from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Database } from '../src/db/types';
@@ -59,6 +60,32 @@ async function insertAdhocLog(
 }
 
 describe('daily activity settlement', () => {
+  it('enqueues missed_training after a new signal commits', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    await addPlanDays(ctx.db, plan.planId, [2, 3, 4]);
+    const logger = pino({ level: 'silent' });
+
+    await runDailySettlement(ctx.db, '2026-05-03', new Date('2026-05-03T20:05:00Z'), logger, true);
+
+    const signal = await ctx.db
+      .selectFrom('student_signals')
+      .select('id')
+      .where('signal_type', '=', 'missed_training')
+      .executeTakeFirstOrThrow();
+    const row = await ctx.db
+      .selectFrom('notification_outbox')
+      .selectAll()
+      .where('event_type', '=', 'missed_training')
+      .executeTakeFirstOrThrow();
+    expect(row).toMatchObject({ aggregate_id: signal.id, recipient_id: ids.coach });
+    expect(payload(row.payload as Record<string, unknown> | string)).toEqual({
+      student_name: 'Trainee One',
+      consecutive_days: 3,
+      student_id: ids.trainee,
+    });
+  });
+
   it('opens one missed-training signal, grows the same streak, and never reopens a closed streak', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
