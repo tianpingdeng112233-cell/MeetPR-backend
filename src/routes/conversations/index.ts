@@ -11,6 +11,8 @@ import { bodyMatchesSetRef, SetRefV1Schema, type SetRefV1 } from '../../domain/s
 import { timestamp } from '../../handlers/serialization';
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
+import { chatMessageEvent, chatReadEvent } from '../../realtime/events';
+import type { RealtimeHub } from '../../realtime/hub';
 import type { OssService } from '../../services/oss';
 import { uuidEquals } from '../../utils/uuid';
 import { route, validationEnvelope } from '../http';
@@ -44,6 +46,7 @@ type SendMessageResult =
 interface ConversationsRouterDeps {
   db: Kysely<Database>;
   logger: Logger;
+  hub?: RealtimeHub | undefined;
   oss?: OssService | undefined;
 }
 
@@ -473,7 +476,7 @@ function isMessageIdempotencyConflict(error: unknown): boolean {
 
 export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRouter {
   const router = Router();
-  const { db, logger, oss } = deps;
+  const { db, hub, logger, oss } = deps;
 
   router.use(requireRole('coach', 'coached_student'));
 
@@ -1028,6 +1031,16 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
         return;
       }
 
+      if (result.created) {
+        const event = chatMessageEvent({
+          conversation_id: conversation.id,
+          seq: result.message.seq,
+          sender_id: result.message.sender_id,
+        });
+        hub?.publish(conversation.coach_id, event);
+        hub?.publish(conversation.student_id, event);
+      }
+
       const message = await fetchMessageWire(db, result.message.id, oss);
       res.status(result.created ? 201 : 200).json({ message });
     }),
@@ -1086,7 +1099,7 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
         return fetchReadCursor(trx, conversation.id, user.id, visibility);
       });
 
-      if (!cursor?.cursor) {
+      if (!cursor?.cursor || cursor.rawSeq === null) {
         res.status(400).json({ error: 'CHAT_INVALID_CURSOR' });
         return;
       }
@@ -1097,6 +1110,14 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
         user.id,
         cursor.rawSeq,
         visibility,
+      );
+      hub?.publish(
+        otherParticipantId(conversation, user.id),
+        chatReadEvent({
+          conversation_id: conversation.id,
+          user_id: user.id,
+          last_read_seq: cursor.rawSeq,
+        }),
       );
       res.status(200).json({ my_last_read: cursor.cursor, unread_count: unreadCount });
     }),

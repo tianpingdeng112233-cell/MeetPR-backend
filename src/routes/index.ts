@@ -5,6 +5,7 @@ import type { Config } from '../config';
 import type { Database } from '../db/types';
 import type { Logger } from '../logger';
 import { createOptionalAuth } from '../middleware/auth';
+import type { RealtimeHub } from '../realtime/hub';
 import { adminRouter } from './admin';
 import { authRouter } from './auth';
 import { coachBindRequestsRouter, studentBindRequestsRouter } from './bind-requests';
@@ -35,6 +36,7 @@ interface RouteDeps {
   config: Config;
   db: Kysely<Database>;
   logger: Logger;
+  hub?: RealtimeHub | undefined;
   oss?: OssService | undefined;
   requireAuth: RequestHandler;
 }
@@ -66,7 +68,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use(
     '/conversations',
     deps.requireAuth,
-    conversationsRouter({ db: deps.db, logger: deps.logger, oss: deps.oss }),
+    conversationsRouter({ db: deps.db, logger: deps.logger, oss: deps.oss, hub: deps.hub }),
   );
   app.use('/coach', deps.requireAuth, coachRouter({ db: deps.db, logger: deps.logger }));
   app.use('/coach', deps.requireAuth, coachExerciseStatsRouter({ db: deps.db }));
