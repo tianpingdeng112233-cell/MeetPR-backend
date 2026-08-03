@@ -123,11 +123,20 @@ function sendHttp2Request(request: ApnsRequest): Promise<ApnsResult> {
   });
 }
 
+/**
+ * Console-managed env inputs (SAE) are single-line, so the .p8 PEM arrives
+ * with literal backslash-n sequences instead of real newlines. jsonwebtoken
+ * needs the real thing; a PEM that already contains newlines is untouched.
+ */
+export function normalizeApnsKey(key: string): string {
+  return key.includes('\n') ? key : key.replaceAll('\\n', '\n');
+}
+
 export function createApnsClient(
   config: ApnsConfig,
   dependencies: ApnsClientDependencies = {},
 ): ApnsClient {
-  const key = required(config, 'APNS_KEY');
+  const key = normalizeApnsKey(required(config, 'APNS_KEY'));
   const keyId = required(config, 'APNS_KEY_ID');
   const teamId = required(config, 'APNS_TEAM_ID');
   const bundleId = required(config, 'APNS_BUNDLE_ID');
