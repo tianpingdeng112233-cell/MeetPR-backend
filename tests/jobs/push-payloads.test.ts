@@ -42,7 +42,7 @@ describe('push payload builders', () => {
         student_id: studentId,
       }),
     ).toMatchObject({
-      alert: { title: '破 PR 🎉', body: '小李 深蹲 e1RM 新高 ↑2.5kg' },
+      alert: { title: '破 PR 🎉', body: '小李 深蹲 实测重量新高 ↑2.5kg' },
       custom: { kind: 'pr_congrats', student_id: studentId },
     });
     expect(

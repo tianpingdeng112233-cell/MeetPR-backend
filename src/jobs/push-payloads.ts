@@ -118,7 +118,7 @@ export const PUSH_PAYLOAD_BUILDERS = {
     return {
       alert: {
         title: '破 PR 🎉',
-        body: `${value.student_name} ${value.lift_name} e1RM 新高 ↑${formatKilograms(value.increase_kg)}kg`,
+        body: `${value.student_name} ${value.lift_name} 实测重量新高 ↑${formatKilograms(value.increase_kg)}kg`,
       },
       threadId: 'pr_congrats',
       custom: { kind: 'pr_congrats', student_id: value.student_id },
