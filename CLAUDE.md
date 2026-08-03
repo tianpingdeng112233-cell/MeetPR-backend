@@ -2,27 +2,7 @@
 
 This file is the primary onboarding doc for any Claude session working on this repo.
 
-> ✅ **UNFROZEN 2026-05-15 — V0.1 wave triggered**
->
-> iOS V0.1 wave 6 specs(024-029)已合 main(`~/Projects/apps/MeetPR/specs/`),其中 spec 026 / 027 / 029 显式需要 backend 实装。**Unfreeze trigger met**:
->
-> - spec 026 `Backend 真接入` 触发 backend **003-student-actions** spec(`/coach/students` + set_logs + feedback + 3 张 missing tables migration + seed)
-> - spec 027 `Video upload` 触发 backend **004-video-upload** spec(`/upload/{initiate,sign-parts,complete,abort}` + `/students/:id/videos`(带短期 presigned URLs) + `/privacy/consent` + OSS bucket 4 项配置 + 0007 video_attachments migration)
->
-> **V0 期 backend 历史**:`001-auth`(PR #4)+ `002-coach-planning-crud`(PR #5)已合 staging,但 `/coach/students` 仍是 501 stub(per spec 026 §来源 注),003 必须实装。
->
-> **V0.1+ 内测期允许**:
->
-> - 起 003-student-actions / 004-video-upload spec + impl PR
-> - 修补 001 / 002 stub endpoint(/coach/students 等)
-> - Security / dependency CVE fixes
-> - 阿里云 SAE 部署 + RDS 重申(per spec 026 §1.1 / §1.2)
->
-> **仍不允许**:
->
-> - 投机性 backend feature(无对应 iOS spec 触发)
-> - Speculative refactor / "clean up before V1"
-> - V0.2+ 范围工作(evaluation-workflow / MPS 转码 / KMS / 多端 polling 等)— V0.1 内测稳定后再 unfreeze
+> **Status(2026-08-03)**:TestFlight 内测期,backend 随时可独立部署。`staging` 是集成分支(默认分支,PR 都开向它),`main` 收已 review 的内容。Feature 工作由 iOS / plan-web spec 触发,走 `specs/NNN-slug/SPEC.md` 流程;仍不做无 spec 触发的投机性 feature 与 speculative refactor。迁移纪律:迁移号开工现场核实,已应用状态以 `db/MIGRATIONS-APPLIED.md` 账本为准,合并后必须部署 staging(严禁「只合不部署」)。
 
 ## Project
 
@@ -47,7 +27,7 @@ MeetPR backend service. V1 scope: REST API for coach / student workflows, traini
 1. **No ORM.** Per ADR 004 §2. Kysely is permitted because it is a _SQL builder_ — it doesn't manage migrations, doesn't generate types from runtime schema, doesn't hide SQL semantics. If anyone proposes Prisma, Drizzle, TypeORM, MikroORM, or similar — point them at the ADR. The `Database` interface in `src/db/types.ts` is hand-augmented per migration.
 2. **Hand-managed migrations.** SQL files in `db/migrations/<NNN>-<name>.sql`. No tooling-managed migrations.
 3. **DATE-as-text.** All `DATE` columns must be returned as strings to avoid timezone drift. The pg type parser for OID 1082 is registered globally in `src/db/pool.ts`. Don't unregister it.
-4. **No Apple-specific code.** No Apple Sign-In, no APNs, no MPS bindings. V1 doesn't need it.
+4. **Apple-specific code needs a spec trigger.** APNs is in scope and implemented: `src/services/apns.ts` client, push consumer, `device_tokens` table(0042); spec 032(WebSocket realtime channel, PR #190)已合入,spec 033(六类事件推送, PR #191)在途。Apple Sign-In 和 MPS bindings 仍未实装,等对应 spec 触发再做。
 5. **`dotenv` is dev-only.** Production reads env from the SAE runtime. The only place `dotenv` is loaded is `src/server.ts`, gated on `NODE_ENV !== 'production'`. Don't add it elsewhere.
 6. **Never bypass hooks.** No `git commit --no-verify`. Fix the lint/format issue.
 7. **Secrets are pointers.** The real DATABASE_URL password and JWT secrets live in the password manager. `.env.example` only contains placeholders. See `~/Brain/wiki/projects/MeetPR/secrets-pointer.md`.
