@@ -10,7 +10,7 @@ import {
   type RegisteredPushEventType,
 } from './push-payloads';
 
-type PushConsumerLogger = Pick<Logger, 'warn'>;
+type PushConsumerLogger = Pick<Logger, 'warn' | 'info'>;
 type PushTransaction = Transaction<Database>;
 
 function errorMessage(err: unknown): string {
@@ -171,6 +171,9 @@ async function consumeRow(
       .where('id', '=', outbox.id)
       .where('status', '=', 'pending')
       .execute();
+    // The failure paths all warn; without this line a healthy pipeline is
+    // indistinguishable from a disabled one when reading production logs.
+    logger.info({ outboxId: outbox.id, eventType: outbox.event_type, successes }, 'push_delivered');
   });
 }
 
