@@ -129,6 +129,7 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       mesocycle_phase TEXT,
       training_max NUMERIC,
       tm_set_at TIMESTAMPTZ,
+      published_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -160,6 +161,15 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       is_main_lift BOOLEAN NOT NULL DEFAULT FALSE,
       sort_order INT NOT NULL DEFAULT 0,
       notes TEXT
+    );
+
+    CREATE TABLE plan_day_completions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      plan_day_id UUID NOT NULL REFERENCES plan_days(id) ON DELETE CASCADE,
+      student_id UUID NOT NULL REFERENCES users(id),
+      source TEXT NOT NULL CHECK (source IN ('auto', 'manual', 'backfill')),
+      completed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (plan_day_id)
     );
 
     CREATE TABLE plan_sets (
@@ -395,6 +405,7 @@ describe('coach planning CRUD', () => {
       mesocycle_phase: null,
       training_max: null,
       tm_set_at: null,
+      published_at: null,
     });
   });
 

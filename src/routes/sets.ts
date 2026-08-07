@@ -143,6 +143,8 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
         }
 
         const result = await upsertSetLog(deps.db, req.user.id, {
+          plan_id: resolved.planId,
+          plan_day_id: resolved.planDayId,
           plan_exercise_id: body.data.plan_exercise_id,
           exercise_id: resolved.exerciseId,
           logged_date: body.data.logged_date ?? shanghaiTrainingDay(),

@@ -7,6 +7,7 @@ import type { Logger } from '../logger';
 import { pushDisplayName, tryEnqueuePushOutbox } from '../services/push-outbox';
 import { normalizeDateOnly, shanghaiTrainingDay } from '../utils/date';
 import { detectSetLogPr } from './pr-detection';
+import { sessionProgress } from './session-progress';
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
 
@@ -23,13 +24,6 @@ const SessionEventPayloadSchema = z.object({
 });
 
 type SessionEventPayload = z.infer<typeof SessionEventPayloadSchema>;
-
-interface SessionProgress {
-  planDayIds: string[];
-  plannedComplete: boolean;
-  /** Coach owning the touched plan(s); null for pure-adhoc or ambiguous days. */
-  planCoachId: string | null;
-}
 
 function durationSeconds(startedAt: Date, lastSetAt: Date): number {
   return Math.max(0, Math.floor((lastSetAt.getTime() - startedAt.getTime()) / 1000));
@@ -66,21 +60,6 @@ export async function resolveEventCoachId(
   return planCoachId ?? (await acceptedCoachId(db, studentId));
 }
 
-/** The single coach owning every touched plan day, or null when absent/ambiguous. */
-async function planCoachIdForDays(db: DbExecutor, planDayIds: string[]): Promise<string | null> {
-  if (planDayIds.length === 0) return null;
-  const planCoaches = await db
-    .selectFrom('plan_days')
-    .innerJoin('plans', 'plans.id', 'plan_days.plan_id')
-    .select('plans.coach_id')
-    .where('plan_days.id', 'in', planDayIds)
-    .execute();
-  const coachIds = [
-    ...new Set(planCoaches.map((row) => row.coach_id).filter((id): id is string => id !== null)),
-  ];
-  return coachIds.length === 1 ? (coachIds[0] ?? null) : null;
-}
-
 async function writeSessionEvent(
   db: DbExecutor,
   input: {
@@ -108,70 +87,6 @@ async function writeSessionEvent(
     })
     .onConflict((oc) => oc.column('dedup_key').doNothing())
     .execute();
-}
-
-async function sessionProgress(
-  db: DbExecutor,
-  logs: {
-    plan_exercise_id: string | null;
-    completed: boolean;
-    failed: boolean;
-  }[],
-): Promise<SessionProgress> {
-  const touchedExerciseIds = [
-    ...new Set(logs.map((log) => log.plan_exercise_id).filter((id): id is string => id !== null)),
-  ];
-  if (touchedExerciseIds.length === 0) {
-    return { planDayIds: [], plannedComplete: false, planCoachId: null };
-  }
-
-  const touchedExercises = await db
-    .selectFrom('plan_exercises')
-    .select(['id', 'plan_day_id'])
-    .where('id', 'in', touchedExerciseIds)
-    .execute();
-  const planDayIds = [...new Set(touchedExercises.map((exercise) => exercise.plan_day_id))].sort();
-  const planCoachId = await planCoachIdForDays(db, planDayIds);
-  const plannedExercises = await db
-    .selectFrom('plan_exercises')
-    .select(['id', 'plan_day_id'])
-    .where('plan_day_id', 'in', planDayIds)
-    .execute();
-  const plannedExerciseIds = plannedExercises.map((exercise) => exercise.id);
-  const planSets =
-    plannedExerciseIds.length === 0
-      ? []
-      : await db
-          .selectFrom('plan_sets')
-          .select('plan_exercise_id')
-          .where('plan_exercise_id', 'in', plannedExerciseIds)
-          .execute();
-
-  const prescribedByExercise = new Map<string, number>();
-  for (const set of planSets) {
-    prescribedByExercise.set(
-      set.plan_exercise_id,
-      (prescribedByExercise.get(set.plan_exercise_id) ?? 0) + 1,
-    );
-  }
-
-  const submittedByExercise = new Map<string, number>();
-  for (const log of logs) {
-    if (log.plan_exercise_id === null || (!log.completed && !log.failed)) continue;
-    submittedByExercise.set(
-      log.plan_exercise_id,
-      (submittedByExercise.get(log.plan_exercise_id) ?? 0) + 1,
-    );
-  }
-
-  return {
-    planDayIds,
-    plannedComplete: plannedExercises.every(
-      (exercise) =>
-        (submittedByExercise.get(exercise.id) ?? 0) >= (prescribedByExercise.get(exercise.id) ?? 0),
-    ),
-    planCoachId,
-  };
 }
 
 /**

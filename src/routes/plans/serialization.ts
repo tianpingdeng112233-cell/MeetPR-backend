@@ -2,6 +2,8 @@ import type { Selectable } from 'kysely';
 
 import type {
   ExercisesTable,
+  PlanDayCompletionsTable,
+  PlanDayCompletionSource,
   PlanDayShiftsTable,
   PlanDaysTable,
   PlanExercisesTable,
@@ -28,6 +30,7 @@ function nullableDecimal(value: string | number | null | undefined): string | nu
 
 export type PlanRow = Selectable<PlansTable>;
 export type PlanDayRow = Selectable<PlanDaysTable>;
+export type PlanDayCompletionRow = Selectable<PlanDayCompletionsTable>;
 export type PlanDayShiftRow = Selectable<PlanDayShiftsTable>;
 export type PlanExerciseRow = Selectable<PlanExercisesTable>;
 export type PlanSetRow = Selectable<PlanSetsTable>;
@@ -49,6 +52,7 @@ export interface PlanResponse {
   mesocycle_phase: PlanRow['mesocycle_phase'];
   training_max: string | null;
   tm_set_at: string | null;
+  published_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -85,7 +89,17 @@ export interface PlanDayResponse {
   week_number: number;
   sort_order: number;
   shifted_to_date: string | null;
+  completed_at: string | null;
+  completion_source: PlanDayCompletionSource | null;
   exercises: PlanExerciseResponse[];
+}
+
+export interface PlanDayCompletionResponse {
+  id: string;
+  plan_day_id: string;
+  student_id: string;
+  source: PlanDayCompletionSource;
+  completed_at: string;
 }
 
 export interface PlanShiftSummaryResponse {
@@ -136,6 +150,7 @@ export function toPlan(row: PlanRow): PlanResponse {
     mesocycle_phase: row.mesocycle_phase ?? null,
     training_max: nullableDecimal(row.training_max),
     tm_set_at: nullableTimestamp(row.tm_set_at),
+    published_at: nullableTimestamp(row.published_at),
     created_at: timestamp(row.created_at),
     updated_at: timestamp(row.updated_at),
   };
@@ -145,6 +160,8 @@ export function toPlanDay(
   row: PlanDayRow,
   exercises: PlanExerciseResponse[] = [],
   shiftedToDate: string | Date | null = null,
+  completedAt: Date | string | null = null,
+  completionSource: PlanDayCompletionSource | null = null,
 ): PlanDayResponse {
   return {
     id: row.id,
@@ -153,7 +170,19 @@ export function toPlanDay(
     week_number: row.week_number,
     sort_order: row.sort_order,
     shifted_to_date: shiftedToDate === null ? null : normalizeDateOnly(shiftedToDate),
+    completed_at: nullableTimestamp(completedAt),
+    completion_source: completionSource,
     exercises,
+  };
+}
+
+export function toPlanDayCompletion(row: PlanDayCompletionRow): PlanDayCompletionResponse {
+  return {
+    id: row.id,
+    plan_day_id: row.plan_day_id,
+    student_id: row.student_id,
+    source: row.source,
+    completed_at: timestamp(row.completed_at),
   };
 }
 
