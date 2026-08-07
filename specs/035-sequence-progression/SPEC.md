@@ -1,6 +1,6 @@
 # spec 035 — 训练日推进制(sequence progression)backend 侧
 
-- **状态**:Draft(David 2026-08-07 拍板换制,五项拍板见 §拍板记录)
+- **状态**:InProgress(David 2026-08-07 拍板换制,五项拍板见 §拍板记录;同日拍板「边实装边终审」授权开工,spec PR #196 终审进行中,终审改动按 diff 返修实装)
 - **对应 iOS spec**:`071-sequence-progression`(同一 wave;本 spec 定义 wire 契约,071 消费)
 - **取代**:`026-catch-up-shift`(spec PR #104 已作废关闭)——推进制下「漏课」概念不存在,补练 patch 链整体取消。
 
