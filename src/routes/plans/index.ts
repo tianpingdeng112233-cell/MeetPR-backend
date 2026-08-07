@@ -24,6 +24,10 @@ import {
   plannedDate as plannedDayDate,
 } from '../../domain/plan-calendar';
 import { hasActiveEvaluation } from '../../handlers/evaluations';
+import {
+  manuallyCompletePlanDay,
+  undoPlanDayCompletion,
+} from '../../handlers/plan-day-completions';
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
 import { notifyPlanPublished } from '../../services/notifications';
@@ -59,6 +63,7 @@ import {
   toImportedHistory,
   toPlan,
   toPlanDay,
+  toPlanDayCompletion,
   toPlanExercise,
   toPlanShiftSummary,
   toPlanSet,
@@ -89,6 +94,7 @@ interface PublishCounts {
 }
 
 interface ImportedHistorySetRow {
+  plan_day_id: string;
   plan_exercise_id: string;
   exercise_id: string;
   week_number: number;
@@ -143,12 +149,15 @@ export async function getPlanWithChildren(
   plan: PlanRow,
 ): Promise<PlanWithChildrenResponse> {
   const dayRows = await db
-    .selectFrom('plan_days')
-    .selectAll()
-    .where('plan_id', '=', plan.id)
-    .orderBy('week_number', 'asc')
-    .orderBy('day_of_week', 'asc')
-    .orderBy('sort_order', 'asc')
+    .selectFrom('plan_days as pd')
+    .leftJoin('plan_day_completions as pdc', 'pdc.plan_day_id', 'pd.id')
+    .selectAll('pd')
+    .select(['pdc.completed_at as completion_completed_at', 'pdc.source as completion_source'])
+    .where('pd.plan_id', '=', plan.id)
+    .orderBy('pd.week_number', 'asc')
+    .orderBy('pd.day_of_week', 'asc')
+    .orderBy('pd.sort_order', 'asc')
+    .orderBy('pd.id', 'asc')
     .execute();
 
   const dayIds = dayRows.map((day) => day.id);
@@ -215,6 +224,8 @@ export async function getPlanWithChildren(
         day,
         exercisesByDay.get(day.id) ?? [],
         shiftsByDay.get(day.id)?.shifted_to_date ?? null,
+        day.completion_completed_at ?? null,
+        day.completion_source ?? null,
       ),
     ),
   };
@@ -491,15 +502,26 @@ async function undoLatestWholePlanShift(
   return { type: 'deleted', batchId: firstBatchRow.batch_id };
 }
 
-async function createImportedHistory(
-  db: Kysely<Database>,
-  plan: PlanRow,
+export async function createImportedHistory(
+  db: Transaction<Database>,
+  planRef: Pick<PlanRow, 'id'>,
 ): Promise<{ created: number; existing: number }> {
+  // Re-read the full row under the lock: the caller's pre-transaction read may
+  // carry a stale start_date if a concurrent PATCH committed in between, and
+  // every date below must come from the locked row.
+  const plan = await db
+    .selectFrom('plans')
+    .selectAll()
+    .where('id', '=', planRef.id)
+    .forUpdate()
+    .executeTakeFirstOrThrow();
+
   const rows = await db
     .selectFrom('plan_days as pd')
     .innerJoin('plan_exercises as pe', 'pe.plan_day_id', 'pd.id')
     .innerJoin('plan_sets as ps', 'ps.plan_exercise_id', 'pe.id')
     .select([
+      'pd.id as plan_day_id',
       'pe.id as plan_exercise_id',
       'pe.exercise_id as exercise_id',
       'pd.week_number as week_number',
@@ -518,9 +540,11 @@ async function createImportedHistory(
 
   const today = utcDateOnly(new Date());
   const setsByExercise = new Map<string, ImportedHistoryCandidate[]>();
+  const plannedDateByDay = new Map<string, string>();
   for (const row of rows) {
     const plannedDate = plannedDayDate(plan.start_date, row.week_number, row.day_of_week);
     if (plannedDate >= today) continue;
+    plannedDateByDay.set(row.plan_day_id, plannedDate);
     const sets = setsByExercise.get(row.plan_exercise_id) ?? [];
     sets.push({ set: row, plannedDate });
     setsByExercise.set(row.plan_exercise_id, sets);
@@ -567,6 +591,31 @@ async function createImportedHistory(
       .returning(['id'])
       .execute();
     created = inserted.length;
+  }
+
+  const candidateDayIds = [...plannedDateByDay.keys()];
+  const assumedDays = await db
+    .selectFrom('set_logs as sl')
+    .innerJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
+    .select('pe.plan_day_id')
+    .where('sl.student_id', '=', plan.trainee_id)
+    .where('sl.assumed', '=', true)
+    .where('pe.plan_day_id', 'in', candidateDayIds)
+    .groupBy('pe.plan_day_id')
+    .execute();
+  if (assumedDays.length > 0) {
+    await db
+      .insertInto('plan_day_completions')
+      .values(
+        assumedDays.map((day) => ({
+          plan_day_id: day.plan_day_id,
+          student_id: plan.trainee_id,
+          source: 'backfill' as const,
+          completed_at: new Date(`${String(plannedDateByDay.get(day.plan_day_id))}T00:00:00.000Z`),
+        })),
+      )
+      .onConflict((oc) => oc.column('plan_day_id').doNothing())
+      .execute();
   }
 
   return { created, existing: values.length - created };
@@ -879,6 +928,9 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (body.data.end_date !== undefined) patch.end_date = body.data.end_date;
         if (body.data.plan_weeks !== undefined) patch.plan_weeks = body.data.plan_weeks;
         if (body.data.status !== undefined) patch.status = body.data.status;
+        if (existing.status === 'paused' && body.data.status === 'published') {
+          patch.published_at = sql<Date>`now()`;
+        }
         if (body.data.source_template_id !== undefined) {
           patch.source_template_id = body.data.source_template_id;
         }
@@ -1098,7 +1150,11 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
 
         const updated = await trx
           .updateTable('plans')
-          .set({ status: 'published', updated_at: sql<Date>`now()` })
+          .set({
+            status: 'published',
+            published_at: sql<Date>`now()`,
+            updated_at: sql<Date>`now()`,
+          })
           .where('id', '=', plan.id)
           .where('status', '=', 'draft')
           .returningAll()
@@ -1552,6 +1608,66 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         { planId: result.planId, action: 'day', op: 'delete', resourceId: params.data.dayId },
         'plan_tree_mutated',
       );
+      res.status(204).send();
+    }),
+  );
+
+  router.post(
+    '/days/:dayId/complete',
+    requireRole('coached_student'),
+    route(async (req, res) => {
+      const user = ensureUser(req);
+      const params = DayIdParamSchema.safeParse(req.params);
+      if (!user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+
+      const result = await deps.db
+        .transaction()
+        .execute((trx) => manuallyCompletePlanDay(trx, params.data.dayId, user.id));
+      if (result.type === 'error') {
+        res.status(result.error === 'NOT_PLAN_STUDENT' ? 403 : 409).json({ error: result.error });
+        return;
+      }
+
+      res.status(200).json(toPlanDayCompletion(result.completion));
+    }),
+  );
+
+  router.delete(
+    '/days/:dayId/complete',
+    requireRole('coached_student'),
+    route(async (req, res) => {
+      const user = ensureUser(req);
+      const params = DayIdParamSchema.safeParse(req.params);
+      if (!user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+
+      const result = await deps.db
+        .transaction()
+        .execute((trx) => undoPlanDayCompletion(trx, params.data.dayId, user.id, new Date()));
+      if (result.type === 'error') {
+        const status =
+          result.error === 'NOT_PLAN_STUDENT'
+            ? 403
+            : result.error === 'NO_COMPLETION_TO_UNDO'
+              ? 404
+              : 409;
+        res.status(status).json({ error: result.error });
+        return;
+      }
+
       res.status(204).send();
     }),
   );

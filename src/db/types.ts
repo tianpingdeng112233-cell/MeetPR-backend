@@ -53,6 +53,7 @@ export const PLAN_SOURCES = ['coach', 'template', 'algorithm'] as const;
 export const API_PLAN_SOURCES = ['coach', 'template'] as const;
 export const PLAN_STATUSES = ['draft', 'published', 'completed', 'paused'] as const;
 export const PATCHABLE_PLAN_STATUSES = ['published', 'paused', 'completed'] as const;
+export const PLAN_DAY_COMPLETION_SOURCES = ['auto', 'manual', 'backfill'] as const;
 export const INTENSITY_MODES = ['weight', 'rpe'] as const;
 export const SET_TYPES = ['warmup', 'working', 'failed', 'amrap', 'backoff'] as const;
 export const BIND_REQUEST_STATUSES = [
@@ -147,6 +148,7 @@ export type MovementPattern = (typeof MOVEMENT_PATTERNS)[number];
 export type PlanSource = (typeof PLAN_SOURCES)[number];
 export type ApiPlanSource = (typeof API_PLAN_SOURCES)[number];
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
+export type PlanDayCompletionSource = (typeof PLAN_DAY_COMPLETION_SOURCES)[number];
 export type PatchablePlanStatus = (typeof PATCHABLE_PLAN_STATUSES)[number];
 export type IntensityMode = (typeof INTENSITY_MODES)[number];
 export type SetType = (typeof SET_TYPES)[number];
@@ -259,6 +261,7 @@ export interface PlansTable {
   mesocycle_phase: NullableColumn<MesocyclePhase>;
   training_max: NullableNumericColumn;
   tm_set_at: NullableColumn<Date>;
+  published_at: NullableColumn<Date>;
   created_at: TimestampColumn;
   updated_at: TimestampColumn;
 }
@@ -269,6 +272,14 @@ export interface PlanDaysTable {
   day_of_week: number;
   week_number: number;
   sort_order: Generated<number>;
+}
+
+export interface PlanDayCompletionsTable {
+  id: Generated<string>;
+  plan_day_id: string;
+  student_id: string;
+  source: PlanDayCompletionSource;
+  completed_at: TimestampColumn;
 }
 
 export interface PlanDayShiftsTable {
@@ -733,6 +744,7 @@ export interface Database {
   exercises: ExercisesTable;
   plans: PlansTable;
   plan_days: PlanDaysTable;
+  plan_day_completions: PlanDayCompletionsTable;
   plan_day_shifts: PlanDayShiftsTable;
   plan_exercises: PlanExercisesTable;
   plan_sets: PlanSetsTable;

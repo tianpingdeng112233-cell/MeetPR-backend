@@ -116,6 +116,7 @@ async function makeContext(pushEnabled = false): Promise<TestContext> {
       source_template_id UUID,
       status TEXT NOT NULL DEFAULT 'draft',
       kind TEXT NOT NULL DEFAULT 'regular',
+      published_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -135,6 +136,15 @@ async function makeContext(pushEnabled = false): Promise<TestContext> {
       is_main_lift BOOLEAN NOT NULL DEFAULT FALSE,
       sort_order INT NOT NULL DEFAULT 0,
       notes TEXT
+    );
+
+    CREATE TABLE plan_day_completions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      plan_day_id UUID NOT NULL REFERENCES plan_days(id) ON DELETE CASCADE,
+      student_id UUID NOT NULL REFERENCES users(id),
+      source TEXT NOT NULL CHECK (source IN ('auto', 'manual', 'backfill')),
+      completed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (plan_day_id)
     );
 
     CREATE TABLE plan_sets (
