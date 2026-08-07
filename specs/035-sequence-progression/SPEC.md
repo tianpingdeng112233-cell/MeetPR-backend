@@ -68,6 +68,7 @@ upsert completion(`source='auto'`,`ON CONFLICT (plan_day_id) DO NOTHING`)。
 ### manual(兜底,含「跳过」)
 
 `POST /plans/days/:dayId/complete`(coached student 本人)→ completion(`source='manual'`)。
+
 - 门:计划 `status='published'` 且 `trainee_id` = 本人(`NOT_PLAN_STUDENT`/`PLAN_NOT_ACTIVE`);
   已完成 → 200 幂等返回现有记录(多设备竞态不报错)。
 - 0 组也允许(状态差做了热身就走 / 主动跳过这天)——推进制下「跳过」就是 manual complete,
@@ -76,6 +77,7 @@ upsert completion(`source='auto'`,`ON CONFLICT (plan_day_id) DO NOTHING`)。
 ### 撤销
 
 `DELETE /plans/days/:dayId/complete`:
+
 - 仅允许撤销**该学员当前计划内 completed_at 最新的一条**(`NOT_LATEST_COMPLETION`),
   且其 `completed_at` 落在当前上海 gym-day 内(`shanghaiTrainingDay()`,`UNDO_WINDOW_PASSED`)
   ——窗口口径与撤销哲学沿 054 顺延撤销的先例,但**统一用沪 gym-day,不再用 UTC**
@@ -113,7 +115,7 @@ assumed log 的 plan_day 写 completion(`source='backfill'`, `completed_at` = �
 
 - **streak / missed_training 结算信号 / exercise-stats 出勤率 / daily-digest**:W1 不动。
   推进制下它们的「应练日」语义已降级,接受一波的失真;W2 统一重定义为「距上次训练 N 天
-  + 卡在 W几D几」(David 已拍口径,阈值沿现行 2 天)。
+  - 卡在 W几D几」(David 已拍口径,阈值沿现行 2 天)。
 - **plan-web**:W1 零改动(网格照常按推荐日期渲染;顺延渲染随 W2 删)。
 - **不做**服务端「只许记游标日」强制:`POST /sets` 沿现行 trust-client(仅 ownership 校验)。
   auto 完成对任意满员日生效,与游标无关(顺序由客户端 UI 保证,服务端不武断拒绝)。
