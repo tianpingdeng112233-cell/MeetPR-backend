@@ -63,8 +63,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('sequence progression auto completion', () => {
-  it('completes a full prescribed day and counts a failed set as recorded', async () => {
+// Settlement is student-explicit (David 2026-08-08, revising 拍板 1's auto
+// half): logging every prescribed set never writes a completion — only the
+// explicit POST /plans/days/:dayId/complete settles a day.
+describe('sequence progression settlement', () => {
+  it('does not auto-complete a fully logged prescribed day', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
 
@@ -72,75 +75,89 @@ describe('sequence progression auto completion', () => {
       .post('/sets/log')
       .set(auth(ctx.traineeToken))
       .send(coachedLog(plan.planExerciseId, 0, { completed: false, failed: true }));
-    const completion = await ctx.db
-      .selectFrom('plan_day_completions')
-      .selectAll()
-      .executeTakeFirst();
 
     expect(response.status).toBe(201);
-    expect(completion).toMatchObject({
-      plan_day_id: plan.dayId,
-      student_id: ids.trainee,
-      source: 'auto',
-    });
+    expect(await ctx.db.selectFrom('plan_day_completions').selectAll().execute()).toHaveLength(0);
   });
 
-  it('does not complete with one prescribed set missing or from adhoc logs', async () => {
+  it('settles a fully logged day only via the explicit complete call', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
-    await ctx.db
-      .insertInto('plan_sets')
-      .values({
-        plan_exercise_id: plan.planExerciseId,
-        set_number: 2,
-        target_reps: 5,
-        target_reps_max: null,
-        intensity_mode: 'weight',
-        target_value: '100.00',
-        set_type: 'working',
-        rest_seconds: null,
-      })
-      .execute();
 
     await request(ctx.app)
       .post('/sets/log')
       .set(auth(ctx.traineeToken))
       .send(coachedLog(plan.planExerciseId, 0));
-    await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
-      exercise_id: ids.exercise,
-      logged_date: '2026-08-07',
-      set_index: 1,
-      weight_kg: '100.00',
-      reps: 5,
-      completed: true,
-    });
     expect(await ctx.db.selectFrom('plan_day_completions').selectAll().execute()).toHaveLength(0);
+
+    const completed = await request(ctx.app)
+      .post(`/plans/days/${plan.dayId}/complete`)
+      .set(auth(ctx.traineeToken))
+      .send({});
+    expect(completed.status).toBeLessThan(300);
+    const completion = await ctx.db
+      .selectFrom('plan_day_completions')
+      .selectAll()
+      .executeTakeFirstOrThrow();
+    expect(completion).toMatchObject({
+      plan_day_id: plan.dayId,
+      student_id: ids.trainee,
+      source: 'manual',
+    });
+  });
+
+  it('undoes a legacy auto completion and resettles it as manual', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    // Row written while the retired auto path was live.
+    await ctx.db
+      .insertInto('plan_day_completions')
+      .values({ plan_day_id: plan.dayId, student_id: ids.trainee, source: 'auto' })
+      .execute();
+
+    const deleted = await request(ctx.app)
+      .delete(`/plans/days/${plan.dayId}/complete`)
+      .set(auth(ctx.traineeToken));
+    expect(deleted.status).toBe(204);
+
+    await request(ctx.app)
+      .post(`/plans/days/${plan.dayId}/complete`)
+      .set(auth(ctx.traineeToken))
+      .send({});
+    const completion = await ctx.db
+      .selectFrom('plan_day_completions')
+      .selectAll()
+      .executeTakeFirstOrThrow();
+    expect(completion.source).toBe('manual');
+  });
+
+  it('lets a withdrawn day be settled again explicitly', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
 
     await request(ctx.app)
       .post('/sets/log')
       .set(auth(ctx.traineeToken))
-      .send(coachedLog(plan.planExerciseId, 1));
-    expect(await ctx.db.selectFrom('plan_day_completions').selectAll().execute()).toHaveLength(1);
-  });
-
-  it('recreates auto completion when a withdrawn full day is logged again', async () => {
-    const ctx = await makeContext();
-    const plan = await createPublishedPlan(ctx);
-    const payload = coachedLog(plan.planExerciseId, 0);
-
-    await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send(payload);
+      .send(coachedLog(plan.planExerciseId, 0));
+    await request(ctx.app)
+      .post(`/plans/days/${plan.dayId}/complete`)
+      .set(auth(ctx.traineeToken))
+      .send({});
     const deleted = await request(ctx.app)
       .delete(`/plans/days/${plan.dayId}/complete`)
       .set(auth(ctx.traineeToken));
     expect(deleted.status).toBe(204);
     expect(await ctx.db.selectFrom('plan_day_completions').selectAll().execute()).toHaveLength(0);
 
-    await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send(payload);
+    await request(ctx.app)
+      .post(`/plans/days/${plan.dayId}/complete`)
+      .set(auth(ctx.traineeToken))
+      .send({});
     const completion = await ctx.db
       .selectFrom('plan_day_completions')
       .selectAll()
       .executeTakeFirstOrThrow();
-    expect(completion.source).toBe('auto');
+    expect(completion.source).toBe('manual');
   });
 });
 

@@ -26,7 +26,7 @@
 - **推荐日期**:`start_date + (week_number-1)*7 + (day_of_week-1)` 的位置式投影
   (现行 `plan-calendar.ts` 的 `plannedDate()`),**不叠加 shift 覆盖层**(拍板 2:忠实
   教练原排期,落后不重算)。W1 起它只是展示信息,不参与任何调度/判定。
-- **完成**(拍板 1):auto(处方组全部记录)或 manual(学员显式结束)——见 §完成判定。
+- **完成**(拍板 1,⚖️08-08 修订):manual(学员显式长按结算)——auto 半边已下线,见 §完成判定。
 
 ## 数据模型(一份迁移;号以开工现场核实为准,评审基线 0057)
 
@@ -47,32 +47,30 @@ UPDATE plans SET published_at = updated_at WHERE status IN ('published', 'comple
 
 - `ON DELETE CASCADE`:教练重编排删/重建某天时完成记录随之消失——语义正确(天没了,
   完成态无所附丽)。有 log 的天受现行不可变门保护,不会被静默重建;0 log 的 manual
-  完成天(等效跳过)可能被教练编辑清掉,接受(见 §边界)。
+  完成天可能被教练编辑清掉,接受(见 §边界)。
 - `published_at` 回填 `updated_at` 是一次性近似(存量 published 计划数量少,内测可接受);
   此后仅在 `draft→published` 与 `paused→published` 转移时写 `now()`(重发布刷新——
   paused 恢复视为「重新拍板生效」,与拍板 5 的「教练最新意志」语义一致)。
 
-## 完成判定(拍板 1 = A)
+## 完成判定(拍板 1 = A;⚖️2026-08-08 修订:auto 半边取消)
 
-### auto(主路径)
+### ~~auto(主路径)~~(⚖️08-08 David 真机走查推翻:结算权在学员手里)
 
-`POST /sets` 写入成功后,同事务内判定该 set 所属 plan_day 是否**满员**:该日全部
-`plan_exercises` 的全部处方组(`plan_sets` 行)都存在对应 `set_logs`(按现行
-`(plan_exercise_id, set_index)` 归属;`failed` 行算已记录,`adhoc` 行不参与)。满员则
-upsert completion(`source='auto'`,`ON CONFLICT (plan_day_id) DO NOTHING`)。
+~~`POST /sets` 满员即自动 completion~~ **已下线**:记满全部处方组**不再**触发任何
+completion 写入——学员显式长按(manual)是唯一学员侧结算。`source='auto'` 保留在
+CHECK 枚举中(历史行存量),服务端不再产生新 auto 行。iOS 侧记满后隐藏剩余提示、
+高亮长按按钮引导结算;忘按则该日不推进(显式结算的接受代价)。
 
-**口径唯一**:满员判定必须复用/提取 `activity-ledger` 的 `sessionProgress` 完成度口径
-(处方数 vs 实记数),严禁新写第二份——`exercise-stats.ts` 私自复制 `plannedDate()` 又
-不认 shift 的口径分叉事故是本条的反例教材。
+**口径唯一**(仍然有效):满员/完成度判定必须复用 `sessionProgress` 口径,严禁第二份。
 
-### manual(兜底,含「跳过」)
+### manual(唯一学员侧结算)
 
 `POST /plans/days/:dayId/complete`(coached student 本人)→ completion(`source='manual'`)。
 
 - 门:计划 `status='published'` 且 `trainee_id` = 本人(`NOT_PLAN_STUDENT`/`PLAN_NOT_ACTIVE`);
   已完成 → 200 幂等返回现有记录(多设备竞态不报错)。
-- 0 组也允许(状态差做了热身就走 / 主动跳过这天)——推进制下「跳过」就是 manual complete,
-  不造第二个概念。
+- 0 组服务端仍接受(trust-client 宽面,不加硬校验);但产品层「跳过这天」概念已删除
+  (⚖️08-08 iOS 拍板),客户端仅在 ≥1 组记录后提供长按结算入口,0 组结算不会由 071+ 客户端发起。
 
 ### 撤销
 
@@ -82,16 +80,16 @@ upsert completion(`source='auto'`,`ON CONFLICT (plan_day_id) DO NOTHING`)。
   且其 `completed_at` 落在当前上海 gym-day 内(`shanghaiTrainingDay()`,`UNDO_WINDOW_PASSED`)
   ——窗口口径与撤销哲学沿 054 顺延撤销的先例,但**统一用沪 gym-day,不再用 UTC**
   (054 的 UTC 口径是已知裂缝,新域不继承)。
-- auto 完成同样可撤:学员想给最后一组补记视频/加组,撤销后该日重回游标日、恢复可写,
-  记满后会再次 auto 完成——幂等闭环。
+- 撤销后该日重回游标日、恢复可写,补记后再次长按结算——幂等闭环
+  (⚖️08-08 auto 下线后,重结算同样只走 manual)。
 - 404/幂等:无完成记录 → `NO_COMPLETION_TO_UNDO`。
 
 ### backfill
 
 `POST /plans/:id/imported-history`(教练导入历史)在现行逻辑上追加:对每个产生了
 assumed log 的 plan_day 写 completion(`source='backfill'`, `completed_at` = 该日推荐日期
-的 UTC 午夜)。否则导入完历史后游标指向已练过的旧天。assumed log **不触发** auto 路径
-(auto 只在 `POST /sets` 事务内),backfill 是唯一入口,不会双写(UNIQUE 兜底)。
+的 UTC 午夜)。否则导入完历史后游标指向已练过的旧天。assumed log 不产生任何 completion
+副作用(auto 路径已整体下线),backfill 是导入侧唯一入口,不会双写(UNIQUE 兜底)。
 
 ## 序列化与「当前计划」
 
@@ -118,14 +116,14 @@ assumed log 的 plan_day 写 completion(`source='backfill'`, `completed_at` = �
   - 卡在 W几D几」(David 已拍口径,阈值沿现行 2 天)。
 - **plan-web**:W1 零改动(网格照常按推荐日期渲染;顺延渲染随 W2 删)。
 - **不做**服务端「只许记游标日」强制:`POST /sets` 沿现行 trust-client(仅 ownership 校验)。
-  auto 完成对任意满员日生效,与游标无关(顺序由客户端 UI 保证,服务端不武断拒绝)。
+  manual 结算对任意训练日生效,与游标无关(顺序由客户端 UI 保证,服务端不武断拒绝)。
 - **不做**同日多节硬门:学员当天完成一天后继续下一天,服务端不拦(现实中双节课存在)。
 - **教练编辑碰撞**:教练 delete+recreate 未练的天会连带清掉 0-log manual 完成(见 §数据模型),
   游标可能回退——罕见且语义可辩护(教练重排了课,学员按新课走),不做补偿机制。
 
 ## 验收 / 回归矩阵
 
-- auto:满员触发(含 failed 组)/ 缺一组不触发 / adhoc 满堂不触发 / 撤销后补记再触发。
+- 不自动结算:满员(含 failed 组)不触发 / adhoc 满堂不触发 / 撤销后补记满也不触发——一切结算走 manual(⚖️08-08)。
 - manual:幂等(重复 POST 200)/ 0 组完成 / 非本人 403 / 非 published 409。
 - undo:当天可撤、跨 gym-day `UNDO_WINDOW_PASSED`、非最新 `NOT_LATEST_COMPLETION`、
   沪 gym-day 边界(北京 03:59 vs 04:00)。
@@ -136,7 +134,7 @@ assumed log 的 plan_day 写 completion(`source='backfill'`, `completed_at` = �
 
 ## 拍板记录(David 2026-08-07)
 
-1. 完成判定 = **A**:处方组全记自动完成 + 显式「结束今天训练」manual 兜底,完成态落库。
+1. 完成判定 = **A**:~~处方组全记自动完成 +~~ 显式「结束今天训练」manual,完成态落库(⚖️08-08 David 真机走查修订:auto 半边取消,结算权归学员;manual 从兜底升为唯一学员侧结算)。
 2. 推荐日期 = **A**:忠实显示教练原排期,落后不重算(不叠 shift、不动态顺推)。
 3. 旧补练波 **作废**:iOS #275 / backend #104 已关闭,不实装。
 4. 教练分诊口径改「距上次训练 N 天 + 卡在 W几D几」——W2 实施。
@@ -146,5 +144,5 @@ assumed log 的 plan_day 写 completion(`source='backfill'`, `completed_at` = �
 ### spec 内决策(随 PR 终审一并确认)
 
 1. 撤销完成窗口 = 当天(沪 gym-day),与顺延撤销先例对齐但统一沪口径;
-2. manual 完成 0 组也允许(= 跳过,不造第二概念);
+2. ~~manual 完成 0 组也允许(= 跳过)~~(⚖️08-08 修订:产品层无跳过概念,服务端 0 组宽面保留但客户端不触发);
 3. `published_at` 存量回填用 `updated_at` 近似;paused→published 重发布刷新该字段。

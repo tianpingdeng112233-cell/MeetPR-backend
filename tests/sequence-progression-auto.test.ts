@@ -26,23 +26,19 @@ function coachedInput(
   };
 }
 
-describe('sequence progression auto completion transaction', () => {
-  it('writes an auto completion atomically after the failed final prescribed set', async () => {
+// Settlement stays student-explicit: logging the final prescribed set never
+// auto-completes the day (David 2026-08-08, revising 拍板 1's auto half).
+describe('sequence progression settlement', () => {
+  it('does not auto-complete after the failed final prescribed set', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
 
     await upsertSetLog(ctx.db, ids.trainee, coachedInput(plan, 0, false, true));
 
-    expect(
-      await ctx.db.selectFrom('plan_day_completions').selectAll().executeTakeFirstOrThrow(),
-    ).toMatchObject({
-      plan_day_id: plan.dayId,
-      student_id: ids.trainee,
-      source: 'auto',
-    });
+    expect(await ctx.db.selectFrom('plan_day_completions').selectAll().execute()).toHaveLength(0);
   });
 
-  it('does not complete before every prescribed set is recorded', async () => {
+  it('does not auto-complete even when every prescribed set is recorded', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
     await ctx.db
@@ -63,7 +59,7 @@ describe('sequence progression auto completion transaction', () => {
     expect(await ctx.db.selectFrom('plan_day_completions').selectAll().execute()).toHaveLength(0);
 
     await upsertSetLog(ctx.db, ids.trainee, coachedInput(plan, 1, true, false));
-    expect(await ctx.db.selectFrom('plan_day_completions').selectAll().execute()).toHaveLength(1);
+    expect(await ctx.db.selectFrom('plan_day_completions').selectAll().execute()).toHaveLength(0);
   });
 
   it('never lets an adhoc log complete a prescribed plan day', async () => {
