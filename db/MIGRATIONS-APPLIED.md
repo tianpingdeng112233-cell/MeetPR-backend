@@ -68,6 +68,11 @@
 
 ## 变更历史
 
+- **2026-08-08** — `sha-2d148f8`(=staging HEAD,#199 纯 web/ 换装:plan-web 自定义动作新建
+  支持选「主项变式」分类,plan-web main@89009f4)经 deploy-staging.yml(`migrations_applied=true`)
+  部署 `meetpr-backend-staging`。无迁移、无 src 改动,schema head 不变。
+  curl 验证:GET / 已回新入口 index-CcE7XtKu.js(与本地 VITE_API_BASE='' 产物哈希一致)。env 未动。
+
 - **2026-08-02** — `sha-2adbbeb`(=staging HEAD,#188 仅新增迁移 0056 与测试,无 src 改动)经
   deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`。
   **先应用 0056 再滚镜像**(psql 本地→xo 外网,Claude;schema head 0055→0056):
