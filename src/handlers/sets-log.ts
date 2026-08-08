@@ -3,7 +3,6 @@ import { sql } from 'kysely';
 
 import type { Database } from '../db/types';
 import { timestamp } from './serialization';
-import { sessionProgress } from './session-progress';
 
 export interface SetLogInput {
   plan_id: string;
@@ -89,89 +88,55 @@ export async function upsertSetLog(
 ): Promise<SetLogResult> {
   const failed = defaultFailed(input.failed);
 
-  const row = await db.transaction().execute(async (trx) => {
-    // Every completion writer takes the plan lock first. Besides making the
-    // final-set race deterministic, this serializes completion undo against a
-    // concurrent auto completion on another day in the same plan.
-    await trx
-      .selectFrom('plans')
-      .select('id')
-      .where('id', '=', input.plan_id)
-      .forUpdate()
-      .executeTakeFirstOrThrow();
-    await trx
-      .selectFrom('plan_days')
-      .select('id')
-      .where('id', '=', input.plan_day_id)
-      .forUpdate()
-      .executeTakeFirstOrThrow();
-
-    const saved = await trx
-      .insertInto('set_logs')
-      .values({
-        student_id: studentId,
-        plan_exercise_id: input.plan_exercise_id,
-        exercise_id: input.exercise_id,
-        logged_date: input.logged_date,
-        set_index: input.set_index,
-        weight_kg: input.weight_kg,
-        reps: input.reps,
-        rpe: input.rpe,
-        completed: input.completed,
-        failed,
-        assumed: false,
-      })
-      .onConflict((oc) =>
-        input.update_logged_date
-          ? oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
-              weight_kg: (eb) => eb.ref('excluded.weight_kg'),
-              reps: (eb) => eb.ref('excluded.reps'),
-              rpe: (eb) => eb.ref('excluded.rpe'),
-              completed: (eb) => eb.ref('excluded.completed'),
-              failed: (eb) => eb.ref('excluded.failed'),
-              assumed: false,
-              logged_date: (eb) => eb.ref('excluded.logged_date'),
-              logged_at: sql<Date>`now()`,
-            })
-          : oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
-              weight_kg: (eb) => eb.ref('excluded.weight_kg'),
-              reps: (eb) => eb.ref('excluded.reps'),
-              rpe: (eb) => eb.ref('excluded.rpe'),
-              completed: (eb) => eb.ref('excluded.completed'),
-              failed: (eb) => eb.ref('excluded.failed'),
-              assumed: false,
-              logged_at: sql<Date>`now()`,
-            }),
-      )
-      .returning(['id', 'logged_at'])
-      .executeTakeFirstOrThrow();
-
-    const dayLogs = await trx
-      .selectFrom('set_logs as sl')
-      .innerJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
-      .select(['sl.plan_exercise_id', 'sl.completed', 'sl.failed'])
-      .where('sl.student_id', '=', studentId)
-      .where('pe.plan_day_id', '=', input.plan_day_id)
-      .execute();
-    const progress = await sessionProgress(trx, dayLogs, [input.plan_day_id]);
-    if (progress.plannedComplete && progress.prescribedSetCount > 0) {
-      await trx
-        .insertInto('plan_day_completions')
-        .values({
-          plan_day_id: input.plan_day_id,
-          student_id: studentId,
-          source: 'auto',
-        })
-        .onConflict((oc) => oc.column('plan_day_id').doNothing())
-        .execute();
-    }
-
-    return saved;
-  });
+  // Settlement stays in the student's hands: logging a set never writes a
+  // completion — the explicit hold-to-complete call
+  // (POST /plans/days/:dayId/complete) is the only student-side settlement
+  // (David 2026-08-08, revising spec 035 拍板 1's auto half; coach backfill
+  // imports are untouched). With the auto-completion transaction gone, the
+  // plan/day locks it needed are gone too — this is a plain idempotent upsert.
+  const saved = await db
+    .insertInto('set_logs')
+    .values({
+      student_id: studentId,
+      plan_exercise_id: input.plan_exercise_id,
+      exercise_id: input.exercise_id,
+      logged_date: input.logged_date,
+      set_index: input.set_index,
+      weight_kg: input.weight_kg,
+      reps: input.reps,
+      rpe: input.rpe,
+      completed: input.completed,
+      failed,
+      assumed: false,
+    })
+    .onConflict((oc) =>
+      input.update_logged_date
+        ? oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
+            weight_kg: (eb) => eb.ref('excluded.weight_kg'),
+            reps: (eb) => eb.ref('excluded.reps'),
+            rpe: (eb) => eb.ref('excluded.rpe'),
+            completed: (eb) => eb.ref('excluded.completed'),
+            failed: (eb) => eb.ref('excluded.failed'),
+            assumed: false,
+            logged_date: (eb) => eb.ref('excluded.logged_date'),
+            logged_at: sql<Date>`now()`,
+          })
+        : oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
+            weight_kg: (eb) => eb.ref('excluded.weight_kg'),
+            reps: (eb) => eb.ref('excluded.reps'),
+            rpe: (eb) => eb.ref('excluded.rpe'),
+            completed: (eb) => eb.ref('excluded.completed'),
+            failed: (eb) => eb.ref('excluded.failed'),
+            assumed: false,
+            logged_at: sql<Date>`now()`,
+          }),
+    )
+    .returning(['id', 'logged_at'])
+    .executeTakeFirstOrThrow();
 
   return {
-    id: row.id,
-    logged_at: timestamp(row.logged_at),
+    id: saved.id,
+    logged_at: timestamp(saved.logged_at),
   };
 }
 

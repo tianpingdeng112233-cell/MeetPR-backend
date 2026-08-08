@@ -35,8 +35,10 @@ async function planCoachIdForDays(db: DbExecutor, planDayIds: string[]): Promise
 }
 
 /**
- * Canonical prescription completion calculation shared by the activity ledger
- * and sequence progression. A failed set is a recorded set; adhoc rows cannot
+ * Canonical prescription completion calculation owned by the activity ledger
+ * (sequence progression's server-side auto completion consumer was removed
+ * 2026-08-08 — settlement is student-explicit). A failed set is a recorded
+ * set; adhoc rows cannot
  * contribute because they have no plan_exercise_id.
  */
 export async function sessionProgress(
@@ -102,7 +104,7 @@ export async function sessionProgress(
     planDayIds,
     // Pre-extraction activity-ledger semantics, verbatim: a day with zero
     // prescriptions counts as complete here. Callers that must not treat that
-    // vacuous case as done (auto completion) gate on prescribedSetCount.
+    // vacuous case as done gate on prescribedSetCount.
     plannedComplete: plannedExercises.every(
       (exercise) =>
         (submittedByExercise.get(exercise.id) ?? 0) >= (prescribedByExercise.get(exercise.id) ?? 0),
