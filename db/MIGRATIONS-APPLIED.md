@@ -69,6 +69,16 @@
 
 ## 变更历史
 
+- **2026-08-09** — `sha-bd21805`(=staging HEAD,#203 spec 034 W1 强度体系全量扩展 + #194 spec + 账本)经
+  deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`。
+  **先应用 0058 再滚镜像**(psql 本地→xo 外网,Claude;schema head 0057→0058):7 条 ALTER 全成,
+  information_schema 验七列类型(rpe_low/high→NUMERIC(3,1) 等)+ 两 CHECK(load_mode 六值枚举、
+  intensity_values 值域)到位。纯 additive 无数据变更,未做全量备份(同 0052/0054/0055 先例)。
+  ⚠️ 部署踩坑记录:第一次 dispatch 失败于「Verify image exists in ACR」——连环合并(#203→#194→账本
+  直推)让前两个 sha 的镜像构建被并发组逐个取消,HEAD 镜像尚未建成;等 bd21805 构建完成后二次
+  dispatch 即绿。教训:**连环合并后先等最终 HEAD 的镜像进 ACR 再 dispatch 部署**。
+  curl 验证:/health 200、/auth/login 空 body 400(非 5xx,登录红线守住)。env 未动。
+
 - **2026-08-08** — `sha-2d148f8`(=staging HEAD,#199 纯 web/ 换装:plan-web 自定义动作新建
   支持选「主项变式」分类,plan-web main@89009f4)经 deploy-staging.yml(`migrations_applied=true`)
   部署 `meetpr-backend-staging`。无迁移、无 src 改动,schema head 不变。
