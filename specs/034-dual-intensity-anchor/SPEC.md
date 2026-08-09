@@ -119,6 +119,9 @@ ALTER TABLE plan_sets ADD CONSTRAINT plan_sets_intensity_values_check CHECK (
 | `weight_range` | weight_low + weight_high | **禁止**      | 区间与定值矛盾         |
 | `fixed_weight` | —                        | **必填**      | 形式徽章,值在重量列    |
 
+- **v2.1 稀疏逐组**:单值模式(`pct`/`rpe`/`rir`)允许某组值列为 NULL,前提该组
+  `target_weight` 非空(「该组强度值或重量至少其一」,与按组完成判定同口径);
+  值与重量全空仍 422。区间模式与 `fixed_weight` 不受影响。
 - 0.5 步进(pct / rpe / rpe_range)在 app 层校验,与 set_log 侧「RPE 0.5 步进收紧」同口径。
 - 存量行新列全 NULL、`load_mode` NULL,语义即「纯重量/纯 RPE 旧形态」,无回填。
 - 0033 其余列(`method_anchor`、`effort_method`、`fatigue_pct_target` 等)本波不动,
