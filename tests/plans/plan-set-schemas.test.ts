@@ -12,6 +12,56 @@ const baseSet = {
 };
 
 describe('plan set schemas', () => {
+  it('keeps the legacy intensity shape and accepts new-system creates without projection fields', () => {
+    expect(CreatePlanSetBodySchema.safeParse(baseSet).success).toBe(true);
+    expect(
+      CreatePlanSetBodySchema.safeParse({
+        ...baseSet,
+        intensity_mode: undefined,
+        target_value: undefined,
+        load_mode: 'rpe',
+        target_rpe: 8.5,
+      }).success,
+    ).toBe(true);
+    expect(
+      CreatePlanSetBodySchema.safeParse({
+        ...baseSet,
+        intensity_mode: undefined,
+        target_value: undefined,
+        load_mode: null,
+        target_weight: 180,
+      }).success,
+    ).toBe(true);
+  });
+
+  it.each([
+    [{ target_weight: 180 }, ['load_mode']],
+    [{ load_mode: 'pct', target_pct: 72.3 }, ['target_pct']],
+    [{ load_mode: 'rpe', target_rpe: 8, rir_target: 2 }, ['rir_target']],
+    [{ load_mode: 'fixed_weight' }, ['target_weight']],
+    [
+      { load_mode: 'weight_range', weight_low: 100, weight_high: 110, target_weight: 105 },
+      ['target_weight'],
+    ],
+  ])('rejects invalid new-system create %#', (intensity, path) => {
+    const result = CreatePlanSetBodySchema.safeParse({
+      ...baseSet,
+      intensity_mode: undefined,
+      target_value: undefined,
+      ...intensity,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path })]),
+      );
+    }
+  });
+
+  it('accepts a partial new-system patch for final-state validation after the row is loaded', () => {
+    expect(PatchPlanSetBodySchema.safeParse({ target_rpe: 8.5 }).success).toBe(true);
+  });
+
   it('accepts omitted, numeric, and null rest_seconds values', () => {
     expect(CreatePlanSetBodySchema.parse(baseSet).rest_seconds).toBeUndefined();
     expect(CreatePlanSetBodySchema.parse({ ...baseSet, rest_seconds: 120 }).rest_seconds).toBe(120);

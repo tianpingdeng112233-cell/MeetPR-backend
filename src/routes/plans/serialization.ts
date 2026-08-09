@@ -28,6 +28,11 @@ function nullableDecimal(value: string | number | null | undefined): string | nu
   return Number(value).toFixed(2);
 }
 
+function nullableOneDecimal(value: string | number | null | undefined): string | null {
+  if (value == null) return null;
+  return Number(value).toFixed(1);
+}
+
 export type PlanRow = Selectable<PlansTable>;
 export type PlanDayRow = Selectable<PlanDaysTable>;
 export type PlanDayCompletionRow = Selectable<PlanDayCompletionsTable>;
@@ -65,6 +70,15 @@ export interface PlanSetResponse {
   target_reps_max: number | null;
   intensity_mode: PlanSetRow['intensity_mode'];
   target_value: string;
+  load_mode: PlanSetRow['load_mode'];
+  target_pct: string | null;
+  target_rpe: string | null;
+  rir_target: number | null;
+  rpe_low: string | null;
+  rpe_high: string | null;
+  weight_low: string | null;
+  weight_high: string | null;
+  target_weight: string | null;
   set_type: PlanSetRow['set_type'];
   rest_seconds: number | null;
   coach_note: string | null;
@@ -226,6 +240,18 @@ export function toPlanSet(row: PlanSetRow): PlanSetResponse {
     target_reps_max: row.target_reps_max,
     intensity_mode: row.intensity_mode,
     target_value: row.target_value,
+    load_mode: row.load_mode,
+    target_pct: nullableOneDecimal(row.target_pct),
+    target_rpe: nullableOneDecimal(row.target_rpe),
+    rir_target: row.rir_target,
+    rpe_low: nullableOneDecimal(row.rpe_low),
+    rpe_high: nullableOneDecimal(row.rpe_high),
+    weight_low: nullableDecimal(row.weight_low),
+    weight_high: nullableDecimal(row.weight_high),
+    target_weight: nullableDecimal(
+      row.target_weight ??
+        (row.load_mode === null && row.intensity_mode === 'weight' ? row.target_value : null),
+    ),
     set_type: row.set_type,
     rest_seconds: row.rest_seconds,
     coach_note: row.coach_note,

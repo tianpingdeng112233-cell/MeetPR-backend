@@ -55,6 +55,14 @@ export const PLAN_STATUSES = ['draft', 'published', 'completed', 'paused'] as co
 export const PATCHABLE_PLAN_STATUSES = ['published', 'paused', 'completed'] as const;
 export const PLAN_DAY_COMPLETION_SOURCES = ['auto', 'manual', 'backfill'] as const;
 export const INTENSITY_MODES = ['weight', 'rpe'] as const;
+export const LOAD_MODES = [
+  'pct',
+  'rpe',
+  'rir',
+  'weight_range',
+  'rpe_range',
+  'fixed_weight',
+] as const;
 export const SET_TYPES = ['warmup', 'working', 'failed', 'amrap', 'backoff'] as const;
 export const BIND_REQUEST_STATUSES = [
   'pending',
@@ -168,6 +176,7 @@ export type BlockType = (typeof BLOCK_TYPES)[number];
 export type MesocyclePhase = (typeof MESOCYCLE_PHASES)[number];
 export type E1rmConfidence = (typeof E1RM_CONFIDENCES)[number];
 export type EffortMethod = (typeof EFFORT_METHODS)[number];
+export type LoadMode = (typeof LOAD_MODES)[number];
 export type TrainingDay = (typeof TRAINING_DAYS)[number];
 export type InjuryArea = (typeof INJURY_AREAS)[number];
 export type ReadinessMuscleGroup = (typeof READINESS_MUSCLE_GROUPS)[number];
@@ -314,8 +323,8 @@ export interface PlanSetsTable {
   coach_note: NullableColumn<string>;
   method_anchor: NullableColumn<MethodAnchor>;
   effort_method: NullableColumn<EffortMethod>;
-  rpe_low: NullableColumn<number>;
-  rpe_high: NullableColumn<number>;
+  rpe_low: NullableNumericColumn;
+  rpe_high: NullableNumericColumn;
   fatigue_pct_target: NullableNumericColumn;
   accommodating_tension: NullableColumn<boolean>;
   linear_increment: NullableNumericColumn;
@@ -327,7 +336,12 @@ export interface PlanSetsTable {
   volume_is_cap: NullableColumn<boolean>;
   pct_of_tm: NullableNumericColumn;
   intra_set_rest: NullableColumn<number>;
-  load_mode: NullableColumn<string>;
+  load_mode: NullableColumn<LoadMode>;
+  target_pct: NullableNumericColumn;
+  weight_low: NullableNumericColumn;
+  weight_high: NullableNumericColumn;
+  target_rpe: NullableNumericColumn;
+  target_weight: NullableNumericColumn;
   created_at: TimestampColumn;
 }
 
