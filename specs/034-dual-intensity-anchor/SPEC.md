@@ -1,6 +1,6 @@
 # SPEC 034 v2 — 计划组强度体系全量扩展(六种强度形式 + 独立重量列)
 
-- **Status: Draft v2**(v1「load+RPE 双锚」已被 2026-08-09 扩板取代,整体重写)
+- **Status: InProgress**(v2;2026-08-09 David 终审通过开工。v1「load+RPE 双锚」已被同日扩板取代,整体重写)
 - **级别**: T2(additive 迁移 + 数据模型收编 + 三端跟进)
 - **拍板记录**:
   - 2026-08-04(v1)David 拍板 B:双值落库。
@@ -48,7 +48,7 @@ plan-web 强度今天是「单列 + KG/RPE/自重 模式徽章」:整行一个�
 ### 3.1 现状盘点
 
 - 0003:`intensity_mode TEXT NOT NULL CHECK IN ('weight','rpe')` + `target_value
-  NUMERIC(6,2) NOT NULL`(CHECK 按模式限定范围)。**两字段均非空**——这是老客户端
+NUMERIC(6,2) NOT NULL`(CHECK 按模式限定范围)。**两字段均非空**——这是老客户端
   (iOS ≤1.0(18)、线上 plan-web)唯一认识的强度形态,不可破坏(CLAUDE.md 硬规则 8)。
 - 0033(已应用,未接 API):`load_mode TEXT`(自由文本,注释明言「与 intensity_mode
   并存等 reconciliation」)、`rpe_low SMALLINT`、`rpe_high SMALLINT`、
@@ -100,15 +100,15 @@ ALTER TABLE plan_sets ADD CONSTRAINT plan_sets_intensity_values_check CHECK (
 
 模式 × 字段矩阵(**单一真源:每模式只用自己那组值列**,其余必须 NULL,app 层强制):
 
-| load_mode | 强度值列 | target_weight | 说明 |
-|---|---|---|---|
-| NULL | — | 必填 | 只填重量列(现状纯重量) |
-| `pct` | target_pct | 可选 | 双填 = 双锚 |
-| `rpe` | target_rpe | 可选 | 双填 = 「170kg @9」 |
-| `rir` | rir_target | 可选 | 双填 = 双锚 |
-| `rpe_range` | rpe_low + rpe_high | 可选 | 双填 = 双锚 |
-| `weight_range` | weight_low + weight_high | **禁止** | 区间与定值矛盾 |
-| `fixed_weight` | — | **必填** | 形式徽章,值在重量列 |
+| load_mode      | 强度值列                 | target_weight | 说明                   |
+| -------------- | ------------------------ | ------------- | ---------------------- |
+| NULL           | —                        | 必填          | 只填重量列(现状纯重量) |
+| `pct`          | target_pct               | 可选          | 双填 = 双锚            |
+| `rpe`          | target_rpe               | 可选          | 双填 = 「170kg @9」    |
+| `rir`          | rir_target               | 可选          | 双填 = 双锚            |
+| `rpe_range`    | rpe_low + rpe_high       | 可选          | 双填 = 双锚            |
+| `weight_range` | weight_low + weight_high | **禁止**      | 区间与定值矛盾         |
+| `fixed_weight` | —                        | **必填**      | 形式徽章,值在重量列    |
 
 - 0.5 步进(pct / rpe / rpe_range)在 app 层校验,与 set_log 侧「RPE 0.5 步进收紧」同口径。
 - 存量行新列全 NULL、`load_mode` NULL,语义即「纯重量/纯 RPE 旧形态」,无回填。
@@ -128,16 +128,16 @@ spec 里做。**本波不引入 TM 概念**(David 2026-08-09:% 锚点先不展�
 解码遇到未知模式会整响应解析失败(登录红线级风险),所以**这两个字段永远只出现
 合法旧值**。新体系写入时,服务端同步计算投影(确定性,写入时落库,不动态算):
 
-| 新形态 | 投影 intensity_mode / target_value |
-|---|---|
-| load_mode NULL(纯重量) | `weight` / target_weight(现状,双写同值) |
+| 新形态                        | 投影 intensity_mode / target_value                |
+| ----------------------------- | ------------------------------------------------- |
+| load_mode NULL(纯重量)        | `weight` / target_weight(现状,双写同值)           |
 | 任意模式 + target_weight 有值 | `weight` / target_weight(强度细节丢失=可接受降级) |
-| `fixed_weight` | `weight` / target_weight |
-| `rpe`(无重量) | `rpe` / target_rpe |
-| `rpe_range`(无重量) | `rpe` / rpe_low(取区间下限,信息基本正确) |
-| `rir`(无重量) | `rpe` / (10 − rir_target)(标准换算,信息正确) |
-| `weight_range` | `weight` / weight_low(取区间下限) |
-| `pct`(无重量) | `rpe` / 分段映射表(见下) |
+| `fixed_weight`                | `weight` / target_weight                          |
+| `rpe`(无重量)                 | `rpe` / target_rpe                                |
+| `rpe_range`(无重量)           | `rpe` / rpe_low(取区间下限,信息基本正确)          |
+| `rir`(无重量)                 | `rpe` / (10 − rir_target)(标准换算,信息正确)      |
+| `weight_range`                | `weight` / weight_low(取区间下限)                 |
+| `pct`(无重量)                 | `rpe` / 分段映射表(见下)                          |
 
 `pct` 无重量时的分段映射(粗投影,只求老端不崩且方向正确;新客户端不读它):
 `<60%→5.0;60–70→6.0;70–80→7.0;80–87.5→8.0;87.5–92.5→9.0;>92.5→10.0`。
