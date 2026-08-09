@@ -48,6 +48,37 @@ export interface WeeklyVolumePoint {
   volume_by_family: WeeklyVolumeByFamily;
 }
 
+export interface WeeklyFamilyMetric {
+  week_start: string;
+  volume_kg: string;
+  avg_rpe: string | null;
+  top_set_intensity: string | null;
+}
+
+export type WeeklyFamilyMetrics = Record<LiftFamily, WeeklyFamilyMetric[]>;
+
+export interface IntensityDistributionBucket {
+  lt70: number;
+  b70_80: number;
+  b80_90: number;
+  gte90: number;
+}
+
+export type IntensityDistribution = Record<LiftFamily, IntensityDistributionBucket>;
+
+export interface RepDistributionBucket {
+  reps: number;
+  count: number;
+}
+
+export type RepDistribution = Record<LiftFamily, RepDistributionBucket[]>;
+
+export interface ExerciseStatsTrackingAggregates {
+  weekly_family_metrics: WeeklyFamilyMetrics;
+  intensity_distribution: IntensityDistribution;
+  rep_distribution: RepDistribution;
+}
+
 export interface ExerciseStatsOverviewResponse {
   exercises: {
     exercise_id: string;
@@ -56,6 +87,7 @@ export interface ExerciseStatsOverviewResponse {
     last_logged_at: string;
   }[];
   one_rm: Record<LiftFamily, string | null>;
+  e1rm: Record<LiftFamily, { value: string; computed_at: string } | null>;
   last_trained_at: string | null;
   recent_4w: {
     trained_days: number;
@@ -64,6 +96,9 @@ export interface ExerciseStatsOverviewResponse {
   };
   e1rm_series: E1RMSeries;
   weekly_volume: WeeklyVolumePoint[];
+  weekly_family_metrics: WeeklyFamilyMetrics;
+  intensity_distribution: IntensityDistribution;
+  rep_distribution: RepDistribution;
 }
 
 export interface ExerciseStatsAggregationLog {
@@ -73,6 +108,7 @@ export interface ExerciseStatsAggregationLog {
   weight_kg: string | number;
   reps: number;
   rpe: string | number | null;
+  coach_rpe: string | number | null;
   completed: boolean;
   failed: boolean;
   assumed: boolean;
@@ -162,6 +198,11 @@ function mondayOfWeek(value: string): string {
   return date.toISOString().slice(0, 10);
 }
 
+function effectiveRpe(log: ExerciseStatsAggregationLog): number | null {
+  const value = log.coach_rpe ?? log.rpe;
+  return value === null ? null : Number(value);
+}
+
 export function classifyE1RMTrend(
   currentBest: number | null,
   previousBest: number | null,
@@ -196,7 +237,7 @@ export function buildE1RMSeries(
       family,
       weightKg: Number(log.weight_kg),
       reps: log.reps,
-      rpe: log.rpe === null ? null : Number(log.rpe),
+      rpe: effectiveRpe(log),
       completed: log.completed,
       failed: log.failed,
       confidence: log.e1rm_confidence,
@@ -284,6 +325,127 @@ export function buildWeeklyVolume(
     }));
 }
 
+interface WeeklyFamilyAccumulator {
+  volumeHundredths: number;
+  rpeTotal: number;
+  rpeCount: number;
+  topSet: { date: string; weightKg: number } | null;
+}
+
+function emptyWeeklyFamilyAccumulator(): WeeklyFamilyAccumulator {
+  return { volumeHundredths: 0, rpeTotal: 0, rpeCount: 0, topSet: null };
+}
+
+function emptyIntensityDistribution(): IntensityDistribution {
+  return {
+    squat: { lt70: 0, b70_80: 0, b80_90: 0, gte90: 0 },
+    bench: { lt70: 0, b70_80: 0, b80_90: 0, gte90: 0 },
+    deadlift: { lt70: 0, b70_80: 0, b80_90: 0, gte90: 0 },
+  };
+}
+
+function emptyRepDistribution(): RepDistribution {
+  return {
+    squat: Array.from({ length: 8 }, (_, index) => ({ reps: index + 1, count: 0 })),
+    bench: Array.from({ length: 8 }, (_, index) => ({ reps: index + 1, count: 0 })),
+    deadlift: Array.from({ length: 8 }, (_, index) => ({ reps: index + 1, count: 0 })),
+  };
+}
+
+function e1rmAtDate(series: E1RMFamilySeries, date: string): number | null {
+  let latest: E1RMSeriesPoint | null = null;
+  for (const point of series.points) {
+    if (point.date <= date && (latest === null || point.date > latest.date)) latest = point;
+  }
+  if (latest === null) return null;
+  const value = Number(latest.value);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function addIntensityBucket(bucket: IntensityDistributionBucket, intensity: number): void {
+  if (intensity < 70) bucket.lt70 += 1;
+  else if (intensity < 80) bucket.b70_80 += 1;
+  else if (intensity < 90) bucket.b80_90 += 1;
+  else bucket.gte90 += 1;
+}
+
+export function buildTrackingAggregates(
+  logs: ExerciseStatsAggregationLog[],
+  e1rmSeries: E1RMSeries,
+  endDate: string,
+): ExerciseStatsTrackingAggregates {
+  const startDate = inclusiveWindowStart(endDate, EXERCISE_STATS_LIMITS.overviewWindowDays);
+  const weeklyBuckets: Record<LiftFamily, Map<string, WeeklyFamilyAccumulator>> = {
+    squat: new Map(),
+    bench: new Map(),
+    deadlift: new Map(),
+  };
+  const intensityDistribution = emptyIntensityDistribution();
+  const repDistribution = emptyRepDistribution();
+
+  for (const log of logs) {
+    const date = dateOnly(log.logged_date);
+    const family = log.main_lift_family;
+    if (family === null || !log.completed || log.assumed || date < startDate || date > endDate) {
+      continue;
+    }
+
+    const weekStart = mondayOfWeek(date);
+    const weekly = weeklyBuckets[family].get(weekStart) ?? emptyWeeklyFamilyAccumulator();
+    const weightKg = Number(log.weight_kg);
+    weekly.volumeHundredths += Math.round(weightKg * 100) * log.reps;
+    const rpe = effectiveRpe(log);
+    if (rpe !== null) {
+      weekly.rpeTotal += rpe;
+      weekly.rpeCount += 1;
+    }
+    if (
+      weekly.topSet === null ||
+      weightKg > weekly.topSet.weightKg ||
+      (weightKg === weekly.topSet.weightKg && date > weekly.topSet.date)
+    ) {
+      weekly.topSet = { date, weightKg };
+    }
+    weeklyBuckets[family].set(weekStart, weekly);
+
+    const denominator = e1rmAtDate(e1rmSeries[family], date);
+    if (denominator !== null) {
+      addIntensityBucket(intensityDistribution[family], (weightKg / denominator) * 100);
+    }
+
+    if (log.reps >= 1) {
+      const repIndex = Math.min(log.reps, 8) - 1;
+      const repBucket = repDistribution[family][repIndex];
+      if (repBucket !== undefined) repBucket.count += 1;
+    }
+  }
+
+  const weeklyFamilyMetrics = {} as WeeklyFamilyMetrics;
+  for (const family of LIFT_FAMILIES) {
+    weeklyFamilyMetrics[family] = [...weeklyBuckets[family].entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([weekStart, bucket]) => {
+        const denominator =
+          bucket.topSet === null ? null : e1rmAtDate(e1rmSeries[family], bucket.topSet.date);
+        return {
+          week_start: weekStart,
+          volume_kg: volumeString(bucket.volumeHundredths),
+          avg_rpe: bucket.rpeCount === 0 ? null : (bucket.rpeTotal / bucket.rpeCount).toFixed(2),
+          top_set_intensity:
+            bucket.topSet === null || denominator === null
+              ? null
+              : ((bucket.topSet.weightKg / denominator) * 100).toFixed(1),
+        };
+      });
+  }
+
+  return {
+    weekly_family_metrics: weeklyFamilyMetrics,
+    intensity_distribution: intensityDistribution,
+    rep_distribution: repDistribution,
+  };
+}
+
 function plannedDate(startDate: string | Date, weekNumber: number, dayOfWeek: number): string {
   const date = utcDate(startDate);
   date.setUTCDate(date.getUTCDate() + (weekNumber - 1) * 7 + (dayOfWeek - 1));
@@ -359,6 +521,8 @@ export async function fetchExerciseStatsOverview(
           onboarding,
         ) === family,
     );
+  const e1rmSeries = buildE1RMSeries(logs, onboarding, end);
+  const trackingAggregates = buildTrackingAggregates(logs, e1rmSeries, end);
 
   return {
     exercises: [...byExercise.entries()].map(([exerciseId, value]) => ({
@@ -382,8 +546,9 @@ export async function fetchExerciseStatsOverview(
           ? 0
           : Math.min(1, Number((trainedDays / totalPlannedDays).toFixed(4))),
     },
-    e1rm_series: buildE1RMSeries(logs, onboarding, end),
+    e1rm_series: e1rmSeries,
     weekly_volume: buildWeeklyVolume(logs, end),
+    ...trackingAggregates,
   };
 }
 

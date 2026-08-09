@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildE1RMSeries,
+  buildTrackingAggregates,
   buildWeeklyVolume,
   classifyE1RMTrend,
+  type E1RMSeries,
   type ExerciseStatsAggregationLog,
 } from '../../src/handlers/exercise-stats';
 
@@ -20,12 +22,21 @@ function log(overrides: Partial<ExerciseStatsAggregationLog> = {}): ExerciseStat
     weight_kg: '100.00',
     reps: 1,
     rpe: '10.0',
+    coach_rpe: null,
     completed: true,
     failed: false,
     assumed: false,
     e1rm_confidence: 'normal',
     logged_date: '2026-06-29',
     ...overrides,
+  };
+}
+
+function series(squatPoints: { date: string; value: string }[] = []): E1RMSeries {
+  return {
+    squat: { points: squatPoints, trend: 'new' },
+    bench: { points: [], trend: 'new' },
+    deadlift: { points: [], trend: 'new' },
   };
 }
 
@@ -54,7 +65,7 @@ describe('exercise stats overview aggregates', () => {
       '2026-06-30',
     );
 
-    expect(series.squat.points).toEqual([{ date: '2026-06-29', value: '105.00' }]);
+    expect(series.squat.points).toEqual([{ date: '2026-06-29', value: '290.70' }]);
     expect(series.bench.points).toEqual([]);
     expect(series.deadlift.points).toEqual([]);
   });
@@ -134,6 +145,118 @@ describe('exercise stats overview aggregates', () => {
           other: '40.00',
         },
       },
+    ]);
+  });
+
+  it('uses the nearest e1RM point at or before each set and respects intensity boundaries', () => {
+    const aggregates = buildTrackingAggregates(
+      [
+        log({ logged_date: '2026-06-23', weight_kg: '69.00' }),
+        log({ logged_date: '2026-06-23', weight_kg: '70.00' }),
+        log({ logged_date: '2026-06-23', weight_kg: '80.00' }),
+        log({ logged_date: '2026-06-23', weight_kg: '90.00' }),
+      ],
+      series([
+        { date: '2026-06-24', value: '50.00' },
+        { date: '2026-06-20', value: '200.00' },
+        { date: '2026-06-22', value: '100.00' },
+      ]),
+      '2026-06-30',
+    );
+
+    expect(aggregates.intensity_distribution.squat).toEqual({
+      lt70: 1,
+      b70_80: 1,
+      b80_90: 1,
+      gte90: 1,
+    });
+    expect(aggregates.weekly_family_metrics.squat[0]?.top_set_intensity).toBe('90.0');
+  });
+
+  it('skips sets without an eligible e1RM denominator from intensity calculations', () => {
+    const aggregates = buildTrackingAggregates(
+      [log({ logged_date: '2026-06-20', reps: 3 })],
+      series([{ date: '2026-06-21', value: '100.00' }]),
+      '2026-06-30',
+    );
+
+    expect(aggregates.intensity_distribution.squat).toEqual({
+      lt70: 0,
+      b70_80: 0,
+      b80_90: 0,
+      gte90: 0,
+    });
+    expect(aggregates.weekly_family_metrics.squat[0]?.top_set_intensity).toBeNull();
+    expect(aggregates.rep_distribution.squat[2]?.count).toBe(1);
+  });
+
+  it('includes failed completed sets and excludes assumed or incomplete sets', () => {
+    const aggregates = buildTrackingAggregates(
+      [
+        log({ failed: true, weight_kg: '100.00', reps: 2 }),
+        log({ assumed: true, weight_kg: '200.00', reps: 3 }),
+        log({ completed: false, weight_kg: '300.00', reps: 4 }),
+      ],
+      series([{ date: '2026-06-20', value: '100.00' }]),
+      '2026-06-30',
+    );
+
+    expect(aggregates.weekly_family_metrics.squat).toEqual([
+      {
+        week_start: '2026-06-29',
+        volume_kg: '200.00',
+        avg_rpe: '10.00',
+        top_set_intensity: '100.0',
+      },
+    ]);
+    expect(aggregates.intensity_distribution.squat.gte90).toBe(1);
+    expect(aggregates.rep_distribution.squat[1]?.count).toBe(1);
+    expect(aggregates.rep_distribution.squat[2]?.count).toBe(0);
+  });
+
+  it('prefers coach RPE for both e1RM series and weekly family averages', () => {
+    const calibrated = log({ rpe: '10.0', coach_rpe: '6.0' });
+    const e1rmSeries = buildE1RMSeries([calibrated], ONBOARDING, '2026-06-30');
+    const aggregates = buildTrackingAggregates(
+      [calibrated, log({ rpe: '8.0' })],
+      e1rmSeries,
+      '2026-06-30',
+    );
+
+    expect(e1rmSeries.squat.points).toEqual([{ date: '2026-06-29', value: '119.05' }]);
+    expect(aggregates.weekly_family_metrics.squat[0]?.avg_rpe).toBe('7.00');
+  });
+
+  it('merges reps of eight or more into the 8+ bucket', () => {
+    const aggregates = buildTrackingAggregates(
+      [log({ reps: 7 }), log({ reps: 8 }), log({ reps: 12 })],
+      series(),
+      '2026-06-30',
+    );
+
+    expect(aggregates.rep_distribution.squat[6]).toEqual({ reps: 7, count: 1 });
+    expect(aggregates.rep_distribution.squat[7]).toEqual({ reps: 8, count: 2 });
+  });
+
+  it('buckets Sunday and Monday into their respective Monday-start weeks', () => {
+    const aggregates = buildTrackingAggregates(
+      [
+        log({ logged_date: '2026-06-28', weight_kg: '50.00', reps: 2 }),
+        log({ logged_date: '2026-06-29', weight_kg: '60.00', reps: 2 }),
+        log({ logged_date: '2026-04-01', weight_kg: '500.00', reps: 2 }),
+      ],
+      series(),
+      '2026-06-30',
+    );
+
+    expect(
+      aggregates.weekly_family_metrics.squat.map(({ week_start, volume_kg }) => ({
+        week_start,
+        volume_kg,
+      })),
+    ).toEqual([
+      { week_start: '2026-06-22', volume_kg: '100.00' },
+      { week_start: '2026-06-29', volume_kg: '120.00' },
     ]);
   });
 });

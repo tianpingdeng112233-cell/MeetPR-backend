@@ -23,6 +23,13 @@ function weekStartMonday(date: string): string {
   return value.toISOString().slice(0, 10);
 }
 
+function repBuckets(countedRep: number | null = null) {
+  return Array.from({ length: 8 }, (_, index) => ({
+    reps: index + 1,
+    count: countedRep === index + 1 ? 1 : 0,
+  }));
+}
+
 function itemAt<T>(items: T[], index: number): T {
   const item = items[index];
   if (item === undefined) throw new Error(`Missing fixture item at index ${String(index)}`);
@@ -351,6 +358,28 @@ describe('GET /coach/students/:id/exercise-stats', () => {
           },
         },
       ],
+      weekly_family_metrics: {
+        squat: [
+          {
+            week_start: weekStartMonday(daysFromToday(-2)),
+            volume_kg: '500.00',
+            avg_rpe: null,
+            top_set_intensity: '85.7',
+          },
+        ],
+        bench: [],
+        deadlift: [],
+      },
+      intensity_distribution: {
+        squat: { lt70: 0, b70_80: 0, b80_90: 1, gte90: 0 },
+        bench: { lt70: 0, b70_80: 0, b80_90: 0, gte90: 0 },
+        deadlift: { lt70: 0, b70_80: 0, b80_90: 0, gte90: 0 },
+      },
+      rep_distribution: {
+        squat: repBuckets(5),
+        bench: repBuckets(),
+        deadlift: repBuckets(),
+      },
     });
   });
 
