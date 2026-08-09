@@ -3,10 +3,17 @@ import { z } from 'zod';
 import {
   API_PLAN_SOURCES,
   INTENSITY_MODES,
+  LOAD_MODES,
   PATCHABLE_PLAN_STATUSES,
   PLAN_KINDS,
   SET_TYPES,
 } from '../../db/types';
+import {
+  intensityState,
+  usesNewIntensityShape,
+  validateIntensityState,
+  validateIntensityValues,
+} from './intensity';
 
 const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
 const UuidSchema = z.string().uuid();
@@ -141,15 +148,23 @@ export const CreatePlanExerciseBodySchema = z.object({
 
 export const PatchPlanExerciseBodySchema = CreatePlanExerciseBodySchema.partial();
 
-function validateSetBody(
-  data: {
-    target_reps?: number | undefined;
-    target_reps_max?: number | null | undefined;
-    intensity_mode?: 'weight' | 'rpe' | undefined;
-    target_value?: string | undefined;
-  },
-  ctx: z.RefinementCtx,
-): void {
+interface SetBodyValidationShape {
+  target_reps?: number | undefined;
+  target_reps_max?: number | null | undefined;
+  intensity_mode?: 'weight' | 'rpe' | undefined;
+  target_value?: string | undefined;
+  load_mode?: (typeof LOAD_MODES)[number] | null | undefined;
+  target_pct?: string | null | undefined;
+  target_rpe?: string | null | undefined;
+  rir_target?: string | null | undefined;
+  rpe_low?: string | null | undefined;
+  rpe_high?: string | null | undefined;
+  weight_low?: string | null | undefined;
+  weight_high?: string | null | undefined;
+  target_weight?: string | null | undefined;
+}
+
+function validateSetCommon(data: SetBodyValidationShape, ctx: z.RefinementCtx): void {
   if (
     data.target_reps !== undefined &&
     data.target_reps_max !== undefined &&
@@ -162,7 +177,15 @@ function validateSetBody(
       message: 'target_reps_max must be greater than or equal to target_reps',
     });
   }
+}
 
+function validateLegacyIntensity(
+  data: {
+    intensity_mode?: 'weight' | 'rpe' | undefined;
+    target_value?: string | undefined;
+  },
+  ctx: z.RefinementCtx,
+): void {
   if (data.intensity_mode && data.target_value) {
     const numericValue = Number(data.target_value);
     if (data.intensity_mode === 'rpe' && (numericValue < 1 || numericValue > 10)) {
@@ -182,21 +205,76 @@ function validateSetBody(
   }
 }
 
+function addIntensityIssues(
+  issues: ReturnType<typeof validateIntensityState>,
+  ctx: z.RefinementCtx,
+): void {
+  for (const issue of issues) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, ...issue });
+  }
+}
+
 const PlanSetBodySchema = z.object({
   set_number: z.number().int().min(1),
   target_reps: PositiveRepsSchema,
   target_reps_max: PositiveRepsSchema.nullable().optional(),
-  intensity_mode: z.enum(INTENSITY_MODES),
-  target_value: TargetValueSchema,
+  intensity_mode: z.enum(INTENSITY_MODES).optional(),
+  target_value: TargetValueSchema.optional(),
+  load_mode: z.enum(LOAD_MODES).nullable().optional(),
+  target_pct: TargetValueSchema.nullable().optional(),
+  target_rpe: TargetValueSchema.nullable().optional(),
+  rir_target: TargetValueSchema.nullable().optional(),
+  rpe_low: TargetValueSchema.nullable().optional(),
+  rpe_high: TargetValueSchema.nullable().optional(),
+  weight_low: TargetValueSchema.nullable().optional(),
+  weight_high: TargetValueSchema.nullable().optional(),
+  target_weight: TargetValueSchema.nullable().optional(),
   set_type: z.enum(SET_TYPES),
   rest_seconds: z.number().int().min(0).max(3600).nullable().optional(),
   // Student-visible cue carried alongside the structured target (spec 043 §G).
   coach_note: z.string().max(500).nullable().optional(),
 });
 
-export const CreatePlanSetBodySchema = PlanSetBodySchema.superRefine(validateSetBody);
+export const CreatePlanSetBodySchema = PlanSetBodySchema.superRefine((data, ctx) => {
+  validateSetCommon(data, ctx);
+  if (usesNewIntensityShape(data)) {
+    if (data.load_mode === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['load_mode'],
+        message: 'load_mode is required when using the intensity system',
+      });
+      return;
+    }
+    addIntensityIssues(validateIntensityState(intensityState(data)), ctx);
+    return;
+  }
 
-export const PatchPlanSetBodySchema = PlanSetBodySchema.partial().superRefine(validateSetBody);
+  if (data.intensity_mode === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['intensity_mode'],
+      message: 'intensity_mode is required',
+    });
+  }
+  if (data.target_value === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['target_value'],
+      message: 'target_value is required',
+    });
+  }
+  validateLegacyIntensity(data, ctx);
+});
+
+export const PatchPlanSetBodySchema = PlanSetBodySchema.partial().superRefine((data, ctx) => {
+  validateSetCommon(data, ctx);
+  if (usesNewIntensityShape(data)) {
+    addIntensityIssues(validateIntensityValues(intensityState(data)), ctx);
+  } else {
+    validateLegacyIntensity(data, ctx);
+  }
+});
 
 const MAX_UPSERT_DAYS = 100;
 const MAX_DELETE_IDS = 400;

@@ -54,7 +54,16 @@ import {
   SetIdParamSchema,
   StudentPlansParamSchema,
   StudentPlansQuerySchema,
+  type CreatePlanSetBody,
 } from './schemas';
+import {
+  batchUsesNewIntensityShape,
+  intensityState,
+  intensityWrite,
+  mergedIntensityState,
+  usesNewIntensityShape,
+  validateIntensityState,
+} from './intensity';
 import {
   type PlanExerciseResponse,
   type PlanShiftSummaryResponse,
@@ -301,6 +310,17 @@ function isPublishIncomplete(counts: PublishCounts): boolean {
 
 function normalizeTargetValue(value: string): string {
   return Number(value).toFixed(2);
+}
+
+function setIntensityWrite(set: CreatePlanSetBody): ReturnType<typeof intensityWrite> {
+  if (usesNewIntensityShape(set)) return intensityWrite(intensityState(set));
+  if (set.intensity_mode === undefined || set.target_value === undefined) {
+    throw new Error('validated legacy intensity is incomplete');
+  }
+  return {
+    intensity_mode: set.intensity_mode,
+    target_value: normalizeTargetValue(set.target_value),
+  };
 }
 
 async function planDayHasLogs(db: DbExecutor, dayId: string): Promise<boolean> {
@@ -1270,7 +1290,9 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
 
       const body = BatchDaysBodySchema.safeParse(req.body);
       if (!body.success) {
-        res.status(400).json(validationEnvelope(body.error));
+        res
+          .status(batchUsesNewIntensityShape(req.body) ? 422 : 400)
+          .json(validationEnvelope(body.error));
         return;
       }
 
@@ -1408,8 +1430,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
                     set_number: set.set_number,
                     target_reps: set.target_reps,
                     target_reps_max: set.target_reps_max ?? null,
-                    intensity_mode: set.intensity_mode,
-                    target_value: normalizeTargetValue(set.target_value),
+                    ...setIntensityWrite(set),
                     set_type: set.set_type,
                     rest_seconds: set.rest_seconds ?? null,
                     coach_note: set.coach_note ?? null,
@@ -1948,6 +1969,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
     route(async (req, res) => {
       const user = ensureUser(req);
       const params = ExerciseIdParamSchema.safeParse(req.params);
+      const usesNewIntensity = usesNewIntensityShape(req.body);
       const body = CreatePlanSetBodySchema.safeParse(req.body);
       if (!user) {
         res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
@@ -1958,7 +1980,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
       if (!body.success) {
-        res.status(400).json(validationEnvelope(body.error));
+        res.status(usesNewIntensity ? 422 : 400).json(validationEnvelope(body.error));
         return;
       }
 
@@ -1979,8 +2001,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
             set_number: body.data.set_number,
             target_reps: body.data.target_reps,
             target_reps_max: body.data.target_reps_max ?? null,
-            intensity_mode: body.data.intensity_mode,
-            target_value: normalizeTargetValue(body.data.target_value),
+            ...setIntensityWrite(body.data),
             set_type: body.data.set_type,
             rest_seconds: body.data.rest_seconds ?? null,
             coach_note: body.data.coach_note ?? null,
@@ -2013,6 +2034,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
     route(async (req, res) => {
       const user = ensureUser(req);
       const params = SetIdParamSchema.safeParse(req.params);
+      const usesNewIntensity = usesNewIntensityShape(req.body);
       const body = PatchPlanSetBodySchema.safeParse(req.body);
       if (!user) {
         res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
@@ -2023,7 +2045,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
       if (!body.success) {
-        res.status(400).json(validationEnvelope(body.error));
+        res.status(usesNewIntensity ? 422 : 400).json(validationEnvelope(body.error));
         return;
       }
 
@@ -2053,11 +2075,23 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (body.data.target_reps_max !== undefined) {
           patch.target_reps_max = body.data.target_reps_max;
         }
-        if (body.data.intensity_mode !== undefined) {
-          patch.intensity_mode = body.data.intensity_mode;
-        }
-        if (body.data.target_value !== undefined) {
-          patch.target_value = normalizeTargetValue(body.data.target_value);
+        if (usesNewIntensity) {
+          const intensity = mergedIntensityState(existing, body.data);
+          const issues = validateIntensityState(intensity);
+          if (issues.length > 0) {
+            return {
+              type: 'validation',
+              validation: { error: 'VALIDATION_ERROR', issues },
+            } as const;
+          }
+          Object.assign(patch, intensityWrite(intensity));
+        } else {
+          if (body.data.intensity_mode !== undefined) {
+            patch.intensity_mode = body.data.intensity_mode;
+          }
+          if (body.data.target_value !== undefined) {
+            patch.target_value = normalizeTargetValue(body.data.target_value);
+          }
         }
         if (body.data.set_type !== undefined) patch.set_type = body.data.set_type;
         if (body.data.rest_seconds !== undefined) patch.rest_seconds = body.data.rest_seconds;
@@ -2084,7 +2118,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
       if (result.type === 'validation') {
-        res.status(400).json(result.validation);
+        res.status(usesNewIntensity ? 422 : 400).json(result.validation);
         return;
       }
 
