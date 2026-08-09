@@ -110,6 +110,17 @@ describe('spec 034 plan intensity API', () => {
         },
       },
       {
+        // spec 034 v2.1 sparse per-set value: intensity empty, weight carries the set
+        input: { load_mode: 'pct', target_weight: '170' },
+        expected: {
+          load_mode: 'pct',
+          target_pct: null,
+          target_weight: '170.00',
+          intensity_mode: 'weight',
+          target_value: '170.00',
+        },
+      },
+      {
         input: { load_mode: 'rpe', target_rpe: '8.5' },
         expected: {
           load_mode: 'rpe',

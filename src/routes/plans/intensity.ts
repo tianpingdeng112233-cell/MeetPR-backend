@@ -154,6 +154,18 @@ function requireField(
   if (state[field] === null) issues.push(issue(field, `${field} is required for this load_mode`));
 }
 
+// spec 034 v2.1 sparse per-set values: single-value modes accept a set whose
+// intensity value is empty as long as the set carries a concrete weight.
+function requireValueOrWeight(
+  state: IntensityState,
+  field: keyof Omit<IntensityState, 'load_mode'>,
+  issues: IntensityValidationIssue[],
+): void {
+  if (state[field] === null && state.target_weight === null) {
+    issues.push(issue(field, `${field} or target_weight is required for this load_mode`));
+  }
+}
+
 function rejectOtherModeFields(
   state: IntensityState,
   allowed: ReadonlySet<string>,
@@ -209,15 +221,15 @@ export function validateIntensityState(state: IntensityState): IntensityValidati
       rejectOtherModeFields(state, new Set(), issues);
       break;
     case 'pct':
-      requireField(state, 'target_pct', issues);
+      requireValueOrWeight(state, 'target_pct', issues);
       rejectOtherModeFields(state, new Set(['target_pct']), issues);
       break;
     case 'rpe':
-      requireField(state, 'target_rpe', issues);
+      requireValueOrWeight(state, 'target_rpe', issues);
       rejectOtherModeFields(state, new Set(['target_rpe']), issues);
       break;
     case 'rir':
-      requireField(state, 'rir_target', issues);
+      requireValueOrWeight(state, 'rir_target', issues);
       rejectOtherModeFields(state, new Set(['rir_target']), issues);
       break;
     case 'rpe_range':

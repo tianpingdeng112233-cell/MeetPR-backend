@@ -123,3 +123,35 @@ describe('plan intensity domain', () => {
     );
   });
 });
+
+describe('spec 034 v2.1 sparse per-set values', () => {
+  it('accepts single-value modes with empty value when the set carries a weight', () => {
+    expect(
+      validateIntensityState(intensityState({ load_mode: 'pct', target_weight: '170' })),
+    ).toEqual([]);
+    expect(
+      validateIntensityState(intensityState({ load_mode: 'rpe', target_weight: '170' })),
+    ).toEqual([]);
+    expect(
+      validateIntensityState(intensityState({ load_mode: 'rir', target_weight: '170' })),
+    ).toEqual([]);
+  });
+
+  it('projects a sparse set to plain weight for legacy clients', () => {
+    expect(
+      intensityWrite(intensityState({ load_mode: 'pct', target_weight: '170' })),
+    ).toMatchObject({ intensity_mode: 'weight', target_value: '170.00' });
+  });
+
+  it('still rejects single-value modes when both value and weight are empty', () => {
+    for (const load_mode of ['pct', 'rpe', 'rir'] as const) {
+      expect(validateIntensityState(intensityState({ load_mode }))).not.toEqual([]);
+    }
+  });
+
+  it('keeps range modes strict: missing range values are rejected even with a weight', () => {
+    expect(
+      validateIntensityState(intensityState({ load_mode: 'rpe_range', target_weight: '170' })),
+    ).not.toEqual([]);
+  });
+});
