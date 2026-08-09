@@ -69,6 +69,17 @@
 
 ## 变更历史
 
+- **2026-08-09** — `sha-9dc948e`(=staging HEAD,#204 纯 web/ 换装:plan-web main@c7caef8 =
+  #73 追踪 tab 8 卡教练看板 + #74 花名册 e1RM 徽章列)经 deploy-staging.yml(`migrations_applied=true`)
+  部署 `meetpr-backend-staging`。无迁移、schema head 不变。产物与本地 dist 逐字节比对一致后入库;
+  curl 验证:GET / 回新入口 index-BHCfiquh.js。当日第三次部署。
+
+- **2026-08-09** — `sha-fabe380`(#202 spec 036 追踪看板聚合:收编 #94 的 e1rm_series/weekly_volume
+  基底并新增 weekly_family_metrics/intensity_distribution/rep_distribution,纯读无迁移)经
+  deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`。
+  首次 dispatch 复踩「镜像未进 ACR」竞态,等 build-push 完成后二次 dispatch 绿(同 bd21805 教训)。
+  curl 验证:教练号实测 exercise-stats overview 五个聚合字段齐全。当日第二次部署。
+
 - **2026-08-09** — `sha-bd21805`(=staging HEAD,#203 spec 034 W1 强度体系全量扩展 + #194 spec + 账本)经
   deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`。
   **先应用 0058 再滚镜像**(psql 本地→xo 外网,Claude;schema head 0057→0058):7 条 ALTER 全成,
