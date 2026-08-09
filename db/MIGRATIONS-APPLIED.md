@@ -69,6 +69,12 @@
 
 ## 变更历史
 
+- **2026-08-09** — `sha-cc9fada`(=staging HEAD,#206 spec 034 v2.1 稀疏逐组值放行:单值强度模式
+  「该组强度或重量至少其一」,plan-web W2 互审跨契约 BLOCKER 的 backend 配套)经
+  deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`。
+  无迁移、schema head 仍 0058;本次按 bd21805 教训先等镜像进 ACR 再 dispatch,一次绿。
+  curl 验证:/health 200。env 未动。当日第四次部署。
+
 - **2026-08-09** — `sha-9dc948e`(=staging HEAD,#204 纯 web/ 换装:plan-web main@c7caef8 =
   #73 追踪 tab 8 卡教练看板 + #74 花名册 e1RM 徽章列)经 deploy-staging.yml(`migrations_applied=true`)
   部署 `meetpr-backend-staging`。无迁移、schema head 不变。产物与本地 dist 逐字节比对一致后入库;
