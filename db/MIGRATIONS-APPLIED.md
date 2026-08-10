@@ -72,6 +72,13 @@
 
 ## 变更历史
 
+- **2026-08-10** — `sha-af945b1`(=staging HEAD,#215 纯 web/ 换装:plan-web main@7f8b52d = #77
+  周带回滚修复批「吸附整周/周间隔/‹›成对+⌥←→翻周/空槽=本周未安排/老kg行强度列显示固定重量承接/
+  门禁任一即可全链」)经 deploy-staging.yml(`migrations_applied=true`)**重新上线周带编辑器**。
+  无迁移、schema head 不变(0061)。curl 验证:入口 index-KpiD4wJS.js 与本地构建一致。
+  **线上复查**:老 kg 行=固定重量+kg、老逐组 RPE 行=原值 7/8/9、空槽=本周未安排;
+  打开存量计划除登录外全 GET 零写入(二次实证)。David 预览终验通过后上线。env 未动。
+
 - **2026-08-10** — **回滚**:`image_sha=27e7131`(web=index-C3cacWwY,spec 034 v2.1 全景网格)经
   deploy-staging.yml 指定镜像重部署,覆盖 sha-3525216 的周带编辑器上线。原因:David 真数据走查,
   周带在两周交界滚动位+并集空槽的呈现被读成「组/次/重量丢失」(数据经核实完好:页眉统计来自
