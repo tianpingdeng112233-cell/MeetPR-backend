@@ -161,7 +161,8 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       exercise_id UUID NOT NULL REFERENCES exercises(id) ON DELETE RESTRICT,
       is_main_lift BOOLEAN NOT NULL DEFAULT FALSE,
       sort_order INT NOT NULL DEFAULT 0,
-      notes TEXT
+      notes TEXT,
+      target TEXT
     );
 
     CREATE TABLE plan_day_completions (
@@ -749,6 +750,41 @@ describe('coach planning CRUD', () => {
       .delete(`/plans/exercises/${responseId(created)}`)
       .set(auth(ctx.coachToken));
     expect(deleted.status).toBe(204);
+  });
+
+  it('sets, clears and validates the coach-chosen target label (spec 037 v1.1)', async () => {
+    const ctx = await makeContext();
+    const plan = await createPlan(ctx);
+    const day = await addDay(ctx, responseId(plan));
+    const created = await addExercise(ctx, responseId(day));
+    expect(created.body.target).toBeNull();
+
+    const set = await request(ctx.app)
+      .patch(`/plans/exercises/${responseId(created)}`)
+      .set(auth(ctx.coachToken))
+      .send({ target: 'squat' });
+    expect(set.status).toBe(200);
+    expect(set.body.target).toBe('squat');
+
+    const muscle = await request(ctx.app)
+      .patch(`/plans/exercises/${responseId(created)}`)
+      .set(auth(ctx.coachToken))
+      .send({ target: 'hamstring' });
+    expect(muscle.status).toBe(200);
+    expect(muscle.body.target).toBe('hamstring');
+
+    const cleared = await request(ctx.app)
+      .patch(`/plans/exercises/${responseId(created)}`)
+      .set(auth(ctx.coachToken))
+      .send({ target: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.target).toBeNull();
+
+    const rejected = await request(ctx.app)
+      .patch(`/plans/exercises/${responseId(created)}`)
+      .set(auth(ctx.coachToken))
+      .send({ target: 'Bad Token!' });
+    expect(rejected.status).toBe(400);
   });
 
   it('creates, patches, and deletes plan sets while preserving target_value as string', async () => {

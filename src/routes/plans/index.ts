@@ -1417,6 +1417,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
                 is_main_lift: exercise.is_main_lift,
                 sort_order: exercise.sort_order,
                 notes: exercise.notes ?? null,
+                target: exercise.target ?? null,
               })
               .returning('id')
               .executeTakeFirstOrThrow();
@@ -1822,6 +1823,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           is_main_lift: body.data.is_main_lift,
           sort_order: body.data.sort_order,
           notes: body.data.notes ?? null,
+          target: body.data.target ?? null,
         })
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -1877,6 +1879,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (body.data.is_main_lift !== undefined) patch.is_main_lift = body.data.is_main_lift;
         if (body.data.sort_order !== undefined) patch.sort_order = body.data.sort_order;
         if (body.data.notes !== undefined) patch.notes = body.data.notes;
+        if (body.data.target !== undefined) patch.target = body.data.target;
 
         const planExercise = await trx
           .updateTable('plan_exercises')

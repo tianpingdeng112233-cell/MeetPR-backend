@@ -93,6 +93,7 @@ export interface PlanExerciseResponse {
   is_main_lift: boolean;
   sort_order: number;
   notes: string | null;
+  target: string | null;
   has_logs: boolean;
   sets: PlanSetResponse[];
 }
@@ -228,6 +229,7 @@ export function toPlanExercise(
     is_main_lift: row.is_main_lift,
     sort_order: row.sort_order,
     notes: row.notes,
+    target: row.target ?? null,
     has_logs: hasLogs,
     sets,
   };

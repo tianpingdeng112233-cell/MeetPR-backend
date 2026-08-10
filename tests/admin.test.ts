@@ -163,7 +163,8 @@ function makeContext(): TestContext {
       exercise_id UUID NOT NULL,
       is_main_lift BOOLEAN NOT NULL DEFAULT FALSE,
       sort_order INT NOT NULL DEFAULT 0,
-      notes TEXT
+      notes TEXT,
+      target TEXT
     );
     CREATE TABLE plan_day_completions (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -146,6 +146,13 @@ export const CreatePlanExerciseBodySchema = z.object({
   is_main_lift: z.boolean(),
   sort_order: SortOrderSchema,
   notes: z.string().max(500).nullable().optional(),
+  // spec 037 v1.1: coach-chosen 目标 label — competition lift or muscle-group
+  // token; null clears back to "no target".
+  target: z
+    .string()
+    .regex(/^[a-z_]{1,32}$/, 'target must be a lowercase token')
+    .nullable()
+    .optional(),
 });
 
 export const PatchPlanExerciseBodySchema = CreatePlanExerciseBodySchema.partial();
@@ -288,6 +295,11 @@ const BatchExerciseSchema = z.object({
   is_main_lift: z.boolean(),
   sort_order: SortOrderSchema,
   notes: z.string().max(500).nullable().optional(),
+  target: z
+    .string()
+    .regex(/^[a-z_]{1,32}$/, 'target must be a lowercase token')
+    .nullable()
+    .optional(),
   sets: z.array(CreatePlanSetBodySchema).max(MAX_SETS_PER_EXERCISE),
 });
 
