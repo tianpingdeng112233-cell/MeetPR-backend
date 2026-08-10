@@ -72,6 +72,11 @@
 
 ## 变更历史
 
+- **2026-08-10** — `sha-cd8876c`(=staging HEAD,#216 纯 web/ 换装:plan-web main@dc5a978 = #78
+  周带体验批「训练日序数/休息细条层级/周几全卡/重量语义归重量列(强度五项·重量四态)/加动作与
+  主项变式文案/D1 周几创建后锁定+存量逐组差异重量保真」)经 deploy-staging.yml 部署。
+  无迁移、schema head 不变(0061)。curl 验证:入口 index-uhIR0-8-.js 与本地构建一致。env 未动。
+
 - **2026-08-10** — `sha-af945b1`(=staging HEAD,#215 纯 web/ 换装:plan-web main@7f8b52d = #77
   周带回滚修复批「吸附整周/周间隔/‹›成对+⌥←→翻周/空槽=本周未安排/老kg行强度列显示固定重量承接/
   门禁任一即可全链」)经 deploy-staging.yml(`migrations_applied=true`)**重新上线周带编辑器**。
