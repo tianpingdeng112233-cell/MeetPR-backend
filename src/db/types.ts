@@ -309,6 +309,7 @@ export interface PlanExercisesTable {
   is_main_lift: Generated<boolean>;
   sort_order: Generated<number>;
   notes: NullableColumn<string>;
+  target: NullableColumn<string>;
 }
 
 export interface PlanSetsTable {

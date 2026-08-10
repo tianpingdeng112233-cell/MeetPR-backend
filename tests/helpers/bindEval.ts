@@ -170,7 +170,8 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       exercise_id UUID NOT NULL REFERENCES exercises(id) ON DELETE RESTRICT,
       is_main_lift BOOLEAN NOT NULL DEFAULT FALSE,
       sort_order INT NOT NULL DEFAULT 0,
-      notes TEXT
+      notes TEXT,
+      target TEXT
     );
 
     CREATE TABLE plan_day_completions (
