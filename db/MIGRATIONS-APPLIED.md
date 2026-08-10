@@ -70,6 +70,12 @@
 
 ## 变更历史
 
+- **2026-08-10** — `sha-d0e7777`(=staging HEAD,#210 纯 web/ 换装:plan-web main@f5b1e6d = #75
+  spec 034 强度体系全量扩展 v2.1「强度列六选一+独立重量列+值层逐组化」;同车 #209 spec 037 文档)经
+  deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`。无迁移、schema head 不变
+  (0059)。产物从 origin/main 以 VITE_API_BASE='' 构建,pre-commit prettier 未改产物字节(cmp 逐字节核过);
+  curl 验证:GET / 回新入口 index-C3cacWwY.js(与本地 dist 一致)。env 未动。
+
 - **2026-08-09** — `sha-cc9fada`(=staging HEAD,#206 spec 034 v2.1 稀疏逐组值放行:单值强度模式
   「该组强度或重量至少其一」,plan-web W2 互审跨契约 BLOCKER 的 backend 配套)经
   deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`。
