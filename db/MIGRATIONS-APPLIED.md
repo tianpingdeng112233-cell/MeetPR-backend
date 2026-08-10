@@ -72,6 +72,12 @@
 
 ## 变更历史
 
+- **2026-08-10** — **回滚**:`image_sha=27e7131`(web=index-C3cacWwY,spec 034 v2.1 全景网格)经
+  deploy-staging.yml 指定镜像重部署,覆盖 sha-3525216 的周带编辑器上线。原因:David 真数据走查,
+  周带在两周交界滚动位+并集空槽的呈现被读成「组/次/重量丢失」(数据经核实完好:页眉统计来自
+  服务端行数据、打开零写入已实证)——判定为设计缺陷即刻回滚,修复吸附/空槽样式后再重上。
+  staging 代码分支不动(main/staging 仍含周带,仅线上镜像回退)。curl 验证:入口已回 C3cacWwY。
+
 - **2026-08-10** — `sha-3525216`(=staging HEAD,#214 纯 web/ 换装:plan-web main@c9cf233 = #76
   spec 037 周带编辑器全批「横向周带+scroll-spy/冻结骨架对齐/派生徽章贴名/页眉集成上下文/
   七天全摆休息派生/D1 周几锚全链」)经 deploy-staging.yml(`migrations_applied=true`)部署
