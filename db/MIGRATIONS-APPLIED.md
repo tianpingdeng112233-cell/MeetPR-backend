@@ -72,6 +72,11 @@
 
 ## 变更历史
 
+- **2026-08-10** — `sha-7207ab6`(=staging HEAD,#217 纯 web/ 换装:plan-web main@1dd146f = #79
+  拆除跨周并集幽灵行——David 真数据否决空槽设计,每天只渲染本周实际动作行,拖拽/剪贴板回归
+  本周内)经 deploy-staging.yml 部署。无迁移、schema head 不变(0061)。
+  curl 验证:入口 index-DASrgeqd.js 与本地构建一致。env 未动。当日周带第四次换装。
+
 - **2026-08-10** — `sha-cd8876c`(=staging HEAD,#216 纯 web/ 换装:plan-web main@dc5a978 = #78
   周带体验批「训练日序数/休息细条层级/周几全卡/重量语义归重量列(强度五项·重量四态)/加动作与
   主项变式文案/D1 周几创建后锁定+存量逐组差异重量保真」)经 deploy-staging.yml 部署。
