@@ -826,6 +826,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           source: body.data.source,
           source_template_id: body.data.source_template_id ?? null,
           kind: body.data.kind ?? 'regular',
+          anchor_weekday: body.data.anchor_weekday ?? null,
           ...trainingMaxWrite(body.data.one_rm_kg),
         })
         .returningAll()

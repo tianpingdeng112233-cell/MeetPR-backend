@@ -102,6 +102,8 @@ export const CreatePlanBodySchema = z
     kind: z.enum(PLAN_KINDS).optional(),
     // Raw true 1RM input only; the server computes and stores training_max.
     one_rm_kg: OneRmKgSchema.optional(),
+    // spec 037: D1 weekday display anchor may be set at creation time too.
+    anchor_weekday: z.number().int().min(1).max(7).nullable().optional(),
   })
   .strict()
   .superRefine((data, ctx) => {
