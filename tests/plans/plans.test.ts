@@ -130,6 +130,7 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       training_max NUMERIC,
       tm_set_at TIMESTAMPTZ,
       published_at TIMESTAMPTZ,
+      anchor_weekday SMALLINT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -473,6 +474,34 @@ describe('coach planning CRUD', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.name).toBe('Renamed Block');
+  });
+
+  it('PATCH /plans/:id sets, clears and validates the anchor weekday (spec 037)', async () => {
+    const ctx = await makeContext();
+    const plan = await createPlan(ctx);
+    expect(plan.body.anchor_weekday).toBeNull();
+
+    const set = await request(ctx.app)
+      .patch(`/plans/${responseId(plan)}`)
+      .set(auth(ctx.coachToken))
+      .send({ anchor_weekday: 3 });
+    expect(set.status).toBe(200);
+    expect(set.body.anchor_weekday).toBe(3);
+
+    const cleared = await request(ctx.app)
+      .patch(`/plans/${responseId(plan)}`)
+      .set(auth(ctx.coachToken))
+      .send({ anchor_weekday: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.anchor_weekday).toBeNull();
+
+    for (const bad of [0, 8, 1.5]) {
+      const rejected = await request(ctx.app)
+        .patch(`/plans/${responseId(plan)}`)
+        .set(auth(ctx.coachToken))
+        .send({ anchor_weekday: bad });
+      expect(rejected.status).toBe(400);
+    }
   });
 
   it('DELETE /plans/:id deletes an owned draft plan and cascades its tree', async () => {

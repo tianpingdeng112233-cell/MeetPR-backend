@@ -948,6 +948,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (body.data.end_date !== undefined) patch.end_date = body.data.end_date;
         if (body.data.plan_weeks !== undefined) patch.plan_weeks = body.data.plan_weeks;
         if (body.data.status !== undefined) patch.status = body.data.status;
+        if (body.data.anchor_weekday !== undefined) patch.anchor_weekday = body.data.anchor_weekday;
         if (existing.status === 'paused' && body.data.status === 'published') {
           patch.published_at = sql<Date>`now()`;
         }

@@ -127,6 +127,8 @@ export const PatchPlanBodySchema = z
     source_template_id: SourceTemplateIdSchema,
     // Raw true 1RM input only; direct training_max writes stay rejected by strict().
     one_rm_kg: OneRmKgSchema.optional(),
+    // spec 037: D1 weekday display anchor (1=Mon … 7=Sun); null clears it.
+    anchor_weekday: z.number().int().min(1).max(7).nullable().optional(),
   })
   .strict()
   .superRefine(validateDateOrder);

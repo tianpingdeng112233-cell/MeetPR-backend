@@ -58,6 +58,7 @@ export interface PlanResponse {
   training_max: string | null;
   tm_set_at: string | null;
   published_at: string | null;
+  anchor_weekday: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -165,6 +166,7 @@ export function toPlan(row: PlanRow): PlanResponse {
     training_max: nullableDecimal(row.training_max),
     tm_set_at: nullableTimestamp(row.tm_set_at),
     published_at: nullableTimestamp(row.published_at),
+    anchor_weekday: row.anchor_weekday ?? null,
     created_at: timestamp(row.created_at),
     updated_at: timestamp(row.updated_at),
   };
