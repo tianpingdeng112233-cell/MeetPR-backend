@@ -72,6 +72,14 @@
 
 ## 变更历史
 
+- **2026-08-10** — `sha-3525216`(=staging HEAD,#214 纯 web/ 换装:plan-web main@c9cf233 = #76
+  spec 037 周带编辑器全批「横向周带+scroll-spy/冻结骨架对齐/派生徽章贴名/页眉集成上下文/
+  七天全摆休息派生/D1 周几锚全链」)经 deploy-staging.yml(`migrations_applied=true`)部署
+  `meetpr-backend-staging`。无迁移、schema head 不变(0061)。产物 origin/main 构建、
+  pre-commit 未改字节(cmp 核过);curl 验证:GET / 回新入口 index-BaT3Mab4.js。
+  **数据红线实测**:测试教练号线上打开存量 12 周计划,网络面板除登录外全 GET 零写入
+  (存量行 reconcile 零写入契约活体实证)。env 未动。
+
 - **2026-08-10** — `sha-27e7131`(=staging HEAD,#212 spec 037 v1.1 plan_exercises.target 三写路径 + 各 docs)经
   deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`。
   **先应用 0061 再滚镜像**(DMS SQLConsole,David;schema head 0060→0061)。
