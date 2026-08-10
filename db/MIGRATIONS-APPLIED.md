@@ -72,6 +72,12 @@
 
 ## 变更历史
 
+- **2026-08-11** — `sha-7a18981`(=staging HEAD,#218 纯 web/ 换装:plan-web main@495efa4 = #80
+  选中日页眉学员画像全量内联(未选动作/未绑定/填写完整三态)+动作态历史深度(次数 PR 表/
+  逐组明细折列/组数桶最近 2 次)+名字防压裁、e1RM 缺失回退登记 1RM、组序号从 1 起)经
+  deploy-staging.yml(`migrations_applied=true`)部署。无迁移、无 src 改动,schema head 不变(0061)。
+  curl 验证:GET / 已回新入口 index-BWIPt9_J.js(与本地 VITE_API_BASE='' 产物一致,200)。env 未动。
+
 - **2026-08-10** — `sha-7207ab6`(=staging HEAD,#217 纯 web/ 换装:plan-web main@1dd146f = #79
   拆除跨周并集幽灵行——David 真数据否决空槽设计,每天只渲染本周实际动作行,拖拽/剪贴板回归
   本周内)经 deploy-staging.yml 部署。无迁移、schema head 不变(0061)。
