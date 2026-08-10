@@ -477,6 +477,21 @@ describe('coach planning CRUD', () => {
     expect(response.body.name).toBe('Renamed Block');
   });
 
+  it('accepts anchor_weekday at plan creation (spec 037)', async () => {
+    const ctx = await makeContext();
+    const created = await request(ctx.app).post('/plans').set(auth(ctx.coachToken)).send({
+      trainee_id: traineeId,
+      name: 'Anchored block',
+      start_date: '2026-08-10',
+      end_date: '2026-09-06',
+      plan_weeks: 4,
+      source: 'coach',
+      anchor_weekday: 1,
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.anchor_weekday).toBe(1);
+  });
+
   it('PATCH /plans/:id sets, clears and validates the anchor weekday (spec 037)', async () => {
     const ctx = await makeContext();
     const plan = await createPlan(ctx);
