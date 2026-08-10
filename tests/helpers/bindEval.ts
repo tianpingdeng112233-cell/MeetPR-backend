@@ -151,6 +151,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       status TEXT NOT NULL DEFAULT 'draft',
       kind TEXT NOT NULL DEFAULT 'regular',
       published_at TIMESTAMPTZ,
+      anchor_weekday SMALLINT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );

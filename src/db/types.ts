@@ -271,6 +271,7 @@ export interface PlansTable {
   training_max: NullableNumericColumn;
   tm_set_at: NullableColumn<Date>;
   published_at: NullableColumn<Date>;
+  anchor_weekday: NullableColumn<number>;
   created_at: TimestampColumn;
   updated_at: TimestampColumn;
 }

@@ -138,6 +138,7 @@ function makeContext(): TestContext {
       training_max NUMERIC,
       tm_set_at TIMESTAMPTZ,
       published_at TIMESTAMPTZ,
+      anchor_weekday SMALLINT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
