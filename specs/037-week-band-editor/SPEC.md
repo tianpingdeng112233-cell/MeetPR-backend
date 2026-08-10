@@ -1,6 +1,6 @@
 # SPEC 037 — 计划编辑器周带布局(week band)+ D1 周几锚
 
-- **Status: Draft**
+- **Status: InProgress**(2026-08-10 David 终审通过开工)
 - **级别**: T2(plan-web 主视图重构 + backend 一列 additive 迁移)
 - **拍板日期**: 2026-08-10(David 五条拍板,参照 PowerSheets Programming 页实测解构;
   实测记录=本 spec §2 机制描述,Claude 于 David 登录态下逐交互点过)
