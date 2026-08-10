@@ -63,13 +63,20 @@
 | 0058-intensity-system                           | ✅ 2026-08-09 手动应用(psql 本地→RDS xo 外网,Claude;7 条 ALTER 全成,information_schema 验七列类型+两 CHECK 到位,spec 034 W1)                                                                       |
 | 0059-backfill-sequence-completions              | ✅ 2026-08-10 手动应用(psql 本地→RDS xo 外网,David;`INSERT 0 393` + COMMIT——P0 修复:0057 未回填换制前历史完成,1.0(18) 学员游标回卷 W1;详见下方 sha-81d4ad6 部署条目)                               |
 | 0060-plan-anchor-weekday                        | ✅ 2026-08-10 手动应用(DMS SQLConsole,David;5 条语句全成:plans.anchor_weekday SMALLINT + 1-7 CHECK,spec 037 W0。注:Claude 本机 psql→RDS xo 外网当日起连接超时,疑白名单/本机 IP 变动,故回 DMS 通道) |
+| 0061-plan-exercise-target                       | ✅ 2026-08-10 手动应用(DMS SQLConsole,David;5 条语句全成:plan_exercises.target TEXT + 长度 1-32 CHECK,spec 037 v1.1。⚠️v1.2 已翻案改回派生徽章,字段休眠无写入方,留作后手)                          |
 
 > 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。0043 现由 open PR #77/#79(账本扩展)占号,0044 先行落库,库内号段暂跳 0043——#77/#79 合并应用后回续。0047 已被 open PR #95、0048 已被 #99 占用,因此下一份空号取 0049。
 
-**当前 staging schema head = 0060（此行 2026-08-10 更新;0043 缺位由 open PR #77/#79 占,0047 由 open PR #95 占,0048 由 #99 占,0050 由 open PR #110 占,合并应用后回续;0053 空号未用)。**
+**当前 staging schema head = 0061（此行 2026-08-10 更新;0043 缺位由 open PR #77/#79 占,0047 由 open PR #95 占,0048 由 #99 占,0050 由 open PR #110 占,合并应用后回续;0053 空号未用)。**
 (此行 2026-08-02 修正:此前长期停在 0052,0054/0055 只记在变更历史漏更此行。)
 
 ## 变更历史
+
+- **2026-08-10** — `sha-27e7131`(=staging HEAD,#212 spec 037 v1.1 plan_exercises.target 三写路径 + 各 docs)经
+  deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`。
+  **先应用 0061 再滚镜像**(DMS SQLConsole,David;schema head 0060→0061)。
+  注:target 字段随 v1.2 翻案(目标列回派生徽章)成为休眠列,plan-web 不写入;字段保留防
+  未部署代码 INSERT 引用缺列 500,亦留将来复用。curl 验证:/health 200。env 未动。
 
 - **2026-08-10** — `sha-38587bb`(=staging HEAD,#211 spec 037 W0:plans.anchor_weekday D1 周几展示锚)经
   deploy-staging.yml(`migrations_applied=true`)部署 `meetpr-backend-staging`。
