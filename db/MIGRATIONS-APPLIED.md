@@ -64,13 +64,21 @@
 | 0059-backfill-sequence-completions              | ✅ 2026-08-10 手动应用(psql 本地→RDS xo 外网,David;`INSERT 0 393` + COMMIT——P0 修复:0057 未回填换制前历史完成,1.0(18) 学员游标回卷 W1;详见下方 sha-81d4ad6 部署条目)                               |
 | 0060-plan-anchor-weekday                        | ✅ 2026-08-10 手动应用(DMS SQLConsole,David;5 条语句全成:plans.anchor_weekday SMALLINT + 1-7 CHECK,spec 037 W0。注:Claude 本机 psql→RDS xo 外网当日起连接超时,疑白名单/本机 IP 变动,故回 DMS 通道) |
 | 0061-plan-exercise-target                       | ✅ 2026-08-10 手动应用(DMS SQLConsole,David;5 条语句全成:plan_exercises.target TEXT + 长度 1-32 CHECK,spec 037 v1.1。⚠️v1.2 已翻案改回派生徽章,字段休眠无写入方,留作后手)                          |
+| 0062-video-coach-viewed                         | ✅ 2026-08-11 手动应用(psql 本地→RDS xo 外网,Claude;BEGIN/SET/ALTER/UPDATE 5/COMMIT 全成,attachments.coach_viewed_at TIMESTAMPTZ + 反馈/打点存量回填 5 条,information_schema 验列在,spec 038)      |
 
 > 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。0043 现由 open PR #77/#79(账本扩展)占号,0044 先行落库,库内号段暂跳 0043——#77/#79 合并应用后回续。0047 已被 open PR #95、0048 已被 #99 占用,因此下一份空号取 0049。
 
-**当前 staging schema head = 0061（此行 2026-08-10 更新;0043 缺位由 open PR #77/#79 占,0047 由 open PR #95 占,0048 由 #99 占,0050 由 open PR #110 占,合并应用后回续;0053 空号未用)。**
+**当前 staging schema head = 0062（此行 2026-08-11 更新;0043 缺位由 open PR #77/#79 占,0047 由 open PR #95 占,0048 由 #99 占,0050 由 open PR #110 占,合并应用后回续;0053 空号未用)。**
 (此行 2026-08-02 修正:此前长期停在 0052,0054/0055 只记在变更历史漏更此行。)
 
 ## 变更历史
+
+- **2026-08-11** — **0062 应用 + spec 038 全链路两连部**(视频「待审」徽章真观看语义,教练实测反馈当日修):
+  psql 外网通道当日恢复(8/10 的超时未复现),先 `pg_dump` 全量备份(882KB,backups/…pre-0062)再应用 0062
+  (回填命中 5 条历史视频)。部署 ①`sha-4de1481`(#220 backend:POST /videos/:id/viewed + 列表 viewed_at);
+  ②`sha-7797535`(#222 web/ 换装,入口 index-D1139j5y.js)。中途两坑收档:#221 bundle 忘带
+  `VITE_API_BASE=''` 被镜像门禁拦下(门禁工作正常);`gh run watch | tail` 吞退出码把 cancelled 构建
+  报绿——用 `gh run view --json conclusion` 查真值,别信管道退出码。
 
 - **2026-08-11** — `sha-7a18981`(=staging HEAD,#218 纯 web/ 换装:plan-web main@495efa4 = #80
   选中日页眉学员画像全量内联(未选动作/未绑定/填写完整三态)+动作态历史深度(次数 PR 表/
@@ -213,7 +221,7 @@
   staging,属「合了未应用」补账。工具:本机 psql 直连(默认 search_path=public,无 DMS 坑);
   三文件逐个 ON_ERROR_STOP 执行,均 COMMIT;事后校验 5 张新表全在、`sessions` 计 124 行。
 
-- **2026-07-17** — 滚镜像 `sha-0c16428`(#76 auth refresh 接受 snake_case `refresh_token`,治 iOS 全员 15 分钟 token 刷新 400/BindGate 死锁;**零迁移**,schema head 仍 0040)。本次为**一键部署 workflow(#71,spec 018)首跑**,凭证已配,此后部署 `gh workflow run deploy-staging.yml`。同日 OSS 开**传输加速**,SAE env `OSS_ENDPOINT` 改 `https://oss-accelerate.aliyuncs.com` 并再滚一次生效(治海外上传 ~20KB/s 卡 0%)。curl 验证三绿:refresh 探针 400→401、`/uploads/initiate` 签名域名=`meetpr-videos-prod.oss-accelerate.aliyuncs.com`、5MB 分片 PUT 1.7s(~3MB/s)。⚠️ 探针残留:一次性测试号 `+8613900008871`~`8875`(self_train_student,无业务数据)+ 数条 1KB/5MB `uploading` 状态 attachments,可按需清理。
+- **2026-07-17** — 滚镜像 `sha-0c16428`(#76 auth refresh 接受 snake_case `refresh_token`,治 iOS 全员 15 分钟 token 刷新 400/BindGate 死锁;**零迁移**,schema head 仍 0040)。本次为**一键部署 workflow(#71,spec 018)首跑**,凭证已配,此后部署 `gh workflow run deploy-staging.yml`。同日 OSS 开**传输加速**,SAE env `OSS_ENDPOINT` 改 `https://oss-accelerate.aliyuncs.com` 并再滚一次生效(治海外上传 ~20KB/s 卡 0%)。curl 验证三绿:refresh 探针 400→401、`/uploads/initiate` 签名域名=`meetpr-videos-prod.oss-accelerate.aliyuncs.com`、5MB 分片 PUT 1.7s(~~3MB/s)。⚠️ 探针残留:一次性测试号 `+8613900008871`~~`8875`(self_train_student,无业务数据)+ 数条 1KB/5MB `uploading` 状态 attachments,可按需清理。
 
 - **2026-07-16** — 对账 0040-exercise-competition-stance(#69 e1RM 竞技动作解析)。**发现该列早已在库,漂移只在账本**:
   部署镜像 `sha-caf7796`(=caf7796,含 #69 代码)在 [exercise-stats.ts:32](../src/handlers/exercise-stats.ts)
@@ -243,6 +251,15 @@
   (set_logs 4 新列 / 7 新表 / 6 枚举全在)+ curl 验证 `POST /sets/log` 500→201。
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
+
+- 2026-08-11 — `sha-7797535`(=staging HEAD,#222 纯 web/ 换装:plan-web main@3b9fd47 = #81 播放过半即调
+  POST /videos/:id/viewed,待审/已反馈徽章按 viewed_at 实时翻转;#221 首枚 bundle 带 dev '/api' base 被
+  build-push 门禁拦下未出镜像,本枚 VITE_API_BASE='' 重建)经 deploy-staging.yml(`-f image_sha` 显式指定,
+  migrations_applied=true,无新迁移)部署;curl 验证:GET / 回新入口 index-D1139j5y.js、/health 200。
+- 2026-08-11 — `sha-4de1481`(=staging HEAD,#220 spec 038:attachments.coach_viewed_at + 幂等
+  POST /videos/:videoId/viewed + GET /students/:id/videos 返回 viewed_at)经 deploy-staging.yml
+  (migrations_applied=true,**0062 已先行应用**:Claude psql 外网,UPDATE 5 回填)部署;curl 验证:
+  /health 200、新端点无 token 401(路由活)、GET / 入口未变(web 换装在后续 sha-7797535)。
 
 - 2026-08-10 — `sha-81d4ad6`(=staging HEAD,#207 **P0 修复**:迁移 0059 推进制换制回填——0057 只建空表未回填历史完成,1.0(18) 外测学员游标回卷 W1,真实学员今日卡显示 7 月计划;镜像对 0058 版零行为差异,纯保持镜像=HEAD)经 deploy-staging.yml(`-f image_sha` 显式指定避开 docs 提交竞态,`migrations_applied=true`,**0059 已先行应用**:David psql 外网,`INSERT 0 393`)部署;curl 验证:`/health` 200、`/auth/login` 空体 400 信封正常。污染盘点(scratch 只读脚本):08-09 后错落到旧训练日的 set_logs **0 条**;manual 结算 1 条(+8613800000011 W1D2,该日本会被回填,无害保留)。修复对客户端即时生效,无需发包。
 
