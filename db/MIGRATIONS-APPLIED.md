@@ -73,6 +73,13 @@
 
 ## 变更历史
 
+- **2026-08-11** — `sha-5082c3e`(=staging HEAD,#229 纯 web/ 换装:plan-web main@#83 追踪图
+  PowerSheets 式明暗/虚线/光幕——折线光幕渐变+glow+跨无记录日历周虚线段(含 Codex loop 抓出的
+  共享槽位漏判修复),柱状图纵向明暗渐变,卡底图注)。前置 #228 首次换装被 build-push-staging 的
+  same-origin 闸门拦下(产物误用 dev `/api` base,镜像未推),#229 以 `VITE_API_BASE=''` 重打
+  同源包后过闸。无迁移无 src 改动,schema head 仍 0062。经 deploy-staging.yml
+  (`migrations_applied=true`)部署,curl 验证:GET / 已回新入口 index-BQfkdoj-.js。
+
 - **2026-08-11** — `sha-20ed5f7`(=staging HEAD,#223 纯 web/ 换装:plan-web main@881dfee = #82
   plan-web SPEC-038——追踪图横纵坐标轴+数据点常显数值;编排页已打卡行在强度/重量目标格下
   逐组显示学员实际完成,超阈红(重量±5kg/RPE±1/%±5pp)/力竭红/阈内黄。build 含 #81 viewed
