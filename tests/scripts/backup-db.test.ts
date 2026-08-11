@@ -1,17 +1,27 @@
 import path from 'node:path';
 import os from 'node:os';
+import type * as childProcess from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { afterEach, describe, expect, it } from 'vitest';
+import { Readable } from 'node:stream';
+import { afterEach, describe, expect, it, vi, type MockedFunction } from 'vitest';
 
 import {
   backupDatabase,
   databaseName,
+  dumpToFile,
   filenamePart,
   formatBytes,
   parseArgs,
   pgDumpFailure,
   redact,
+  splitPassword,
 } from '../../scripts/backup-db';
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof childProcess>();
+  return { ...actual, spawn: vi.fn(actual.spawn) };
+});
 
 const databaseUrl = 'postgresql://backup-user:p%40ssword@db.example/meetpr_prod';
 const now = new Date('2026-07-23T12:34:56.000Z');
@@ -25,6 +35,7 @@ async function makeTemporaryDirectory(): Promise<string> {
 }
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     temporaryDirectories
       .splice(0)
@@ -94,6 +105,91 @@ describe('backup-db helpers', () => {
       'signal SIGTERM',
     );
     expect(pgDumpFailure({ code: 0, signal: null }, '', databaseUrl)).toBeNull();
+  });
+});
+
+describe('dumpToFile connection handling', () => {
+  interface FakeChild extends EventEmitter {
+    stdout: Readable;
+    stderr: Readable | null;
+  }
+
+  async function mockSpawnOnce(options: {
+    stderr?: string;
+    close?: [number | null, NodeJS.Signals | null];
+    spawnError?: Error;
+  }): Promise<MockedFunction<typeof childProcess.spawn>> {
+    const { spawn } = await import('node:child_process');
+    const fakeChild = new EventEmitter() as FakeChild;
+    fakeChild.stdout = Readable.from(['-- dump contents\n']);
+    fakeChild.stderr = options.stderr === undefined ? null : Readable.from([options.stderr]);
+    vi.mocked(spawn).mockImplementationOnce(() => {
+      setImmediate(() => {
+        if (options.spawnError !== undefined) fakeChild.emit('error', options.spawnError);
+        fakeChild.emit('close', ...(options.close ?? [0, null]));
+      });
+      return fakeChild as never;
+    });
+    return vi.mocked(spawn);
+  }
+
+  it('splits the decoded password out of the connection URL', () => {
+    expect(splitPassword(databaseUrl)).toEqual({
+      url: 'postgresql://backup-user@db.example/meetpr_prod',
+      password: 'p@ssword',
+    });
+    expect(splitPassword('postgresql://backup-user@db.example/meetpr_prod')).toEqual({
+      url: 'postgresql://backup-user@db.example/meetpr_prod',
+    });
+  });
+
+  it('passes a password-free URL as a positional argument and the password via PGPASSWORD', async () => {
+    vi.stubEnv('PGDATABASE', 'ambient-db');
+    const spawn = await mockSpawnOnce({});
+
+    const outDir = await makeTemporaryDirectory();
+    await dumpToFile(databaseUrl, path.join(outDir, 'dump.sql.gz.partial'));
+
+    expect(spawn).toHaveBeenCalledWith(
+      'pg_dump',
+      ['--format=plain', 'postgresql://backup-user@db.example/meetpr_prod'],
+      expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] }),
+    );
+    const spawnEnv = spawn.mock.calls.at(-1)?.[2]?.env ?? {};
+    expect(spawnEnv).toHaveProperty('PGPASSWORD', 'p@ssword');
+    expect(spawnEnv).toHaveProperty('PGAPPNAME', 'meetpr-backup-db');
+    // Ambient PGDATABASE may pass through untouched: the positional dbname wins in libpq.
+    expect(spawnEnv).toHaveProperty('PGDATABASE', 'ambient-db');
+    expect(Object.values(spawnEnv)).not.toContain(databaseUrl);
+  });
+
+  it('redacts the URL and password from a failing dump before rethrowing', async () => {
+    await mockSpawnOnce({
+      stderr: `connection failed: ${databaseUrl} password=p@ssword`,
+      close: [1, null],
+    });
+
+    const outDir = await makeTemporaryDirectory();
+    const attempt = dumpToFile(databaseUrl, path.join(outDir, 'dump.sql.gz.partial'));
+
+    await expect(attempt).rejects.toThrow('pg_dump failed with exit code 1');
+    const error = (await attempt.catch((thrown: unknown) => thrown)) as Error;
+    expect(error.message).not.toContain(databaseUrl);
+    expect(error.message).not.toContain('p@ssword');
+    expect(error.message).toContain('[DATABASE_URL]');
+    expect(error.message).toContain('password=[REDACTED]');
+  });
+
+  it('reports a missing pg_dump binary as an actionable error', async () => {
+    await mockSpawnOnce({
+      spawnError: Object.assign(new Error('spawn pg_dump ENOENT'), { code: 'ENOENT' }),
+      close: [null, null],
+    });
+
+    const outDir = await makeTemporaryDirectory();
+    await expect(dumpToFile(databaseUrl, path.join(outDir, 'dump.sql.gz.partial'))).rejects.toThrow(
+      'pg_dump was not found in PATH',
+    );
   });
 });
 

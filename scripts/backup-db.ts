@@ -186,12 +186,28 @@ export function formatBytes(sizeBytes: number): string {
   return `${value.toFixed(precision)} ${units[unitIndex]}`;
 }
 
-async function dumpToFile(databaseUrl: string, partialPath: string): Promise<void> {
-  const pgDump = spawn('pg_dump', ['--format=plain'], {
+export interface SplitConnection {
+  url: string;
+  password?: string;
+}
+
+export function splitPassword(databaseUrl: string): SplitConnection {
+  const parsed = new URL(databaseUrl);
+  const password = decodeURIComponent(parsed.password);
+  if (password.length === 0) return { url: databaseUrl };
+  parsed.password = '';
+  return { url: parsed.toString(), password };
+}
+
+export async function dumpToFile(databaseUrl: string, partialPath: string): Promise<void> {
+  // libpq only expands postgres:// URIs in the dbname argument, not PGDATABASE.
+  // The password rides in PGPASSWORD so it never appears in the process argv.
+  const connection = splitPassword(databaseUrl);
+  const pgDump = spawn('pg_dump', ['--format=plain', connection.url], {
     env: {
       ...process.env,
       PGAPPNAME: 'meetpr-backup-db',
-      PGDATABASE: databaseUrl,
+      ...(connection.password === undefined ? {} : { PGPASSWORD: connection.password }),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
