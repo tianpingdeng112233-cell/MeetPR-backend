@@ -73,6 +73,13 @@
 
 ## 变更历史
 
+- **2026-08-11** — `sha-20ed5f7`(=staging HEAD,#223 纯 web/ 换装:plan-web main@881dfee = #82
+  plan-web SPEC-038——追踪图横纵坐标轴+数据点常显数值;编排页已打卡行在强度/重量目标格下
+  逐组显示学员实际完成,超阈红(重量±5kg/RPE±1/%±5pp)/力竭红/阈内黄。build 含 #81 viewed
+  徽章为超集,顺带补齐 #222 的部署。经 deploy-staging.yml(`migrations_applied=true`)部署,
+  无迁移无 src 改动,schema head 仍 0062。curl 验证:GET / 已回新入口 index-DinRWxUa.js(200)。
+  注意:backend 仓另有「spec 038 = 视频徽章」,与 plan-web docs/SPEC-038 系两仓独立序号,勿混。
+
 - **2026-08-11** — **0062 应用 + spec 038 全链路两连部**(视频「待审」徽章真观看语义,教练实测反馈当日修):
   psql 外网通道当日恢复(8/10 的超时未复现),先 `pg_dump` 全量备份(882KB,backups/…pre-0062)再应用 0062
   (回填命中 5 条历史视频)。部署 ①`sha-4de1481`(#220 backend:POST /videos/:id/viewed + 列表 viewed_at);
