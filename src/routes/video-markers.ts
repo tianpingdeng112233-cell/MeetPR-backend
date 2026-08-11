@@ -1,5 +1,5 @@
 import { Router, type Router as ExpressRouter } from 'express';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { z } from 'zod';
 
 import { VIDEO_MARKER_LEVELS, type Database, type VideoMarkerLevel } from '../db/types';
@@ -142,6 +142,57 @@ export function videoMarkersRouter(deps: VideoMarkersRouterDeps): ExpressRouter 
         ),
       );
       res.status(200).json({ markers });
+    }),
+  );
+
+  router.post(
+    '/:videoId/viewed',
+    requireRole('coach'),
+    route(async (req, res) => {
+      if (!req.user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      const params = VideoParamsSchema.safeParse(req.params);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+
+      const access = await resolveSetVideoAccess(db, req.user, params.data.videoId);
+      if (access.outcome === 'not_found') {
+        res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
+        return;
+      }
+      if (access.outcome === 'forbidden' || access.relation !== 'bonded_coach') {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
+      if (access.video.status !== 'ready') {
+        res.status(409).json({ error: 'ATTACHMENT_NOT_READY', status: access.video.status });
+        return;
+      }
+
+      const updated = await db
+        .updateTable('attachments')
+        .set({ coach_viewed_at: sql<Date>`now()` })
+        .where('id', '=', access.video.id)
+        .where('coach_viewed_at', 'is', null)
+        .returning('coach_viewed_at')
+        .executeTakeFirst();
+      const current =
+        updated ??
+        (await db
+          .selectFrom('attachments')
+          .select('coach_viewed_at')
+          .where('id', '=', access.video.id)
+          .executeTakeFirstOrThrow());
+      if (current.coach_viewed_at === null) {
+        throw new Error('coach_viewed_at missing after viewed update');
+      }
+
+      res.status(200).json({ viewed_at: timestamp(current.coach_viewed_at) });
     }),
   );
 

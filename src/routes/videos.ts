@@ -74,6 +74,7 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
           'a.content_type as content_type',
           'a.size_bytes as size_bytes',
           'a.filename as filename',
+          'a.coach_viewed_at as viewed_at',
           'a.created_at as created_at',
           'sl.logged_at as logged_at',
         ])
@@ -100,6 +101,7 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
         content_type: row.content_type,
         size_bytes: Number(row.size_bytes),
         filename: row.filename,
+        viewed_at: row.viewed_at === null ? null : timestamp(row.viewed_at),
         created_at: timestamp(row.created_at),
         logged_at: row.logged_at === null ? null : timestamp(row.logged_at),
       }));

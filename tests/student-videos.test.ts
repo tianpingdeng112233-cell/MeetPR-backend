@@ -176,6 +176,41 @@ describe('GET /students/:id/videos (spec 007)', () => {
     expect(self.body.videos).toHaveLength(2);
   });
 
+  it('serializes reviewed timestamps and nulls without changing any other field', async () => {
+    const ctx = await makeUploadsContext();
+    const viewedId = await uploadReadyVideo(ctx);
+    const pendingId = await uploadReadyVideo(ctx);
+    const before = await request(ctx.app)
+      .get(`/students/${ids.trainee}/videos`)
+      .set(auth(ctx.traineeToken));
+    expect(before.status).toBe(200);
+    expect(
+      before.body.videos.map((video: { viewed_at: string | null }) => video.viewed_at),
+    ).toEqual([null, null]);
+
+    const viewedAt = new Date('2026-08-11T09:10:11.123Z');
+    await ctx.db
+      .updateTable('attachments')
+      .set({ coach_viewed_at: viewedAt })
+      .where('id', '=', viewedId)
+      .execute();
+
+    const after = await request(ctx.app)
+      .get(`/students/${ids.trainee}/videos`)
+      .set(auth(ctx.traineeToken));
+    expect(after.status).toBe(200);
+    expect(
+      after.body.videos.find((video: { id: string }) => video.id === viewedId)?.viewed_at,
+    ).toBe(viewedAt.toISOString());
+    expect(
+      after.body.videos.find((video: { id: string }) => video.id === pendingId)?.viewed_at,
+    ).toBeNull();
+
+    const withoutViewedAt = (videos: Record<string, unknown>[]) =>
+      videos.map(({ viewed_at: _viewedAt, ...video }) => video);
+    expect(withoutViewedAt(after.body.videos)).toEqual(withoutViewedAt(before.body.videos));
+  });
+
   it('enforces the sets authorization matrix', async () => {
     const ctx = await makeUploadsContext();
     await uploadReadyVideo(ctx);
