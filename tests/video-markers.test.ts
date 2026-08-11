@@ -182,6 +182,117 @@ describe('shared set-video access gate', () => {
   });
 });
 
+describe('POST /videos/:videoId/viewed', () => {
+  it('records the first review time for a provenance-visible bonded coach', async () => {
+    const ctx = await makeContext();
+    const videoId = await seedVideo(ctx);
+
+    const response = await request(ctx.app)
+      .post(`/videos/${videoId}/viewed`)
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ viewed_at: expect.any(String) });
+    const stored = await ctx.db
+      .selectFrom('attachments')
+      .select('coach_viewed_at')
+      .where('id', '=', videoId)
+      .executeTakeFirstOrThrow();
+    expect(stored.coach_viewed_at).toBeInstanceOf(Date);
+    expect(stored.coach_viewed_at?.toISOString()).toBe(response.body.viewed_at);
+  });
+
+  it('is idempotent and never replaces the first review time', async () => {
+    const ctx = await makeContext();
+    const videoId = await seedVideo(ctx);
+    const originalViewedAt = new Date('2026-08-01T08:09:10.123Z');
+    await ctx.db
+      .updateTable('attachments')
+      .set({ coach_viewed_at: originalViewedAt })
+      .where('id', '=', videoId)
+      .execute();
+
+    const first = await request(ctx.app)
+      .post(`/videos/${videoId}/viewed`)
+      .set(auth(ctx.coachToken));
+    const firstStored = await ctx.db
+      .selectFrom('attachments')
+      .select('coach_viewed_at')
+      .where('id', '=', videoId)
+      .executeTakeFirstOrThrow();
+    const second = await request(ctx.app)
+      .post(`/videos/${videoId}/viewed`)
+      .set(auth(ctx.coachToken));
+    const secondStored = await ctx.db
+      .selectFrom('attachments')
+      .select('coach_viewed_at')
+      .where('id', '=', videoId)
+      .executeTakeFirstOrThrow();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(first.body).toEqual({ viewed_at: originalViewedAt.toISOString() });
+    expect(second.body).toEqual({ viewed_at: originalViewedAt.toISOString() });
+    expect(firstStored.coach_viewed_at).toEqual(originalViewedAt);
+    expect(secondStored.coach_viewed_at).toEqual(originalViewedAt);
+  });
+
+  it('enforces coach role, bond, provenance, existence, and ready status', async () => {
+    const ctx = await makeContext();
+    const videoId = await seedVideo(ctx, {
+      sourceCoachId: null,
+      isUnlinkedExplicit: true,
+    });
+
+    const student = await request(ctx.app)
+      .post(`/videos/${videoId}/viewed`)
+      .set(auth(ctx.traineeToken));
+    expect(student.status).toBe(403);
+    expect(student.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
+
+    await removeCoachBond(ctx, ids.coach);
+    const unboundCoach = await request(ctx.app)
+      .post(`/videos/${videoId}/viewed`)
+      .set(auth(ctx.coachToken));
+    expect(unboundCoach.status).toBe(403);
+    expect(unboundCoach.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
+
+    const unknown = await request(ctx.app)
+      .post(`/videos/${randomUUID()}/viewed`)
+      .set(auth(ctx.otherCoachToken));
+    expect(unknown.status).toBe(404);
+    expect(unknown.body).toEqual({ error: 'ATTACHMENT_NOT_FOUND' });
+
+    const hiddenVideoId = await seedVideo(ctx, { sourceCoachId: ids.coach });
+    const hidden = await request(ctx.app)
+      .post(`/videos/${hiddenVideoId}/viewed`)
+      .set(auth(ctx.otherCoachToken));
+    expect(hidden.status).toBe(404);
+    expect(hidden.body).toEqual({ error: 'ATTACHMENT_NOT_FOUND' });
+
+    const uploadingVideoId = await seedVideo(ctx, {
+      status: 'uploading',
+      sourceCoachId: ids.otherCoach,
+    });
+    const notReady = await request(ctx.app)
+      .post(`/videos/${uploadingVideoId}/viewed`)
+      .set(auth(ctx.otherCoachToken));
+    expect(notReady.status).toBe(409);
+    expect(notReady.body).toEqual({
+      error: 'ATTACHMENT_NOT_READY',
+      status: 'uploading',
+    });
+
+    const unchanged = await ctx.db
+      .selectFrom('attachments')
+      .select('coach_viewed_at')
+      .where('id', 'in', [videoId, hiddenVideoId, uploadingVideoId])
+      .execute();
+    expect(unchanged).toHaveLength(3);
+    expect(unchanged.every((row) => row.coach_viewed_at === null)).toBe(true);
+  });
+});
+
 describe('GET /videos/:videoId/markers', () => {
   it('returns markers in time order to the owner and provenance-visible coach', async () => {
     const ctx = await makeContext();

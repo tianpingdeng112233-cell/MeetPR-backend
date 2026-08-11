@@ -593,6 +593,7 @@ export interface AttachmentsTable {
     string | number | null
   >;
   status: Generated<AttachmentStatus>;
+  coach_viewed_at: NullableColumn<Date>;
   created_at: TimestampColumn;
   updated_at: TimestampColumn;
 }

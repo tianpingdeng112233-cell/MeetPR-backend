@@ -361,6 +361,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       part_count SMALLINT NOT NULL DEFAULT 1,
       actual_size_bytes BIGINT,
       status TEXT NOT NULL DEFAULT 'uploading',
+      coach_viewed_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
