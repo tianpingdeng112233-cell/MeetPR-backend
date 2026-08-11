@@ -73,6 +73,13 @@
 
 ## 变更历史
 
+- **2026-08-11** — `sha-10f0db0`(=staging HEAD,#231 纯 web/ 换装:plan-web main@#84——David 反馈
+  当日落地:追踪卡标题中文化(e1RM 趋势/容量趋势/平均 RPE 趋势/强度趋势/强度分布/次数分布/
+  三项容量占比/体重),卡列表两列改单列一行一卡三 lift 图,图表 aspect-ratio 等比放大不拉扁)。
+  同源 base(`VITE_API_BASE=''`)过闸。无迁移无 src 改动,schema head 仍 0062。经
+  deploy-staging.yml(`migrations_applied=true`)部署,curl 验证:GET / 已回新入口
+  index-CEt2pdyy.js。
+
 - **2026-08-11** — `sha-5082c3e`(=staging HEAD,#229 纯 web/ 换装:plan-web main@#83 追踪图
   PowerSheets 式明暗/虚线/光幕——折线光幕渐变+glow+跨无记录日历周虚线段(含 Codex loop 抓出的
   共享槽位漏判修复),柱状图纵向明暗渐变,卡底图注)。前置 #228 首次换装被 build-push-staging 的
