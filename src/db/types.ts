@@ -63,6 +63,7 @@ export const LOAD_MODES = [
   'rpe_range',
   'fixed_weight',
 ] as const;
+export const PCT_ANCHORS = ['one_rm', 'e1rm', 'top_set'] as const;
 export const SET_TYPES = ['warmup', 'working', 'failed', 'amrap', 'backoff'] as const;
 export const BIND_REQUEST_STATUSES = [
   'pending',
@@ -177,6 +178,7 @@ export type MesocyclePhase = (typeof MESOCYCLE_PHASES)[number];
 export type E1rmConfidence = (typeof E1RM_CONFIDENCES)[number];
 export type EffortMethod = (typeof EFFORT_METHODS)[number];
 export type LoadMode = (typeof LOAD_MODES)[number];
+export type PctAnchor = (typeof PCT_ANCHORS)[number];
 export type TrainingDay = (typeof TRAINING_DAYS)[number];
 export type InjuryArea = (typeof INJURY_AREAS)[number];
 export type ReadinessMuscleGroup = (typeof READINESS_MUSCLE_GROUPS)[number];
@@ -339,6 +341,7 @@ export interface PlanSetsTable {
   pct_of_tm: NullableNumericColumn;
   intra_set_rest: NullableColumn<number>;
   load_mode: NullableColumn<LoadMode>;
+  pct_anchor: NullableColumn<PctAnchor>;
   target_pct: NullableNumericColumn;
   weight_low: NullableNumericColumn;
   weight_high: NullableNumericColumn;

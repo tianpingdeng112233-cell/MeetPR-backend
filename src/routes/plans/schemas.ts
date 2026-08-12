@@ -4,6 +4,7 @@ import {
   API_PLAN_SOURCES,
   INTENSITY_MODES,
   LOAD_MODES,
+  PCT_ANCHORS,
   PATCHABLE_PLAN_STATUSES,
   PLAN_KINDS,
   SET_TYPES,
@@ -165,6 +166,7 @@ interface SetBodyValidationShape {
   intensity_mode?: 'weight' | 'rpe' | undefined;
   target_value?: string | undefined;
   load_mode?: (typeof LOAD_MODES)[number] | null | undefined;
+  pct_anchor?: (typeof PCT_ANCHORS)[number] | null | undefined;
   target_pct?: string | null | undefined;
   target_rpe?: string | null | undefined;
   rir_target?: string | null | undefined;
@@ -232,6 +234,7 @@ const PlanSetBodySchema = z.object({
   intensity_mode: z.enum(INTENSITY_MODES).optional(),
   target_value: TargetValueSchema.optional(),
   load_mode: z.enum(LOAD_MODES).nullable().optional(),
+  pct_anchor: z.enum(PCT_ANCHORS).nullable().optional(),
   target_pct: TargetValueSchema.nullable().optional(),
   target_rpe: TargetValueSchema.nullable().optional(),
   rir_target: TargetValueSchema.nullable().optional(),

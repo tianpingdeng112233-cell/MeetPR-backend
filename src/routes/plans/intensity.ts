@@ -1,9 +1,10 @@
 import type { Selectable, Updateable } from 'kysely';
 
-import type { LoadMode, PlanSetsTable } from '../../db/types';
+import type { LoadMode, PctAnchor, PlanSetsTable } from '../../db/types';
 
 export const NEW_INTENSITY_FIELDS = [
   'load_mode',
+  'pct_anchor',
   'target_pct',
   'target_rpe',
   'rir_target',
@@ -28,6 +29,7 @@ type DecimalInput = string | number | null | undefined;
 
 export interface IntensityInput {
   load_mode?: LoadMode | null | undefined;
+  pct_anchor?: PctAnchor | null | undefined;
   target_pct?: DecimalInput;
   target_rpe?: DecimalInput;
   rir_target?: DecimalInput;
@@ -40,6 +42,7 @@ export interface IntensityInput {
 
 export interface IntensityState {
   load_mode: LoadMode | null;
+  pct_anchor: PctAnchor | null;
   target_pct: string | null;
   target_rpe: string | null;
   rir_target: number | null;
@@ -98,6 +101,7 @@ export function batchUsesNewIntensityShape(value: unknown): boolean {
 export function intensityState(input: IntensityInput): IntensityState {
   return {
     load_mode: input.load_mode ?? null,
+    pct_anchor: input.pct_anchor ?? null,
     target_pct: decimal(input.target_pct),
     target_rpe: decimal(input.target_rpe),
     rir_target: integer(input.rir_target),
@@ -215,6 +219,10 @@ export function validateIntensityValues(state: IntensityState): IntensityValidat
 export function validateIntensityState(state: IntensityState): IntensityValidationIssue[] {
   const issues = validateIntensityValues(state);
 
+  if (state.pct_anchor !== null && state.load_mode !== 'pct') {
+    issues.push(issue('pct_anchor', 'pct_anchor must be null unless load_mode is pct'));
+  }
+
   switch (state.load_mode) {
     case null:
       requireField(state, 'target_weight', issues);
@@ -321,6 +329,7 @@ export function intensityWrite(
 export function mergedIntensityState(existing: PlanSetRow, patch: IntensityInput): IntensityState {
   const state = intensityState({
     load_mode: existing.load_mode,
+    pct_anchor: existing.pct_anchor,
     target_pct: existing.target_pct,
     target_rpe: existing.target_rpe,
     rir_target: existing.rir_target,
@@ -338,10 +347,12 @@ export function mergedIntensityState(existing: PlanSetRow, patch: IntensityInput
   const switchesMode = patch.load_mode !== undefined && patch.load_mode !== state.load_mode;
   if (switchesMode) {
     for (const field of MODE_VALUE_FIELDS) state[field] = null;
+    state.pct_anchor = null;
     if (patch.load_mode === 'weight_range') state.target_weight = null;
   }
 
   if (patch.load_mode !== undefined) state.load_mode = patch.load_mode;
+  if (patch.pct_anchor !== undefined) state.pct_anchor = patch.pct_anchor;
   for (const field of [...MODE_VALUE_FIELDS, 'target_weight'] as const) {
     if (patch[field] === undefined) continue;
     if (field === 'rir_target') state.rir_target = integer(patch.rir_target);

@@ -7,6 +7,7 @@ import { auth, createPublishedPlan, ids, makeContext } from '../helpers/studentA
 
 const newFieldDefaults = {
   load_mode: null,
+  pct_anchor: null,
   target_pct: null,
   target_rpe: null,
   rir_target: null,
@@ -64,7 +65,7 @@ async function createDraftPlan(ctx: TestContext) {
     .executeTakeFirstOrThrow();
 }
 
-function batchBody(set: object) {
+function batchBody(set: object | object[]) {
   return {
     delete_day_ids: [],
     upsert_days: [
@@ -78,7 +79,7 @@ function batchBody(set: object) {
             is_main_lift: true,
             sort_order: 0,
             notes: null,
-            sets: [set],
+            sets: Array.isArray(set) ? set : [set],
           },
         ],
       },
@@ -87,6 +88,165 @@ function batchBody(set: object) {
 }
 
 describe('spec 034 plan intensity API', () => {
+  it('round-trips every pct anchor through create, patch, batch, and tree reads', async () => {
+    const { ctx, plan } = await makePlanContext();
+    const anchors = ['one_rm', 'e1rm', 'top_set'] as const;
+    const createdIds: string[] = [];
+    const createProjections: { intensity_mode: unknown; target_value: unknown }[] = [];
+
+    for (const [index, pctAnchor] of anchors.entries()) {
+      const response = await createSet(ctx, plan.planExerciseId, {
+        ...baseSet(index + 2),
+        load_mode: 'pct',
+        pct_anchor: pctAnchor,
+        target_pct: '72.5',
+      });
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        load_mode: 'pct',
+        pct_anchor: pctAnchor,
+        target_pct: '72.5',
+      });
+      createdIds.push(responseId(response));
+      createProjections.push({
+        intensity_mode: response.body.intensity_mode,
+        target_value: response.body.target_value,
+      });
+    }
+
+    expect(createProjections).toMatchInlineSnapshot(`
+      [
+        {
+          "intensity_mode": "rpe",
+          "target_value": "7.00",
+        },
+        {
+          "intensity_mode": "rpe",
+          "target_value": "7.00",
+        },
+        {
+          "intensity_mode": "rpe",
+          "target_value": "7.00",
+        },
+      ]
+    `);
+
+    const patchedId = createdIds[0];
+    if (patchedId === undefined) throw new Error('missing created pct set');
+    for (const pctAnchor of anchors) {
+      const response = await request(ctx.app)
+        .patch(`/plans/sets/${patchedId}`)
+        .set(auth(ctx.coachToken))
+        .send({ pct_anchor: pctAnchor });
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        load_mode: 'pct',
+        pct_anchor: pctAnchor,
+        intensity_mode: 'rpe',
+        target_value: '7.00',
+      });
+    }
+
+    const tree = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.traineeToken));
+    expect(tree.status).toBe(200);
+    const treeSets = tree.body.days[0].exercises[0].sets as {
+      id: string;
+      pct_anchor: string | null;
+    }[];
+    expect(createdIds.map((id) => treeSets.find((set) => set.id === id)?.pct_anchor)).toEqual([
+      'top_set',
+      'e1rm',
+      'top_set',
+    ]);
+
+    const draft = await createDraftPlan(ctx);
+    const batch = await request(ctx.app)
+      .post(`/plans/${draft.id}/days/batch`)
+      .set(auth(ctx.coachToken))
+      .send(
+        batchBody(
+          anchors.map((pctAnchor, index) => ({
+            ...baseSet(index + 1),
+            load_mode: 'pct',
+            pct_anchor: pctAnchor,
+            target_pct: '72.5',
+          })),
+        ),
+      );
+    expect(batch.status).toBe(200);
+    expect(
+      (batch.body.days[0].exercises[0].sets as { pct_anchor: string | null }[]).map(
+        (set) => set.pct_anchor,
+      ),
+    ).toEqual(anchors);
+  });
+
+  it('defaults pct anchors to null, rejects direct non-pct anchors, and clears on mode switch', async () => {
+    const { ctx, plan } = await makePlanContext();
+    const withoutAnchor = await createSet(ctx, plan.planExerciseId, {
+      ...baseSet(2),
+      load_mode: 'pct',
+      target_pct: '72.5',
+    });
+    expect(withoutAnchor.status).toBe(201);
+    expect(withoutAnchor.body.pct_anchor).toBeNull();
+
+    const invalidCreate = await createSet(ctx, plan.planExerciseId, {
+      ...baseSet(3),
+      load_mode: 'rpe',
+      pct_anchor: 'e1rm',
+      target_rpe: '8',
+    });
+    expect(invalidCreate.status).toBe(422);
+    expect(invalidCreate.body.issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: ['pct_anchor'] })]),
+    );
+
+    const anchored = await createSet(ctx, plan.planExerciseId, {
+      ...baseSet(4),
+      load_mode: 'pct',
+      pct_anchor: 'top_set',
+      target_pct: '80',
+    });
+    const anchoredId = responseId(anchored);
+    const switched = await request(ctx.app)
+      .patch(`/plans/sets/${anchoredId}`)
+      .set(auth(ctx.coachToken))
+      .send({ load_mode: 'rpe', target_rpe: '8' });
+    expect(switched.status).toBe(200);
+    expect(switched.body).toMatchObject({ load_mode: 'rpe', pct_anchor: null });
+
+    const invalidPatch = await request(ctx.app)
+      .patch(`/plans/sets/${anchoredId}`)
+      .set(auth(ctx.coachToken))
+      .send({ pct_anchor: 'one_rm' });
+    expect(invalidPatch.status).toBe(422);
+    expect(invalidPatch.body.issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: ['pct_anchor'] })]),
+    );
+
+    const draft = await createDraftPlan(ctx);
+    const invalidBatch = await request(ctx.app)
+      .post(`/plans/${draft.id}/days/batch`)
+      .set(auth(ctx.coachToken))
+      .send(
+        batchBody({
+          ...baseSet(1),
+          load_mode: 'rir',
+          pct_anchor: 'one_rm',
+          rir_target: 2,
+        }),
+      );
+    expect(invalidBatch.status).toBe(422);
+    expect(invalidBatch.body.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ['upsert_days', 0, 'exercises', 0, 'sets', 0, 'pct_anchor'],
+        }),
+      ]),
+    );
+  });
+
   it('round-trips every legal mode/weight combination with its legacy projection', async () => {
     const { ctx, plan } = await makePlanContext();
     const cases = [

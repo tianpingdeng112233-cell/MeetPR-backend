@@ -192,6 +192,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       intensity_mode TEXT NOT NULL,
       target_value NUMERIC(6,2) NOT NULL,
       load_mode TEXT,
+      pct_anchor TEXT,
       target_pct NUMERIC(4,1),
       target_rpe NUMERIC(3,1),
       rir_target SMALLINT,

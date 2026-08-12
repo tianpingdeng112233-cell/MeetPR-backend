@@ -19,8 +19,9 @@ describe('plan set schemas', () => {
         ...baseSet,
         intensity_mode: undefined,
         target_value: undefined,
-        load_mode: 'rpe',
-        target_rpe: 8.5,
+        load_mode: 'pct',
+        pct_anchor: 'e1rm',
+        target_pct: 72.5,
       }).success,
     ).toBe(true);
     expect(
@@ -36,6 +37,7 @@ describe('plan set schemas', () => {
 
   it.each([
     [{ target_weight: 180 }, ['load_mode']],
+    [{ load_mode: 'rpe', target_rpe: 8, pct_anchor: 'one_rm' }, ['pct_anchor']],
     [{ load_mode: 'pct', target_pct: 72.3 }, ['target_pct']],
     [{ load_mode: 'rpe', target_rpe: 8, rir_target: 2 }, ['rir_target']],
     [{ load_mode: 'fixed_weight' }, ['target_weight']],
@@ -60,6 +62,9 @@ describe('plan set schemas', () => {
 
   it('accepts a partial new-system patch for final-state validation after the row is loaded', () => {
     expect(PatchPlanSetBodySchema.safeParse({ target_rpe: 8.5 }).success).toBe(true);
+    expect(PatchPlanSetBodySchema.safeParse({ pct_anchor: 'top_set' }).success).toBe(true);
+    expect(PatchPlanSetBodySchema.safeParse({ pct_anchor: null }).success).toBe(true);
+    expect(PatchPlanSetBodySchema.safeParse({ pct_anchor: 'training_max' }).success).toBe(false);
   });
 
   it('accepts omitted, numeric, and null rest_seconds values', () => {

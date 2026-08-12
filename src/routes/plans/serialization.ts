@@ -72,6 +72,7 @@ export interface PlanSetResponse {
   intensity_mode: PlanSetRow['intensity_mode'];
   target_value: string;
   load_mode: PlanSetRow['load_mode'];
+  pct_anchor: PlanSetRow['pct_anchor'];
   target_pct: string | null;
   target_rpe: string | null;
   rir_target: number | null;
@@ -245,6 +246,7 @@ export function toPlanSet(row: PlanSetRow): PlanSetResponse {
     intensity_mode: row.intensity_mode,
     target_value: row.target_value,
     load_mode: row.load_mode,
+    pct_anchor: row.pct_anchor,
     target_pct: nullableOneDecimal(row.target_pct),
     target_rpe: nullableOneDecimal(row.target_rpe),
     rir_target: row.rir_target,
