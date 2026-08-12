@@ -553,3 +553,4 @@
   (/students/:id/plans、/exercises、/me/password、/auth/refresh)全绿。配套 iOS 1.0(9) 同日发布。
 - 2026-07-11 — `sha-4100a00`(=staging HEAD,spec016)部署 `meetpr-backend-staging`;env 未动;
   curl 验证:/health ok、顺延/回顾端点 404→401、/sets/log 正常(此前镜像冻结于 ~2026-06-24)
+- 2026-08-12 — **0063 已应用**(David 本机 psql,外网 xo 域名;应用前 backup-db.ts 全库备份成功——首跑用内网域名超时,教训:本地必须用 `pgm-...rqxo` 外网地址,secrets-pointer 已改)。随后 `sha-e14e09f`(=staging HEAD,#233 spec v2.2 + #234 pct_anchor 实装)部署 `meetpr-backend-staging`,env 未动;deploy run 31625056204 绿。curl 验证:/health 200、/auth/login 400(格式校验活)。读路径 selectAll 缺列免疫、写路径 INSERT 点名 `pct_anchor`——首次真教练保存计划作为最终写入实证,排在 plan-web 锚点选择器 web-swap 走查一并做。
