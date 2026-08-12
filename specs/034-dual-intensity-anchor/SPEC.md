@@ -242,9 +242,11 @@ spec 里做。**本波不引入 TM 概念**(David 2026-08-09:% 锚点先不展�
 
 ```sql
 ALTER TABLE plan_sets ADD COLUMN pct_anchor TEXT;
+-- load_mode IS NOT NULL 是承重的:少了它,NULL 行上 load_mode = 'pct' 求值为
+-- UNKNOWN,CHECK 会放行「非 pct 带锚」(Postgres 三值逻辑,review-loop 轮 1 抓出)。
 ALTER TABLE plan_sets ADD CONSTRAINT plan_sets_pct_anchor_check CHECK (
   pct_anchor IS NULL OR
-  (pct_anchor IN ('one_rm', 'e1rm', 'top_set') AND load_mode = 'pct')
+  (pct_anchor IN ('one_rm', 'e1rm', 'top_set') AND load_mode IS NOT NULL AND load_mode = 'pct')
 );
 ```
 
