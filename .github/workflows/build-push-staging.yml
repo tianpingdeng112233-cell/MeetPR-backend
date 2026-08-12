@@ -76,6 +76,11 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
+          # Personal-edition ACR rejects OCI referrer manifests
+          # ("unknown manifest class for application/vnd.oci.empty.v1+json",
+          # first seen 2026-08-12 after a runner buildx roll) — keep plain manifests.
+          provenance: false
+          sbom: false
           tags: |
             crpi-qh0hhca6eqlzbzy9.cn-hangzhou.personal.cr.aliyuncs.com/meetpr/meetpr-backend:v0.1-staging
             crpi-qh0hhca6eqlzbzy9.cn-hangzhou.personal.cr.aliyuncs.com/meetpr/meetpr-backend:sha-${{ github.sha }}
