@@ -183,6 +183,7 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       intensity_mode TEXT NOT NULL,
       target_value TEXT NOT NULL,
       load_mode TEXT,
+      pct_anchor TEXT,
       target_pct NUMERIC(4,1),
       target_rpe NUMERIC(3,1),
       rir_target SMALLINT,

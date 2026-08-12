@@ -8,6 +8,23 @@ import {
 } from '../../src/routes/plans/intensity';
 
 describe('plan intensity domain', () => {
+  it.each(['one_rm', 'e1rm', 'top_set'] as const)(
+    'keeps pct anchor %s out of the legacy projection',
+    (pctAnchor) => {
+      const state = intensityState({
+        load_mode: 'pct',
+        pct_anchor: pctAnchor,
+        target_pct: '72.5',
+      });
+      expect(validateIntensityState(state)).toEqual([]);
+      expect(intensityWrite(state)).toMatchObject({
+        pct_anchor: pctAnchor,
+        intensity_mode: 'rpe',
+        target_value: '7.00',
+      });
+    },
+  );
+
   it.each([
     ['59.5', '5.00'],
     ['60.0', '6.00'],
@@ -46,6 +63,7 @@ describe('plan intensity domain', () => {
   it('merges patches, coalesces legacy weight, and clears stale values on mode switches', () => {
     const legacyWeight = {
       load_mode: null,
+      pct_anchor: null,
       intensity_mode: 'weight',
       target_value: '170.00',
       target_pct: null,
@@ -62,20 +80,22 @@ describe('plan intensity domain', () => {
       target_weight: '170.00',
     });
 
-    const rpeWithWeight = {
+    const pctWithWeight = {
       ...legacyWeight,
-      load_mode: 'rpe',
-      target_rpe: '8.0',
+      load_mode: 'pct',
+      pct_anchor: 'top_set',
+      target_pct: '80.0',
       target_weight: '170.00',
     } as Parameters<typeof mergedIntensityState>[0];
     expect(
-      mergedIntensityState(rpeWithWeight, {
+      mergedIntensityState(pctWithWeight, {
         load_mode: 'weight_range',
         weight_low: '165',
         weight_high: '175',
       }),
     ).toEqual({
       load_mode: 'weight_range',
+      pct_anchor: null,
       target_pct: null,
       target_rpe: null,
       rir_target: null,
@@ -89,6 +109,7 @@ describe('plan intensity domain', () => {
 
   it.each([
     [{ load_mode: 'pct' as const }, 'target_pct'],
+    [{ load_mode: 'rpe' as const, target_rpe: '8', pct_anchor: 'e1rm' as const }, 'pct_anchor'],
     [{ load_mode: 'rpe' as const, target_rpe: '8', rir_target: '2' }, 'rir_target'],
     [{ load_mode: 'fixed_weight' as const }, 'target_weight'],
     [
