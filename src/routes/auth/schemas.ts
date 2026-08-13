@@ -4,7 +4,7 @@ import { REGISTERABLE_ROLES, USER_ROLES } from '../../db/types';
 
 const PhoneSchema = z.string().regex(/^\+[1-9]\d{7,14}$/, 'Phone must be E.164 format');
 
-const PasswordSchema = z
+export const PasswordSchema = z
   .string()
   .min(8, 'Password must be at least 8 characters')
   .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, {

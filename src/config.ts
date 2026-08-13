@@ -12,6 +12,19 @@ const HttpsUrlSchema = z
     message: 'must use https',
   });
 
+const SelfSignupRolesSchema = z
+  .string()
+  .refine(
+    (value) =>
+      value
+        .split(',')
+        .map((role) => role.trim())
+        .filter(Boolean)
+        .every((role) => role === 'coached_student' || role === 'self_train_student'),
+    { message: 'SELF_SIGNUP_ROLES may only contain student roles' },
+  )
+  .optional();
+
 export const ConfigSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -69,6 +82,11 @@ export const ConfigSchema = z
     // explicitly opt in, but coach accounts must always be pre-provisioned.
     REGISTRATION_ENABLED: BooleanEnvSchema,
     REGISTRATION_ALLOWLIST: z.string().optional(),
+    // Global identity providers are opt-in. Omitting every setting leaves the
+    // existing phone paths fully operational while new registration fails shut.
+    SELF_SIGNUP_ROLES: SelfSignupRolesSchema,
+    APPLE_CLIENT_ID: z.string().min(1).optional(),
+    GOOGLE_CLIENT_ID: z.string().min(1).optional(),
     // Go-live blocker, off by default. Enable only once the business license,
     // ICP filing, and domain TLS are ready. When true, the app enforces HTTPS
     // (426 + HSTS) and the production checks below reject an incomplete setup.
@@ -198,6 +216,20 @@ export function registrationAllowlist(
       .split(',')
       .map((phone) => phone.trim())
       .filter((phone) => phone.length > 0),
+  );
+}
+
+export function selfSignupRoles(
+  config: Pick<Config, 'SELF_SIGNUP_ROLES'>,
+): ReadonlySet<'coached_student' | 'self_train_student'> {
+  return new Set(
+    (config.SELF_SIGNUP_ROLES ?? '')
+      .split(',')
+      .map((role) => role.trim())
+      .filter(
+        (role): role is 'coached_student' | 'self_train_student' =>
+          role === 'coached_student' || role === 'self_train_student',
+      ),
   );
 }
 
