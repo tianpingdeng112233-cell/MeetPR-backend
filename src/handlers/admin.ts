@@ -11,7 +11,7 @@ interface SafeUserRow {
   id: string;
   display_name: string | null;
   role: UserRole;
-  phone: string;
+  phone: string | null;
   created_at: Date;
 }
 
@@ -36,7 +36,7 @@ export interface AdminUser {
   id: string;
   displayName: string | null;
   role: UserRole;
-  phone: string;
+  phone: string | null;
   createdAt: string;
   relation: AdminUserRelation;
 }

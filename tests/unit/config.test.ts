@@ -21,6 +21,9 @@ describe('config', () => {
     expect(config.LOG_LEVEL).toBe('info');
     expect(config.PUSH_ENABLED).toBe(false);
     expect(config.PUSH_DAILY_DIGEST_ENABLED).toBe(false);
+    expect(config.SELF_SIGNUP_ROLES).toBeUndefined();
+    expect(config.APPLE_CLIENT_ID).toBeUndefined();
+    expect(config.GOOGLE_CLIENT_ID).toBeUndefined();
   });
 
   it('throws when DATABASE_URL is missing', () => {
@@ -110,6 +113,15 @@ describe('config', () => {
     });
     expect(config.PUSH_ENABLED).toBe(true);
     expect(config.APNS_ENV).toBe('sandbox');
+  });
+
+  it('accepts only student roles in the global self-signup gate', () => {
+    const config = loadConfig({
+      ...validEnv,
+      SELF_SIGNUP_ROLES: 'coached_student,self_train_student',
+    });
+    expect(config.SELF_SIGNUP_ROLES).toBe('coached_student,self_train_student');
+    expect(() => loadConfig({ ...validEnv, SELF_SIGNUP_ROLES: 'coach' })).toThrow();
   });
 
   it('exposes the schema as a named export', () => {

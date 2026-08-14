@@ -204,7 +204,9 @@ type NullableJsonColumn<T> = ColumnType<T | null, T | string | null | undefined,
 
 export interface UsersTable {
   id: Generated<string>;
-  phone: string;
+  phone: NullableColumn<string>;
+  email: NullableColumn<string>;
+  email_verified_at: NullableColumn<Date>;
   apple_user_id: NullableColumn<string>;
   password_hash: string;
   role: UserRole;
@@ -212,6 +214,19 @@ export interface UsersTable {
   is_test: Generated<boolean>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+}
+
+export interface UserIdentitiesTable {
+  user_id: string;
+  provider: 'apple' | 'google' | 'email';
+  provider_uid: string;
+  email_at_provider: NullableColumn<string>;
+  created_at: Generated<Date>;
+}
+
+export interface AuthChallengesTable {
+  nonce_hash: string;
+  issued_at: Generated<Date>;
 }
 
 export interface SessionsTable {
@@ -760,6 +775,8 @@ export interface AnalyticsFeedbackTable {
 
 export interface Database {
   users: UsersTable;
+  user_identities: UserIdentitiesTable;
+  auth_challenges: AuthChallengesTable;
   sessions: SessionsTable;
   exercises: ExercisesTable;
   plans: PlansTable;

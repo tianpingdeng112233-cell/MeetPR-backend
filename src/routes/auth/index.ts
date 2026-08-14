@@ -22,6 +22,7 @@ import {
 } from '../../config';
 import type { Database, UsersTable, UserRole } from '../../db/types';
 import type { Logger } from '../../logger';
+import { BCRYPT_COST } from './constants';
 import {
   LegacyRefreshTokenPayloadSchema,
   LoginBodySchema,
@@ -29,12 +30,12 @@ import {
   RefreshTokenPayloadSchema,
   RegisterBodySchema,
 } from './schemas';
+import { globalIdentityRouter } from './global';
 
-const BCRYPT_COST = 10;
 const MAX_ACTIVE_SESSIONS = 5;
 const PREVIOUS_JTI_GRACE_SECONDS = 60;
 
-type AuthConfig = Pick<
+export type AuthConfig = Pick<
   Config,
   | 'JWT_ACCESS_SECRET'
   | 'JWT_REFRESH_SECRET'
@@ -46,6 +47,9 @@ type AuthConfig = Pick<
   | 'NODE_ENV'
   | 'REGISTRATION_ENABLED'
   | 'REGISTRATION_ALLOWLIST'
+  | 'SELF_SIGNUP_ROLES'
+  | 'APPLE_CLIENT_ID'
+  | 'GOOGLE_CLIENT_ID'
 >;
 
 interface AuthRouterDeps {
@@ -56,7 +60,7 @@ interface AuthRouterDeps {
 
 interface ClientUser {
   id: string;
-  phone: string;
+  phone: string | null;
   role: UserRole;
   createdAt: string;
 }
@@ -90,7 +94,12 @@ function toClientUser(row: ClientUserRow): ClientUser {
   };
 }
 
-function signTokenPair(config: AuthConfig, userId: string, role: UserRole, jti: string): TokenPair {
+export function signTokenPair(
+  config: AuthConfig,
+  userId: string,
+  role: UserRole,
+  jti: string,
+): TokenPair {
   type JwtTtl = NonNullable<SignOptions['expiresIn']>;
 
   const accessOptions: SignOptions = {
@@ -144,7 +153,7 @@ async function revokeExcessSessions(trx: Transaction<Database>, userId: string):
     .execute();
 }
 
-async function createSession(
+export async function createSession(
   trx: Transaction<Database>,
   userId: string,
   refreshTokenJti: string,
@@ -486,6 +495,16 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
       deps.logger.info({ userId: result.userId, role: result.role }, 'auth_refresh_success');
 
       res.status(200).json(tokens);
+    }),
+  );
+
+  router.use(
+    globalIdentityRouter({
+      config: deps.config,
+      db: deps.db,
+      logger: deps.logger,
+      createSession,
+      issueTokens: (userId, role, jti) => signTokenPair(deps.config, userId, role, jti),
     }),
   );
 

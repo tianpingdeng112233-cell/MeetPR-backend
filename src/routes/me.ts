@@ -5,10 +5,9 @@ import type { Logger } from 'pino';
 
 import type { Database } from '../db/types';
 import { requireRole } from '../middleware/auth';
+import { BCRYPT_COST } from './auth/constants';
 import { ChangePasswordBodySchema } from './auth/schemas';
 import { route, validationEnvelope } from './http';
-
-const BCRYPT_COST = 10;
 
 export interface MeRouterDeps {
   db: Kysely<Database>;
@@ -17,6 +16,36 @@ export interface MeRouterDeps {
 
 export function meRouter(deps: MeRouterDeps): ExpressRouter {
   const router = Router();
+
+  router.get(
+    '/',
+    route(async (req, res) => {
+      if (!req.user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      const user = await deps.db
+        .selectFrom('users')
+        .select(['id', 'phone', 'email', 'role', 'created_at'])
+        .where('id', '=', req.user.id)
+        .executeTakeFirst();
+      if (!user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      res.status(200).json({
+        user: {
+          id: user.id,
+          phone: user.phone,
+          email: user.email,
+          role: user.role,
+          createdAt: user.created_at.toISOString(),
+        },
+      });
+    }),
+  );
 
   // Account deletion (spec 011 §1, Apple 5.1.1(v)). Students only: a coach
   // deletion would cascade their plans into bonded students — offboarding

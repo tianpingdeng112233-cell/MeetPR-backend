@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import { DataType, newDb } from 'pg-mem';
 
-export function makeMigrationDb() {
-  const mem = newDb();
+export function makeMigrationDb(options?: Parameters<typeof newDb>[0]) {
+  const mem = newDb(options);
   mem.public.registerFunction({
     name: 'gen_random_uuid',
     returns: DataType.uuid,
