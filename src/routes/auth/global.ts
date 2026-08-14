@@ -410,24 +410,35 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
         return;
       }
       const email = normalizeEmail(body.data.email);
+      // bcrypt.compare burns ~100ms of CPU, so it must not run while holding
+      // the user row lock (same reasoning as hashing before the signup
+      // transaction above). Read and compare lock-free first; the transaction
+      // below re-checks the hash under the lock before minting a session.
+      const candidate = await deps.db
+        .selectFrom('user_identities as identity')
+        .innerJoin('users as user', 'user.id', 'identity.user_id')
+        .select(['user.id', 'user.password_hash'])
+        .where('identity.provider', '=', 'email')
+        .where('identity.provider_uid', '=', email)
+        .executeTakeFirst();
+      if (!candidate || !(await bcrypt.compare(body.data.password, candidate.password_hash))) {
+        res.status(401).json({ error: 'AUTH_INVALID_CREDENTIALS' });
+        return;
+      }
+
       const login = await deps.db.transaction().execute(async (trx) => {
+        // The row lock serializes createSession so concurrent logins cannot
+        // overshoot the session cap. Requiring the hash to be unchanged keeps
+        // the lock-free compare honest: a concurrent password change (which
+        // revokes all sessions) invalidates this login instead of issuing a
+        // session for the old password.
         const user = await trx
-          .selectFrom('user_identities as identity')
-          .innerJoin('users as user', 'user.id', 'identity.user_id')
-          .select([
-            'user.id',
-            'user.phone',
-            'user.email',
-            'user.password_hash',
-            'user.role',
-            'user.created_at',
-          ])
-          .where('identity.provider', '=', 'email')
-          .where('identity.provider_uid', '=', email)
+          .selectFrom('users')
+          .select(['id', 'phone', 'email', 'password_hash', 'role', 'created_at'])
+          .where('id', '=', candidate.id)
           .forUpdate()
           .executeTakeFirst();
-        if (!user) return null;
-        if (!(await bcrypt.compare(body.data.password, user.password_hash))) return null;
+        if (user?.password_hash !== candidate.password_hash) return null;
 
         const jti = randomUUID();
         await deps.createSession(trx, user.id, jti);
