@@ -24,6 +24,7 @@ origin/staging 实查):auth 仅 phone+password(`src/routes/auth/schemas.ts` Phon
 - 账号注销流程对 apple_user_id 非空用户追加 Apple token 吊销(App Review 硬要求)。
 
 **不在范围**(防 scope 膨胀,均为明确不做):
+
 - 跨通道账号合并/关联——同一邮箱在 Apple/Google/邮箱三边=三个独立账号(见 §反接管规则)。
 - 邮箱验证(拍板 ③)。
 - 国内 app 接入任何新通道;iOS 客户端改动(同波另卡,iOS 仓,依赖 #322 Global build track)。
@@ -68,14 +69,14 @@ phone / apple_user_id / google_user_id / email **至少存在其一**(建号路�
 
 全部挂 `/auth`,新端点全部限速(forgot-password 从严:per-email + per-IP)。
 
-| 端点 | 入参 | 行为 |
-|---|---|---|
-| `POST /auth/apple` | `identity_token`, `role?` | 验 ES256 @ Apple JWKS,`iss=https://appleid.apple.com`,`aud=APPLE_BUNDLE_ID`;`sub`→`apple_user_id` 查用户。命中→发 session;未命中且无 `role`→`409 REGISTRATION_REQUIRED`(客户端弹角色选择后带 role 重发);带 `role`→建号(受注册闸) |
-| `POST /auth/google` | `id_token`, `role?` | 验 RS256 @ Google JWKS,`aud=GOOGLE_IOS_CLIENT_ID`,其余同上 find-or-create |
-| `POST /auth/register-email` | `email`, `password`, `role` | 建号;email 冲突→`409 EMAIL_TAKEN`;密码规则复用现有 PasswordSchema(bcrypt 72 字节上限那套) |
-| `POST /auth/login-email` | `email`, `password` | 常规校验;失败统一 `INVALID_CREDENTIALS`,不区分「无此账号/密码错」 |
-| `POST /auth/forgot-password` | `email` | 恒 `204`(不暴露账号存在性);仅当账号存在**且为邮箱通道**(password_hash 非空)才发 Resend 邮件,链接含一次性明文 token |
-| `POST /auth/reset-password` | `token`, `new_password` | 校验未用未过期→写新 hash + 标记 `used_at` + 吊销全部 sessions(复用改密语义) |
+| 端点                         | 入参                        | 行为                                                                                                                                                                                                                             |
+| ---------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /auth/apple`           | `identity_token`, `role?`   | 验 ES256 @ Apple JWKS,`iss=https://appleid.apple.com`,`aud=APPLE_BUNDLE_ID`;`sub`→`apple_user_id` 查用户。命中→发 session;未命中且无 `role`→`409 REGISTRATION_REQUIRED`(客户端弹角色选择后带 role 重发);带 `role`→建号(受注册闸) |
+| `POST /auth/google`          | `id_token`, `role?`         | 验 RS256 @ Google JWKS,`aud=GOOGLE_IOS_CLIENT_ID`,其余同上 find-or-create                                                                                                                                                        |
+| `POST /auth/register-email`  | `email`, `password`, `role` | 建号;email 冲突→`409 EMAIL_TAKEN`;密码规则复用现有 PasswordSchema(bcrypt 72 字节上限那套)                                                                                                                                        |
+| `POST /auth/login-email`     | `email`, `password`         | 常规校验;失败统一 `INVALID_CREDENTIALS`,不区分「无此账号/密码错」                                                                                                                                                                |
+| `POST /auth/forgot-password` | `email`                     | 恒 `204`(不暴露账号存在性);仅当账号存在**且为邮箱通道**(password_hash 非空)才发 Resend 邮件,链接含一次性明文 token                                                                                                               |
+| `POST /auth/reset-password`  | `token`, `new_password`     | 校验未用未过期→写新 hash + 标记 `used_at` + 吊销全部 sessions(复用改密语义)                                                                                                                                                      |
 
 - 注册角色沿用 `REGISTERABLE_ROLES`(coach 不在内)。
 - OAuth 建号时 provider 附带的邮箱写入 `email` 列作联系邮箱;若已被占用则存 NULL(见反接管规则)。
