@@ -1,6 +1,6 @@
 # 039 — 海外三通道登录:Sign in with Apple + Google + 邮箱密码
 
-- **Status: Draft**(2026-08-14 David 拍板登录方式=SiwA+邮箱+Google、邮件服务=Resend、邮箱注册先不验证;spec 待终审)
+- **Status: InProgress**(2026-08-14 David 拍板三通道+Resend+不验证;同日终审通过,spec 封板开工)
 - **级别**: T3(新身份层 + auth schema 迁移 + 新第三方依赖)
 
 海外版(`com.meetpr.global`,ASC id 6799519592)不出手机号登录,需在**同一 backend、同一 DB**上
