@@ -556,3 +556,12 @@
 - 2026-08-12 — **0063 已应用**(David 本机 psql,外网 xo 域名;应用前 backup-db.ts 全库备份成功——首跑用内网域名超时,教训:本地必须用 `pgm-...rqxo` 外网地址,secrets-pointer 已改)。随后 `sha-e14e09f`(=staging HEAD,#233 spec v2.2 + #234 pct_anchor 实装)部署 `meetpr-backend-staging`,env 未动;deploy run 31625056204 绿。curl 验证:/health 200、/auth/login 400(格式校验活)。读路径 selectAll 缺列免疫、写路径 INSERT 点名 `pct_anchor`——首次真教练保存计划作为最终写入实证,排在 plan-web 锚点选择器 web-swap 走查一并做。
 - 2026-08-12 — `sha-b9f19c4`(=staging HEAD,#236 web 换装 plan-web main@33e8bc1 % 锚点选择器 + #237 CI 修复)部署 `meetpr-backend-staging`,env 未动,无新迁移(0063 已在账)。curl 实证:/health 200、入口已换 `assets/index-DN9GjFet.js`(200)。插曲:runner buildx 滚动后默认附 provenance 清单,个人版 ACR 拒收(`unknown manifest class ...oci.empty.v1+json`),连败两次构建;#237 加 `provenance:false + sbom:false` 根治。
 - 2026-08-13 — `sha-eef6f12`(=staging HEAD,#239 纯 web/ 换装:plan-web main@c686f6a 强度模式「%1RM」改名「%」)经 deploy-staging.yml(migrations_applied=true,无新迁移)部署 `meetpr-backend-staging`,env 未动;deploy run 31681623727 绿。curl 实证:入口已换 `assets/index-B6BpsUPu.js`(200),线上 bundle 内 `mode:"pct",label:"%"`、`%1RM` 零命中。改名理由:% 的参照已是二级锚点(1RM/e1RM/当日顶组),模式名再写死 1RM 会误导。
+- 2026-08-14 — **0064 已应用**(David 经 DMS SQLConsole 于 meetpr-rds-v01-staging 整段执行;
+  information_schema 双查验证:users.phone/email/email_verified_at 全 nullable、
+  user_identities+auth_challenges 两表在)。随后 `sha-634cf9d`(=staging HEAD,#241 海外三通道
+  登录 W1 + #242 spec039 + 收货返修 197b213)部署 `meetpr-backend-staging`,env 未动
+  (SELF_SIGNUP_ROLES/APPLE_CLIENT_ID/GOOGLE_CLIENT_ID 均未配,新通道 fail-shut);
+  deploy run 31796512106 绿(首触发 31796175794 因镜像未进 ACR 失败——老教训:合并后等
+  build-push 完再 deploy)。curl 实证:/health 200、/auth/challenge 200 出 nonce(新镜像活)、
+  /auth/apple 503 AUTH_PROVIDER_NOT_CONFIGURED、/auth/email/register 403
+  AUTH_REGISTRATION_DISABLED(双闸 fail-shut)、/auth/login 400(CN 路径活)。
