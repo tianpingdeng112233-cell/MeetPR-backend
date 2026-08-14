@@ -124,6 +124,16 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       revoked_at TIMESTAMPTZ
     );
 
+    CREATE TABLE user_identities (
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL,
+      provider_uid TEXT NOT NULL,
+      email_at_provider TEXT,
+      apple_refresh_token TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (provider, provider_uid)
+    );
+
     CREATE TABLE exercises (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name TEXT NOT NULL,

@@ -9,9 +9,11 @@ import { z } from 'zod';
 import { selfSignupRoles, type Config } from '../../config';
 import { REGISTERABLE_ROLES, type Database, type UserRole } from '../../db/types';
 import type { Logger } from '../../logger';
+import { appleCredentials, exchangeAppleAuthorizationCode } from '../../services/apple';
 import { createOidcVerifier, OidcKeysUnavailableError } from '../../services/oidc';
 import { route, validationEnvelope } from '../http';
 import { BCRYPT_COST } from './constants';
+import { emailRecoveryRouter } from './email-recovery';
 import { PasswordSchema } from './schemas';
 
 const APPLE_JWKS_URL = 'https://appleid.apple.com/auth/keys';
@@ -24,6 +26,7 @@ const AppleBodySchema = z
     identityToken: z.string().min(1),
     nonce: NonceSchema,
     role: SignupRoleSchema,
+    authorizationCode: z.string().min(1).optional(),
   })
   .strict();
 const GoogleBodySchema = z
@@ -47,7 +50,17 @@ const EmailLoginBodySchema = z
   })
   .strict();
 
-type GlobalAuthConfig = Pick<Config, 'SELF_SIGNUP_ROLES' | 'APPLE_CLIENT_ID' | 'GOOGLE_CLIENT_ID'>;
+type GlobalAuthConfig = Pick<
+  Config,
+  | 'SELF_SIGNUP_ROLES'
+  | 'APPLE_CLIENT_ID'
+  | 'GOOGLE_CLIENT_ID'
+  | 'RESEND_API_KEY'
+  | 'EMAIL_FROM'
+  | 'SIWA_KEY_ID'
+  | 'SIWA_TEAM_ID'
+  | 'SIWA_PRIVATE_KEY'
+>;
 
 interface TokenPair {
   accessToken: string;
@@ -274,6 +287,28 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
         res.status(403).json({ error: login });
         return;
       }
+      if (body.data.authorizationCode !== undefined) {
+        const credentials = appleCredentials(deps.config);
+        if (credentials === null) {
+          deps.logger.warn({ userId: login.user.id }, 'apple_token_exchange_not_configured');
+        } else {
+          try {
+            const refreshToken = await exchangeAppleAuthorizationCode(
+              credentials,
+              body.data.authorizationCode,
+              deps.fetch,
+            );
+            await deps.db
+              .updateTable('user_identities')
+              .set({ apple_refresh_token: refreshToken })
+              .where('user_id', '=', login.user.id)
+              .where('provider', '=', 'apple')
+              .execute();
+          } catch (error: unknown) {
+            deps.logger.error({ err: error, userId: login.user.id }, 'apple_token_exchange_failed');
+          }
+        }
+      }
       const tokens = deps.issueTokens(login.user.id, login.user.role, login.jti);
       deps.logger.info(
         { userId: login.user.id, role: login.user.role, created: login.created },
@@ -455,6 +490,16 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
         'auth_email_login_success',
       );
       res.status(200).json({ user: clientUser(login.user), ...tokens });
+    }),
+  );
+
+  router.use(
+    '/email',
+    emailRecoveryRouter({
+      config: deps.config,
+      db: deps.db,
+      logger: deps.logger,
+      ...(deps.fetch === undefined ? {} : { fetch: deps.fetch }),
     }),
   );
 

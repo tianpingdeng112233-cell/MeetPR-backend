@@ -221,12 +221,23 @@ export interface UserIdentitiesTable {
   provider: 'apple' | 'google' | 'email';
   provider_uid: string;
   email_at_provider: NullableColumn<string>;
+  apple_refresh_token: NullableColumn<string>;
   created_at: Generated<Date>;
 }
 
 export interface AuthChallengesTable {
   nonce_hash: string;
   issued_at: Generated<Date>;
+}
+
+export interface PasswordResetCodesTable {
+  id: Generated<string>;
+  user_id: string;
+  code_hash: string;
+  expires_at: Date;
+  attempts: Generated<number>;
+  used_at: NullableColumn<Date>;
+  created_at: Generated<Date>;
 }
 
 export interface SessionsTable {
@@ -777,6 +788,7 @@ export interface Database {
   users: UsersTable;
   user_identities: UserIdentitiesTable;
   auth_challenges: AuthChallengesTable;
+  password_reset_codes: PasswordResetCodesTable;
   sessions: SessionsTable;
   exercises: ExercisesTable;
   plans: PlansTable;

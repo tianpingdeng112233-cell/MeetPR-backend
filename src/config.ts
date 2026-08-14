@@ -87,6 +87,11 @@ export const ConfigSchema = z
     SELF_SIGNUP_ROLES: SelfSignupRolesSchema,
     APPLE_CLIENT_ID: z.string().min(1).optional(),
     GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+    RESEND_API_KEY: z.string().min(1).optional(),
+    EMAIL_FROM: z.string().min(1).optional(),
+    SIWA_KEY_ID: z.string().min(1).optional(),
+    SIWA_TEAM_ID: z.string().min(1).optional(),
+    SIWA_PRIVATE_KEY: z.string().min(1).optional(),
     // Go-live blocker, off by default. Enable only once the business license,
     // ICP filing, and domain TLS are ready. When true, the app enforces HTTPS
     // (426 + HSTS) and the production checks below reject an incomplete setup.

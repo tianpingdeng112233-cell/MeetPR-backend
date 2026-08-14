@@ -5,13 +5,13 @@ import jwt, { type SignOptions } from 'jsonwebtoken';
 import type { Kysely } from 'kysely';
 import { DataType, newDb } from 'pg-mem';
 import pino from 'pino';
-import request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../src/app';
 import type { Config } from '../../src/config';
 import { createDb } from '../../src/db/kysely';
 import type { Database } from '../../src/db/types';
+import { request } from '../helpers/inMemoryRequest';
 
 const config: Config = {
   NODE_ENV: 'test',
@@ -40,6 +40,14 @@ const config: Config = {
 
 const signingKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const forgedKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const siwaPrivateKey = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+  .privateKey.export({ format: 'pem', type: 'pkcs8' })
+  .toString();
+const siwaConfig: Partial<Config> = {
+  SIWA_KEY_ID: 'SIWAKEY',
+  SIWA_TEAM_ID: 'TEAMID',
+  SIWA_PRIVATE_KEY: siwaPrivateKey,
+};
 const kid = 'global-auth-test-key';
 const publicJwk = {
   ...signingKeys.publicKey.export({ format: 'jwk' }),
@@ -86,6 +94,7 @@ function makeContext(configOverride: Partial<Config> = {}) {
   mem.public.none(fs.readFileSync('db/migrations/0001-init-users.sql', 'utf8'));
   mem.public.none(fs.readFileSync('db/migrations/0039-multi-device-sessions.sql', 'utf8'));
   mem.public.none(fs.readFileSync('db/migrations/0064-global-identity.sql', 'utf8'));
+  mem.public.none(fs.readFileSync('db/migrations/0065-email-channel.sql', 'utf8'));
   const { Pool } = mem.adapters.createPg();
   const db: Kysely<Database> = createDb(new Pool());
   const app = createApp({
@@ -127,11 +136,17 @@ function sendProviderToken(
   identityToken: string,
   role = 'coached_student',
   nonce?: string,
+  authorizationCode?: string,
 ) {
   return provider === 'apple'
     ? request(app)
         .post('/auth/apple')
-        .send({ identityToken, ...(nonce ? { nonce } : {}), role })
+        .send({
+          identityToken,
+          ...(nonce ? { nonce } : {}),
+          role,
+          ...(authorizationCode ? { authorizationCode } : {}),
+        })
     : request(app)
         .post('/auth/google')
         .send({ idToken: identityToken, ...(nonce ? { nonce } : {}), role });
@@ -142,6 +157,7 @@ async function providerRequest(
   provider: 'apple' | 'google',
   tokenInput: Omit<Parameters<typeof token>[0], 'provider' | 'nonce'> = {},
   role = 'coached_student',
+  authorizationCode?: string,
 ) {
   const nonce = provider === 'apple' ? await issueChallenge(app) : undefined;
   const identityToken = token({
@@ -149,7 +165,41 @@ async function providerRequest(
     ...tokenInput,
     ...(nonce === undefined ? {} : { nonce: sha256(nonce) }),
   });
-  return sendProviderToken(app, provider, identityToken, role, nonce);
+  return sendProviderToken(app, provider, identityToken, role, nonce, authorizationCode);
+}
+
+function requestUrl(input: Parameters<typeof fetch>[0]): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+function stubAppleEndpoints(options: { tokenStatus?: number; revokeStatus?: number } = {}) {
+  const fetchMock = vi.fn<typeof fetch>((input) => {
+    const url = requestUrl(input);
+    if (url === 'https://appleid.apple.com/auth/keys') {
+      return Promise.resolve(
+        new Response(JSON.stringify({ keys: [publicJwk] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    }
+    if (url === 'https://appleid.apple.com/auth/token') {
+      return Promise.resolve(
+        new Response(JSON.stringify({ refresh_token: 'stored-apple-refresh-token' }), {
+          status: options.tokenStatus ?? 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    }
+    if (url === 'https://appleid.apple.com/auth/revoke') {
+      return Promise.resolve(new Response(null, { status: options.revokeStatus ?? 200 }));
+    }
+    throw new Error(`unexpected fetch URL: ${url}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
 }
 
 afterEach(() => {
@@ -312,6 +362,134 @@ describe('POST /auth/apple nonce validation', () => {
     const response = await sendProviderToken(app, 'apple', token({ provider: 'apple' }));
 
     expect(response.status).toBe(400);
+  });
+});
+
+describe('POST /auth/apple authorizationCode', () => {
+  it('exchanges and stores an Apple refresh token without changing the login response', async () => {
+    const fetchMock = stubAppleEndpoints();
+    const { app, db } = makeContext(siwaConfig);
+    const response = await providerRequest(
+      app,
+      'apple',
+      { subject: 'apple-refresh-success' },
+      'coached_student',
+      'authorization-code',
+    );
+
+    expect(response.status).toBe(200);
+    const identity = await db
+      .selectFrom('user_identities')
+      .select('apple_refresh_token')
+      .where('provider_uid', '=', 'apple-refresh-success')
+      .executeTakeFirstOrThrow();
+    expect(identity.apple_refresh_token).toBe('stored-apple-refresh-token');
+    const tokenCall = fetchMock.mock.calls.find(
+      ([input]) => requestUrl(input) === 'https://appleid.apple.com/auth/token',
+    );
+    const body = tokenCall?.[1]?.body as URLSearchParams;
+    expect(body.get('code')).toBe('authorization-code');
+  });
+
+  it('logs in successfully when Apple token exchange fails', async () => {
+    stubAppleEndpoints({ tokenStatus: 500 });
+    const { app, db } = makeContext(siwaConfig);
+    const response = await providerRequest(
+      app,
+      'apple',
+      { subject: 'apple-refresh-failure' },
+      'coached_student',
+      'authorization-code',
+    );
+
+    expect(response.status).toBe(200);
+    const identity = await db
+      .selectFrom('user_identities')
+      .select('apple_refresh_token')
+      .where('provider_uid', '=', 'apple-refresh-failure')
+      .executeTakeFirstOrThrow();
+    expect(identity.apple_refresh_token).toBeNull();
+  });
+
+  it('logs in without calling the token endpoint when SIWA is not configured', async () => {
+    const fetchMock = stubAppleEndpoints();
+    const { app, db } = makeContext();
+    const response = await providerRequest(
+      app,
+      'apple',
+      { subject: 'apple-refresh-unconfigured' },
+      'coached_student',
+      'authorization-code',
+    );
+
+    expect(response.status).toBe(200);
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) => requestUrl(input) === 'https://appleid.apple.com/auth/token',
+      ),
+    ).toBe(false);
+    const identity = await db
+      .selectFrom('user_identities')
+      .select('apple_refresh_token')
+      .where('provider_uid', '=', 'apple-refresh-unconfigured')
+      .executeTakeFirstOrThrow();
+    expect(identity.apple_refresh_token).toBeNull();
+  });
+});
+
+describe('DELETE /me Apple revocation', () => {
+  it.each([
+    ['successful', 200],
+    ['failed', 500],
+  ] as const)('deletes the account after a %s Apple revoke response', async (_label, status) => {
+    const fetchMock = stubAppleEndpoints({ revokeStatus: status });
+    const { app, db } = makeContext(siwaConfig);
+    const login = await providerRequest(
+      app,
+      'apple',
+      { subject: `apple-delete-${String(status)}` },
+      'coached_student',
+      'authorization-code',
+    );
+    const deleted = await request(app)
+      .delete('/me')
+      .set('Authorization', `Bearer ${String(login.body.accessToken)}`);
+
+    expect(deleted.status).toBe(204);
+    expect(
+      await db
+        .selectFrom('users')
+        .select('id')
+        .where('id', '=', login.body.user.id as string)
+        .executeTakeFirst(),
+    ).toBeUndefined();
+    const revokeCall = fetchMock.mock.calls.find(
+      ([input]) => requestUrl(input) === 'https://appleid.apple.com/auth/revoke',
+    );
+    const body = revokeCall?.[1]?.body as URLSearchParams;
+    expect(body.get('token')).toBe('stored-apple-refresh-token');
+    expect(body.get('token_type_hint')).toBe('refresh_token');
+  });
+
+  it('deletes without a revoke call when SIWA is not configured', async () => {
+    const fetchMock = stubAppleEndpoints();
+    const { app, db } = makeContext();
+    const login = await providerRequest(app, 'apple', { subject: 'apple-delete-unconfigured' });
+    await db
+      .updateTable('user_identities')
+      .set({ apple_refresh_token: 'refresh-with-no-server-key' })
+      .where('provider_uid', '=', 'apple-delete-unconfigured')
+      .execute();
+
+    const deleted = await request(app)
+      .delete('/me')
+      .set('Authorization', `Bearer ${String(login.body.accessToken)}`);
+    expect(deleted.status).toBe(204);
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) => requestUrl(input) === 'https://appleid.apple.com/auth/revoke',
+      ),
+    ).toBe(false);
   });
 });
 

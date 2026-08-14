@@ -24,6 +24,11 @@ describe('config', () => {
     expect(config.SELF_SIGNUP_ROLES).toBeUndefined();
     expect(config.APPLE_CLIENT_ID).toBeUndefined();
     expect(config.GOOGLE_CLIENT_ID).toBeUndefined();
+    expect(config.RESEND_API_KEY).toBeUndefined();
+    expect(config.EMAIL_FROM).toBeUndefined();
+    expect(config.SIWA_KEY_ID).toBeUndefined();
+    expect(config.SIWA_TEAM_ID).toBeUndefined();
+    expect(config.SIWA_PRIVATE_KEY).toBeUndefined();
   });
 
   it('throws when DATABASE_URL is missing', () => {
@@ -122,6 +127,29 @@ describe('config', () => {
     });
     expect(config.SELF_SIGNUP_ROLES).toBe('coached_student,self_train_student');
     expect(() => loadConfig({ ...validEnv, SELF_SIGNUP_ROLES: 'coach' })).toThrow();
+  });
+
+  it('accepts optional email and SIWA credentials without making partial sets fatal', () => {
+    const partial = loadConfig({
+      ...validEnv,
+      RESEND_API_KEY: 'resend-key',
+      SIWA_KEY_ID: 'key-id',
+    });
+    expect(partial.RESEND_API_KEY).toBe('resend-key');
+    expect(partial.EMAIL_FROM).toBeUndefined();
+    expect(partial.SIWA_KEY_ID).toBe('key-id');
+    expect(partial.SIWA_TEAM_ID).toBeUndefined();
+
+    const complete = loadConfig({
+      ...validEnv,
+      RESEND_API_KEY: 'resend-key',
+      EMAIL_FROM: 'MeetPR <no-reply@example.com>',
+      SIWA_KEY_ID: 'key-id',
+      SIWA_TEAM_ID: 'team-id',
+      SIWA_PRIVATE_KEY: 'private-key',
+    });
+    expect(complete.EMAIL_FROM).toBe('MeetPR <no-reply@example.com>');
+    expect(complete.SIWA_PRIVATE_KEY).toBe('private-key');
   });
 
   it('exposes the schema as a named export', () => {
