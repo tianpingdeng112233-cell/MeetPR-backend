@@ -580,3 +580,12 @@
   在线上活);新号 +8613923193145(self_train,tz=Europe/London)注册成功、PATCH /me/timezone
   非法 400/合法 204 双向往返过。次日待办:核对上海桶结算/digest 各恰好一次(扫桶重构后首夜);
   残办:该测试号未标 is_test 且密码未存,下次 delete-test-accounts 或 DMS 顺手删。
+- 2026-08-15 — **0065 已应用**(David 经 DMS SQLConsole 于 meetpr-rds-v01-staging 整段执行;
+  information_schema 双查验证:password_reset_codes pkey+user_id fkey 在、user_identities.
+  apple_refresh_token 列在,截图实证)。注意 0065 晚于 0066/0067 应用(取号序≠应用序,
+  两波互不依赖)。随后 `sha-b6ab4bb`(=staging HEAD,#244 W2 发信通道,含与 042 的冲突解决
+  merge)经 deploy-staging.yml(migrations_applied=true)部署 `meetpr-backend-staging`,
+  deploy run 31913115751 绿。curl 实证:/health 200;/auth/email/forgot 不存在邮箱 204 且
+  0.6s 快速返回(fire-and-forget 防时序 oracle 在线上活);/auth/email/reset 错码 401
+  AUTH_INVALID_RESET_CODE;国内 /auth/login 401 回归无恙;/auth/apple 通道活。
+  Resend/SIWA env 五件 08-14 已预配,本次部署起生效。
