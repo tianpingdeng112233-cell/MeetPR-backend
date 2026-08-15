@@ -565,3 +565,10 @@
   build-push 完再 deploy)。curl 实证:/health 200、/auth/challenge 200 出 nonce(新镜像活)、
   /auth/apple 503 AUTH_PROVIDER_NOT_CONFIGURED、/auth/email/register 403
   AUTH_REGISTRATION_DISABLED(双闸 fail-shut)、/auth/login 400(CN 路径活)。
+- 2026-08-15 — `sha-e7def91`(=staging HEAD,#245 spec041 OSS 传输加速签名)经 deploy-staging.yml
+  (migrations_applied=true,无新迁移,0064 仍是 head)部署 `meetpr-backend-staging`,env 未动
+  (`OSS_ACCELERATE_ENDPOINT` 未配,加速签名整体关闭=行为与合并前逐字节一致);
+  deploy run 31899747066 绿。curl 实证:/health 200、/uploads/initiate 401(服务活、鉴权面正常)。
+  桶侧传输加速开关经无凭证探测确认已开(07-17 遗留,加速域返回与默认域一致的桶 ACL 错)。
+  待办:David 在 SAE 控制台补 `OSS_ACCELERATE_ENDPOINT=https://oss-accelerate.aliyuncs.com`
+  (实例重启生效)后,造一个无手机号测试学员 initiate 上传,实证 part URL host=oss-accelerate。
