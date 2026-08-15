@@ -53,12 +53,18 @@ export async function resolvePlanExercise(
   db: Kysely<Database>,
   planExerciseId: string,
   studentId: string,
-): Promise<{ exerciseId: string; planDayId: string; planId: string } | null> {
+): Promise<{ exerciseId: string; planDayId: string; planId: string; timezone: string } | null> {
   const row = await db
     .selectFrom('plan_exercises as pe')
     .innerJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
     .innerJoin('plans as p', 'p.id', 'pd.plan_id')
-    .select(['pe.exercise_id as exercise_id', 'pd.id as plan_day_id', 'p.id as plan_id'])
+    .innerJoin('users as student', 'student.id', 'p.trainee_id')
+    .select([
+      'pe.exercise_id as exercise_id',
+      'pd.id as plan_day_id',
+      'p.id as plan_id',
+      'student.timezone as timezone',
+    ])
     .where('pe.id', '=', planExerciseId)
     .where('p.trainee_id', '=', studentId)
     .where('p.status', '=', 'published')
@@ -67,7 +73,12 @@ export async function resolvePlanExercise(
 
   return row === undefined
     ? null
-    : { exerciseId: row.exercise_id, planDayId: row.plan_day_id, planId: row.plan_id };
+    : {
+        exerciseId: row.exercise_id,
+        planDayId: row.plan_day_id,
+        planId: row.plan_id,
+        timezone: row.timezone,
+      };
 }
 
 export async function exerciseExists(db: Kysely<Database>, exerciseId: string): Promise<boolean> {

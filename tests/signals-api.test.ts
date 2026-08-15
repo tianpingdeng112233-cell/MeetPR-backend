@@ -1,9 +1,9 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { SignalSeverity, SignalStatus, SignalType } from '../src/db/types';
 import { timestamp } from '../src/handlers/serialization';
-import { normalizeDateOnly, shanghaiTrainingDay, utcDate, utcDateOnly } from '../src/utils/date';
+import { normalizeDateOnly, trainingDay, utcDate, utcDateOnly } from '../src/utils/date';
 import { auth, ids, makeContext, type TestContext } from './helpers/studentActions';
 
 const signalIds = {
@@ -14,6 +14,10 @@ const signalIds = {
   acked: '81000000-0000-4000-8000-000000000005',
   otherCoach: '81000000-0000-4000-8000-000000000006',
 };
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 interface SignalFixture {
   id: string;
@@ -347,38 +351,49 @@ describe('GET /coach/students/:studentId/events', () => {
     });
   });
 
-  it('defaults to the latest 28 gym days and requires an accepted bond', async () => {
-    const ctx = await makeContext();
-    const today = shanghaiTrainingDay();
-    const oldestIncluded = utcDateOnly(new Date(utcDate(today).getTime() - 27 * 86_400_000));
-    const outside = utcDateOnly(new Date(utcDate(today).getTime() - 28 * 86_400_000));
-    await insertEvent(ctx, {
-      id: '82000000-0000-4000-8000-000000000005',
-      sessionDate: oldestIncluded,
-      occurredAt: new Date(`${oldestIncluded}T08:00:00.000Z`),
-      payload: {},
-    });
-    await insertEvent(ctx, {
-      id: '82000000-0000-4000-8000-000000000006',
-      sessionDate: outside,
-      occurredAt: new Date(`${outside}T08:00:00.000Z`),
-      payload: {},
-    });
+  it.each([
+    ['Asia/Shanghai', '2026-07-12T20:00:00Z'],
+    ['Europe/London', '2026-01-13T04:00:00Z'],
+    ['Europe/London', '2026-07-13T03:00:00Z'],
+    ['America/New_York', '2026-07-13T08:00:00Z'],
+  ])(
+    'defaults to the latest 28 %s gym days and requires an accepted bond',
+    async (timezone, instant) => {
+      const ctx = await makeContext();
+      await ctx.db.updateTable('users').set({ timezone }).where('id', '=', ids.trainee).execute();
+      const now = new Date(instant);
+      vi.useFakeTimers({ toFake: ['Date'], now });
+      const today = trainingDay(now, timezone);
+      const oldestIncluded = utcDateOnly(new Date(utcDate(today).getTime() - 27 * 86_400_000));
+      const outside = utcDateOnly(new Date(utcDate(today).getTime() - 28 * 86_400_000));
+      await insertEvent(ctx, {
+        id: '82000000-0000-4000-8000-000000000005',
+        sessionDate: oldestIncluded,
+        occurredAt: new Date(`${oldestIncluded}T08:00:00.000Z`),
+        payload: {},
+      });
+      await insertEvent(ctx, {
+        id: '82000000-0000-4000-8000-000000000006',
+        sessionDate: outside,
+        occurredAt: new Date(`${outside}T08:00:00.000Z`),
+        payload: {},
+      });
 
-    const defaultRange = await request(ctx.app)
-      .get(`/coach/students/${ids.trainee}/events`)
-      .set(auth(ctx.coachToken));
-    const unbound = await request(ctx.app)
-      .get(`/coach/students/${ids.otherStudent}/events`)
-      .set(auth(ctx.coachToken));
+      const defaultRange = await request(ctx.app)
+        .get(`/coach/students/${ids.trainee}/events`)
+        .set(auth(ctx.coachToken));
+      const unbound = await request(ctx.app)
+        .get(`/coach/students/${ids.otherStudent}/events`)
+        .set(auth(ctx.coachToken));
 
-    expect(defaultRange.status).toBe(200);
-    expect(defaultRange.body.events.map((event: { id: string }) => event.id)).toEqual([
-      '82000000-0000-4000-8000-000000000005',
-    ]);
-    expect(unbound.status).toBe(403);
-    expect(unbound.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
-  });
+      expect(defaultRange.status).toBe(200);
+      expect(defaultRange.body.events.map((event: { id: string }) => event.id)).toEqual([
+        '82000000-0000-4000-8000-000000000005',
+      ]);
+      expect(unbound.status).toBe(403);
+      expect(unbound.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
+    },
+  );
 
   it.each([
     ['from', '2026-02-30'],
@@ -421,40 +436,55 @@ describe('GET /students/me/session', () => {
     expect(invalid.body.error).toBe('VALIDATION_ERROR');
   });
 
-  it('uses the current gym day and serializes a self-train student session', async () => {
-    const ctx = await makeContext();
-    const today = shanghaiTrainingDay();
-    const startedAt = new Date('2026-07-10T08:00:00.250Z');
-    const lastSetAt = new Date('2026-07-10T09:02:03.999Z');
-    const completedAt = new Date('2026-07-10T09:02:04.000Z');
-    await ctx.db
-      .insertInto('training_sessions')
-      .values({
-        student_id: ids.selfTrainStudent,
-        session_date: today,
-        status: 'completed',
-        started_at: startedAt,
-        last_set_at: lastSetAt,
-        completed_at: completedAt,
-      })
-      .execute();
+  it.each([
+    ['Asia/Shanghai', '2026-07-12T20:00:00Z'],
+    ['Europe/London', '2026-01-13T04:00:00Z'],
+    ['Europe/London', '2026-07-13T03:00:00Z'],
+    ['America/New_York', '2026-07-13T08:00:00Z'],
+  ])(
+    'uses the current %s gym day and serializes a self-train session',
+    async (timezone, instant) => {
+      const ctx = await makeContext();
+      await ctx.db
+        .updateTable('users')
+        .set({ timezone })
+        .where('id', '=', ids.selfTrainStudent)
+        .execute();
+      const now = new Date(instant);
+      vi.useFakeTimers({ toFake: ['Date'], now });
+      const today = trainingDay(now, timezone);
+      const startedAt = new Date('2026-07-10T08:00:00.250Z');
+      const lastSetAt = new Date('2026-07-10T09:02:03.999Z');
+      const completedAt = new Date('2026-07-10T09:02:04.000Z');
+      await ctx.db
+        .insertInto('training_sessions')
+        .values({
+          student_id: ids.selfTrainStudent,
+          session_date: today,
+          status: 'completed',
+          started_at: startedAt,
+          last_set_at: lastSetAt,
+          completed_at: completedAt,
+        })
+        .execute();
 
-    const response = await request(ctx.app)
-      .get('/students/me/session')
-      .set(auth(ctx.selfTrainStudentToken));
-    const asCoach = await request(ctx.app).get('/students/me/session').set(auth(ctx.coachToken));
+      const response = await request(ctx.app)
+        .get('/students/me/session')
+        .set(auth(ctx.selfTrainStudentToken));
+      const asCoach = await request(ctx.app).get('/students/me/session').set(auth(ctx.coachToken));
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      session: {
-        status: 'completed',
-        started_at: timestamp(startedAt),
-        last_set_at: timestamp(lastSetAt),
-        completed_at: timestamp(completedAt),
-        duration_seconds: 3723,
-      },
-    });
-    expect(asCoach.status).toBe(403);
-    expect(asCoach.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
-  });
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        session: {
+          status: 'completed',
+          started_at: timestamp(startedAt),
+          last_set_at: timestamp(lastSetAt),
+          completed_at: timestamp(completedAt),
+          duration_seconds: 3723,
+        },
+      });
+      expect(asCoach.status).toBe(403);
+      expect(asCoach.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
+    },
+  );
 });

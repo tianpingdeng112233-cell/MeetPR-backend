@@ -5,7 +5,7 @@ import type { Database, SessionStatus, StudentEventType } from '../db/types';
 import { SIGNAL_POLICY } from '../domain/signal-policy';
 import type { Logger } from '../logger';
 import { pushDisplayName, tryEnqueuePushOutbox } from '../services/push-outbox';
-import { normalizeDateOnly, shanghaiTrainingDay } from '../utils/date';
+import { normalizeDateOnly, trainingDay } from '../utils/date';
 import { detectSetLogPr } from './pr-detection';
 import { sessionProgress } from './session-progress';
 
@@ -103,15 +103,17 @@ export async function recordSetLogActivity(
 ): Promise<void> {
   await db.transaction().execute(async (trx) => {
     const triggeringLog = await trx
-      .selectFrom('set_logs')
-      .select(['logged_date', 'logged_at', 'assumed'])
-      .where('id', '=', setLogId)
-      .where('student_id', '=', studentId)
+      .selectFrom('set_logs as sl')
+      .innerJoin('users as student', 'student.id', 'sl.student_id')
+      .select(['sl.logged_date', 'sl.logged_at', 'sl.assumed', 'student.timezone as timezone'])
+      .where('sl.id', '=', setLogId)
+      .where('sl.student_id', '=', studentId)
       .executeTakeFirst();
     if (!triggeringLog || triggeringLog.assumed) return;
 
     const sessionDate = normalizeDateOnly(triggeringLog.logged_date);
-    const triggerIsTimed = shanghaiTrainingDay(triggeringLog.logged_at) === sessionDate;
+    const triggerIsTimed =
+      trainingDay(triggeringLog.logged_at, triggeringLog.timezone) === sessionDate;
 
     // Seed the row before locking it: concurrent first-set hooks then
     // serialize on the row lock instead of racing the UNIQUE constraint. The
@@ -152,7 +154,9 @@ export async function recordSetLogActivity(
       .where('logged_date', '=', sessionDate)
       .where('assumed', '=', false)
       .execute();
-    const timedLogs = logs.filter((log) => shanghaiTrainingDay(log.logged_at) === sessionDate);
+    const timedLogs = logs.filter(
+      (log) => trainingDay(log.logged_at, triggeringLog.timezone) === sessionDate,
+    );
     const timestamps = timedLogs.map((log) => log.logged_at.getTime());
     const progress = await sessionProgress(trx, logs);
     // The upsert overwrites logged_at in place, so the session row is the only
@@ -241,9 +245,10 @@ export async function recordSetLogActivity(
 /** Archive every session whose inactivity is strictly over the policy timeout. */
 export async function sweepTimedOutSessions(db: Kysely<Database>, now: Date): Promise<void> {
   const candidates = await db
-    .selectFrom('training_sessions')
-    .select('id')
-    .where('status', '=', 'in_progress')
+    .selectFrom('training_sessions as ts')
+    .innerJoin('users as student', 'student.id', 'ts.student_id')
+    .select(['ts.id', 'student.timezone'])
+    .where('ts.status', '=', 'in_progress')
     .execute();
   const timeoutMs = SIGNAL_POLICY.sessionTimeoutHours * 60 * 60 * 1000;
 
@@ -271,7 +276,7 @@ export async function sweepTimedOutSessions(db: Kysely<Database>, now: Date): Pr
         .where('assumed', '=', false)
         .execute();
       const timestamps = logs
-        .filter((log) => shanghaiTrainingDay(log.logged_at) === sessionDate)
+        .filter((log) => trainingDay(log.logged_at, candidate.timezone) === sessionDate)
         .map((log) => log.logged_at.getTime());
       const windowMin = timestamps.length > 0 ? Math.min(...timestamps) : Number.POSITIVE_INFINITY;
       const windowMax = timestamps.length > 0 ? Math.max(...timestamps) : Number.NEGATIVE_INFINITY;

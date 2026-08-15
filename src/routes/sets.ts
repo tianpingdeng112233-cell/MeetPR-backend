@@ -12,11 +12,7 @@ import {
   upsertSetLog,
 } from '../handlers/sets-log';
 import { requireRole } from '../middleware/auth';
-import {
-  isIsoCalendarDate,
-  isoCalendarDateSchemaMessage,
-  shanghaiTrainingDay,
-} from '../utils/date';
+import { isIsoCalendarDate, isoCalendarDateSchemaMessage, trainingDay } from '../utils/date';
 import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
@@ -109,10 +105,6 @@ const SetLogQuerySchema = z
     message: 'to must be on or after from',
   });
 
-function dateStart(value: string): Date {
-  return new Date(`${value}T00:00:00.000Z`);
-}
-
 export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
   const router = Router();
 
@@ -147,7 +139,7 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
           plan_day_id: resolved.planDayId,
           plan_exercise_id: body.data.plan_exercise_id,
           exercise_id: resolved.exerciseId,
-          logged_date: body.data.logged_date ?? shanghaiTrainingDay(),
+          logged_date: body.data.logged_date ?? trainingDay(new Date(), resolved.timezone),
           update_logged_date: body.data.logged_date !== undefined,
           set_index: body.data.set_index,
           weight_kg: body.data.weight_kg,
@@ -248,8 +240,8 @@ export function studentSetsRouter(deps: SetsRouterDeps): ExpressRouter {
         deps.db,
         req.user.id,
         params.data.id,
-        dateStart(query.data.from),
-        dateStart(query.data.to),
+        query.data.from,
+        query.data.to,
       );
       res.status(200).json({ logs });
     }),

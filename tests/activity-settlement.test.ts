@@ -5,7 +5,11 @@ import pino from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Database } from '../src/db/types';
-import { runDailySettlement, runSessionSweep } from '../src/jobs/activity-settlement';
+import {
+  expireOpenSignalsForTimeZone,
+  runDailySettlement,
+  runSessionSweep,
+} from '../src/jobs/activity-settlement';
 import { ids, makeContext, createPublishedPlan, type TestContext } from './helpers/studentActions';
 
 function payload(value: Record<string, unknown> | string): Record<string, unknown> {
@@ -60,6 +64,45 @@ async function insertAdhocLog(
 }
 
 describe('daily activity settlement', () => {
+  it('settles only students in the requested timezone bucket', async () => {
+    const ctx = await makeContext();
+    await ctx.db
+      .updateTable('users')
+      .set({ timezone: 'Europe/London' })
+      .where('id', '=', ids.trainee)
+      .execute();
+    await ctx.db
+      .updateTable('users')
+      .set({ timezone: 'America/New_York' })
+      .where('id', '=', ids.otherStudent)
+      .execute();
+    await ctx.db
+      .insertInto('bind_requests')
+      .values({
+        student_id: ids.otherStudent,
+        coach_id: ids.coach,
+        status: 'accepted',
+        expired_at: new Date('2026-06-01T00:00:00Z'),
+      })
+      .execute();
+    const londonPlan = await createPublishedPlan(ctx);
+    const newYorkPlan = await createPublishedPlan(ctx, ids.coach, ids.otherStudent);
+    await addPlanDays(ctx.db, londonPlan.planId, [2, 3]);
+    await addPlanDays(ctx.db, newYorkPlan.planId, [2, 3]);
+
+    await runDailySettlement(
+      ctx.db,
+      '2026-05-03',
+      new Date('2026-05-04T03:05:00Z'),
+      undefined,
+      false,
+      'Europe/London',
+    );
+
+    const signals = await ctx.db.selectFrom('student_signals').select('student_id').execute();
+    expect(signals).toEqual([{ student_id: ids.trainee }]);
+  });
+
   it('enqueues missed_training after a new signal commits', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
@@ -355,6 +398,7 @@ describe('daily activity settlement', () => {
       .execute();
 
     await runDailySettlement(ctx.db, '2026-05-04', now);
+    await expireOpenSignalsForTimeZone(ctx.db, now);
     const signals = await ctx.db
       .selectFrom('student_signals')
       .select(['signal_type', 'status', 'resolved_at'])
@@ -363,6 +407,55 @@ describe('daily activity settlement', () => {
     expect(signals).toEqual([
       { signal_type: 'missed_training', status: 'auto_resolved', resolved_at: now },
       { signal_type: 'pr_congrats', status: 'expired', resolved_at: null },
+    ]);
+  });
+
+  it('expires signals only for students in the selected timezone bucket', async () => {
+    const ctx = await makeContext();
+    const now = new Date('2026-05-04T20:05:00Z');
+    await ctx.db
+      .updateTable('users')
+      .set({ timezone: 'Europe/London' })
+      .where('id', '=', ids.trainee)
+      .execute();
+    await ctx.db
+      .insertInto('student_signals')
+      .values([
+        {
+          student_id: ids.trainee,
+          coach_id: ids.coach,
+          signal_type: 'pr_congrats',
+          severity: 'green',
+          status: 'open',
+          reason: 'London signal',
+          payload: JSON.stringify({}),
+          opened_at: new Date('2026-04-01T00:00:00Z'),
+          expires_at: new Date('2026-05-01T00:00:00Z'),
+        },
+        {
+          student_id: ids.otherStudent,
+          coach_id: ids.coach,
+          signal_type: 'pr_congrats',
+          severity: 'green',
+          status: 'open',
+          reason: 'Shanghai signal',
+          payload: JSON.stringify({}),
+          opened_at: new Date('2026-04-01T00:00:00Z'),
+          expires_at: new Date('2026-05-01T00:00:00Z'),
+        },
+      ])
+      .execute();
+
+    await expireOpenSignalsForTimeZone(ctx.db, now, undefined, 'Asia/Shanghai');
+
+    const signals = await ctx.db
+      .selectFrom('student_signals')
+      .select(['student_id', 'status'])
+      .orderBy('student_id')
+      .execute();
+    expect(signals).toEqual([
+      { student_id: ids.trainee, status: 'open' },
+      { student_id: ids.otherStudent, status: 'expired' },
     ]);
   });
 
@@ -394,11 +487,15 @@ describe('daily activity settlement', () => {
     armed = true;
     const warn = vi.fn();
 
-    await runDailySettlement(ctx.db, '2026-05-03', new Date('2026-05-03T20:05:00Z'), {
-      warn,
-    });
+    const failedStudentIds = await runDailySettlement(
+      ctx.db,
+      '2026-05-03',
+      new Date('2026-05-03T20:05:00Z'),
+      { warn },
+    );
 
     expect(failedOneLock).toBe(true);
+    expect(failedStudentIds).toEqual([ids.trainee]);
     expect(warn).toHaveBeenCalledWith(
       expect.objectContaining({ gymDay: '2026-05-03' }),
       'activity_settlement_student_failed',

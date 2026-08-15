@@ -89,6 +89,7 @@ async function makeContext(pushEnabled = false): Promise<TestContext> {
       apple_user_id TEXT,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL,
+      timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
       refresh_token_jti UUID,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -391,7 +392,7 @@ describe('coached student whole-plan shifts', () => {
     expect(new Set(rows.map((row) => row.batch_id))).toEqual(new Set([response.body.batch_id]));
   });
 
-  it('stacks across UTC days from each current effective date', async () => {
+  it('stacks across requester-local days from each current effective date', async () => {
     const ctx = await makeContext();
     const { plan } = await seedPlan(ctx);
     const first = await request(ctx.app)
@@ -436,7 +437,7 @@ describe('coached student whole-plan shifts', () => {
     ).toEqual(['2026-07-12', '2026-07-14', '2026-07-16']);
   });
 
-  it('rejects a shift when UTC today is not an effective training day', async () => {
+  it('rejects a shift when requester-local today is not an effective training day', async () => {
     const ctx = await makeContext();
     const { plan } = await seedPlan(ctx, { dayOffsets: [1] });
 
@@ -503,13 +504,18 @@ describe('coached student whole-plan shifts', () => {
     expect(response.body).toEqual({ error: 'NO_ACTIVE_SHIFT' });
   });
 
-  it('rejects DELETE after the latest batch UTC creation day', async () => {
+  it.each([
+    ['Asia/Shanghai', '2026-07-10T15:59:59.000Z'],
+    ['Europe/London', '2026-07-10T22:59:59.000Z'],
+    ['America/New_York', '2026-07-11T03:59:59.000Z'],
+  ])('rejects DELETE after the latest batch %s local creation day', async (timezone, createdAt) => {
     const ctx = await makeContext();
+    await ctx.db.updateTable('users').set({ timezone }).where('id', '=', traineeId).execute();
     const { plan } = await seedPlan(ctx, { dayOffsets: [0] });
     await request(ctx.app).post(`/plans/${plan.id}/shift`).set(auth(ctx.traineeToken));
     await ctx.db
       .updateTable('plan_day_shifts')
-      .set({ created_at: new Date('2026-07-10T23:59:59.000Z') })
+      .set({ created_at: new Date(createdAt) })
       .execute();
 
     const response = await request(ctx.app)
@@ -518,6 +524,37 @@ describe('coached student whole-plan shifts', () => {
 
     expect(response.status).toBe(409);
     expect(response.body).toEqual({ error: 'UNDO_WINDOW_PASSED' });
+  });
+
+  it('uses the New York calendar date across UTC midnight for shift and undo', async () => {
+    vi.setSystemTime(new Date('2026-07-11T00:30:00.000Z'));
+    const ctx = await makeContext();
+    await ctx.db
+      .updateTable('users')
+      .set({ timezone: 'America/New_York' })
+      .where('id', '=', traineeId)
+      .execute();
+    const { plan } = await seedPlan(ctx, { dayOffsets: [0] });
+    await ctx.db
+      .updateTable('plans')
+      .set({ start_date: '2026-07-10', end_date: '2026-07-16' })
+      .where('id', '=', plan.id)
+      .execute();
+
+    const shifted = await request(ctx.app)
+      .post(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
+    await ctx.db
+      .updateTable('plan_day_shifts')
+      .set({ created_at: new Date('2026-07-10T23:59:59.000Z') })
+      .execute();
+    const undone = await request(ctx.app)
+      .delete(`/plans/${plan.id}/shift`)
+      .set(auth(ctx.traineeToken));
+
+    expect(shifted.status).toBe(201);
+    expect(shifted.body.shifted_days[0].shifted_to_date).toBe('2026-07-11');
+    expect(undone.status).toBe(204);
   });
 
   it('rejects DELETE when the course returning to today has started', async () => {

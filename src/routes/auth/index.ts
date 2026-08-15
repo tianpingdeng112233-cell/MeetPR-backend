@@ -22,6 +22,7 @@ import {
 } from '../../config';
 import type { Database, UsersTable, UserRole } from '../../db/types';
 import type { Logger } from '../../logger';
+import { requestedTimeZone } from '../../utils/timezone';
 import { BCRYPT_COST } from './constants';
 import {
   LegacyRefreshTokenPayloadSchema,
@@ -225,6 +226,11 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
   router.post(
     '/register',
     route(async (req, res) => {
+      const timezone = requestedTimeZone(req.body);
+      if (timezone === null) {
+        res.status(400).json({ error: 'INVALID_TIMEZONE' });
+        return;
+      }
       const body = RegisterBodySchema.safeParse(req.body);
       if (!body.success) {
         res.status(400).json(validationEnvelope(body.error));
@@ -248,6 +254,7 @@ export function authRouter(deps: AuthRouterDeps): ExpressRouter {
               phone: body.data.phone,
               password_hash: passwordHash,
               role: body.data.role,
+              timezone,
             })
             .returning(['id', 'phone', 'role', 'created_at'])
             .executeTakeFirstOrThrow();

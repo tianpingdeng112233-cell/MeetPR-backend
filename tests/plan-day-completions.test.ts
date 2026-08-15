@@ -94,35 +94,42 @@ describe('plan-day completion undo transaction', () => {
     expect(latest).toEqual({ type: 'deleted' });
   });
 
-  it('changes gym-day exactly at 04:00 Shanghai and reports missing completion', async () => {
-    const ctx = await makeContext();
-    const plan = await createPublishedPlan(ctx);
-    const completedAt = new Date('2026-07-12T19:59:00Z');
-    await ctx.db
-      .insertInto('plan_day_completions')
-      .values({
-        plan_day_id: plan.dayId,
-        student_id: ids.trainee,
-        source: 'manual',
-        completed_at: completedAt,
-      })
-      .execute();
+  it.each([
+    ['Asia/Shanghai', '2026-07-12T19:59:59Z', '2026-07-12T20:00:00Z'],
+    ['Europe/London', '2026-01-13T03:59:59Z', '2026-01-13T04:00:00Z'],
+    ['Europe/London', '2026-07-13T02:59:59Z', '2026-07-13T03:00:00Z'],
+    ['America/New_York', '2026-07-13T07:59:59Z', '2026-07-13T08:00:00Z'],
+  ])(
+    'changes the %s gym-day exactly at 04:00 and reports missing completion',
+    async (timezone, before, at) => {
+      const ctx = await makeContext();
+      const plan = await createPublishedPlan(ctx);
+      await ctx.db.updateTable('users').set({ timezone }).where('id', '=', ids.trainee).execute();
+      const completedAt = new Date(before);
+      await ctx.db
+        .insertInto('plan_day_completions')
+        .values({
+          plan_day_id: plan.dayId,
+          student_id: ids.trainee,
+          source: 'manual',
+          completed_at: completedAt,
+        })
+        .execute();
 
-    const crossedCutoff = await ctx.db
-      .transaction()
-      .execute((trx) =>
-        undoPlanDayCompletion(trx, plan.dayId, ids.trainee, new Date('2026-07-12T20:00:00Z')),
-      );
-    expect(crossedCutoff).toEqual({ type: 'error', error: 'UNDO_WINDOW_PASSED' });
+      const crossedCutoff = await ctx.db
+        .transaction()
+        .execute((trx) => undoPlanDayCompletion(trx, plan.dayId, ids.trainee, new Date(at)));
+      expect(crossedCutoff).toEqual({ type: 'error', error: 'UNDO_WINDOW_PASSED' });
 
-    const sameGymDay = await ctx.db
-      .transaction()
-      .execute((trx) => undoPlanDayCompletion(trx, plan.dayId, ids.trainee, completedAt));
-    expect(sameGymDay).toEqual({ type: 'deleted' });
+      const sameGymDay = await ctx.db
+        .transaction()
+        .execute((trx) => undoPlanDayCompletion(trx, plan.dayId, ids.trainee, completedAt));
+      expect(sameGymDay).toEqual({ type: 'deleted' });
 
-    const missing = await ctx.db
-      .transaction()
-      .execute((trx) => undoPlanDayCompletion(trx, plan.dayId, ids.trainee, completedAt));
-    expect(missing).toEqual({ type: 'error', error: 'NO_COMPLETION_TO_UNDO' });
-  });
+      const missing = await ctx.db
+        .transaction()
+        .execute((trx) => undoPlanDayCompletion(trx, plan.dayId, ids.trainee, completedAt));
+      expect(missing).toEqual({ type: 'error', error: 'NO_COMPLETION_TO_UNDO' });
+    },
+  );
 });

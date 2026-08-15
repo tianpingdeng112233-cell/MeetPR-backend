@@ -2,20 +2,76 @@ import bcrypt from 'bcrypt';
 import { Router, type Router as ExpressRouter } from 'express';
 import { sql, type Kysely } from 'kysely';
 import type { Logger } from 'pino';
+import { z } from 'zod';
 
 import type { Database } from '../db/types';
 import { requireRole } from '../middleware/auth';
 import { BCRYPT_COST } from './auth/constants';
 import { ChangePasswordBodySchema } from './auth/schemas';
 import { route, validationEnvelope } from './http';
+import { isSupportedTimeZone } from '../utils/timezone';
 
 export interface MeRouterDeps {
   db: Kysely<Database>;
   logger: Logger;
 }
 
+const TimezoneBodySchema = z.object({ timezone: z.unknown() }).strict();
+
 export function meRouter(deps: MeRouterDeps): ExpressRouter {
   const router = Router();
+
+  router.patch(
+    '/timezone',
+    route(async (req, res) => {
+      if (!req.user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      const body = TimezoneBodySchema.safeParse(req.body);
+      if (!body.success) {
+        const onlyTimezoneIssue = body.error.issues.every(
+          (issue) => issue.path.length === 1 && issue.path[0] === 'timezone',
+        );
+        res
+          .status(400)
+          .json(onlyTimezoneIssue ? { error: 'INVALID_TIMEZONE' } : validationEnvelope(body.error));
+        return;
+      }
+      if (!isSupportedTimeZone(body.data.timezone)) {
+        res.status(400).json({ error: 'INVALID_TIMEZONE' });
+        return;
+      }
+      const timezone = body.data.timezone;
+
+      const userId = req.user.id;
+      const previousTimezone = await deps.db.transaction().execute(async (trx) => {
+        const user = await trx
+          .selectFrom('users')
+          .select('timezone')
+          .where('id', '=', userId)
+          .forUpdate()
+          .executeTakeFirst();
+        if (!user) return null;
+        if (user.timezone !== timezone) {
+          await trx
+            .updateTable('users')
+            .set({ timezone, updated_at: sql<Date>`now()` })
+            .where('id', '=', userId)
+            .execute();
+        }
+        return user.timezone;
+      });
+      if (previousTimezone === null) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      if (previousTimezone !== timezone) {
+        deps.logger.info({ userId, previousTimezone, timezone }, 'user_timezone_changed');
+      }
+      res.status(204).end();
+    }),
+  );
 
   router.get(
     '/',
@@ -59,8 +115,8 @@ export function meRouter(deps: MeRouterDeps): ExpressRouter {
         return;
       }
 
-      // The 17 users FKs are all ON DELETE CASCADE — one statement clears
-      // every table. Repeat deletes affect 0 rows and stay 204 (idempotent).
+      // Every users FK is ON DELETE CASCADE (new tables must keep this) — one
+      // statement clears every table. Repeat deletes affect 0 rows, stay 204.
       await deps.db.deleteFrom('users').where('id', '=', req.user.id).execute();
       deps.logger.info({ userId: req.user.id, role: req.user.role }, 'account_deleted');
       res.status(204).end();

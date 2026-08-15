@@ -9,7 +9,7 @@ import {
   type LiftFamily,
   type SquatStance,
 } from '../db/types';
-import { shanghaiTrainingDay } from '../utils/date';
+import { trainingDay } from '../utils/date';
 import { dateOnly, decimal, timestamp } from './serialization';
 
 export const EXERCISE_STATS_LIMITS = {
@@ -175,6 +175,15 @@ async function onboardingSnapshot(db: Kysely<Database>, studentId: string) {
     squat_stance: row?.squat_stance ?? null,
     deadlift_style: row?.deadlift_style ?? null,
   };
+}
+
+async function studentTimezone(db: Kysely<Database>, studentId: string): Promise<string> {
+  const user = await db
+    .selectFrom('users')
+    .select('timezone')
+    .where('id', '=', studentId)
+    .executeTakeFirstOrThrow();
+  return user.timezone;
 }
 
 function utcDate(value: string | Date): Date {
@@ -469,10 +478,11 @@ export async function fetchExerciseStatsOverview(
   coachId: string,
   studentId: string,
 ): Promise<ExerciseStatsOverviewResponse> {
-  const [logs, onboarding, planDates] = await Promise.all([
+  const [logs, onboarding, planDates, timezone] = await Promise.all([
     fetchScopedLogs(db, coachId, studentId),
     onboardingSnapshot(db, studentId),
     recentPlanDates(db, coachId, studentId),
+    studentTimezone(db, studentId),
   ]);
 
   const byExercise = new Map<
@@ -492,7 +502,7 @@ export async function fetchExerciseStatsOverview(
     }
   }
 
-  const today = shanghaiTrainingDay();
+  const today = trainingDay(new Date(), timezone);
   const windowStart = utcDate(today);
   windowStart.setUTCDate(windowStart.getUTCDate() - (E1RM_POLICY.rollingWindowDays - 1));
   const start = windowStart.toISOString().slice(0, 10);

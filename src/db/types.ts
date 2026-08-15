@@ -210,6 +210,7 @@ export interface UsersTable {
   apple_user_id: NullableColumn<string>;
   password_hash: string;
   role: UserRole;
+  timezone: Generated<string>;
   refresh_token_jti: NullableColumn<string>;
   is_test: Generated<boolean>;
   created_at: Generated<Date>;
@@ -670,6 +671,14 @@ export interface NotificationOutboxTable {
   delivered_at: NullableColumn<Date>;
 }
 
+export interface DigestWatermarksTable {
+  coach_id: string;
+  student_id: string;
+  // DATE-as-text in production; pg-mem returns a Date in integration tests.
+  last_gym_day: ColumnType<string | Date, string, string>;
+  updated_at: TimestampColumn;
+}
+
 export interface DeviceTokensTable {
   id: Generated<string>;
   user_id: string;
@@ -804,6 +813,7 @@ export interface Database {
   messages: MessagesTable;
   conversation_reads: ConversationReadsTable;
   notification_outbox: NotificationOutboxTable;
+  digest_watermarks: DigestWatermarksTable;
   device_tokens: DeviceTokensTable;
   training_sessions: TrainingSessionsTable;
   student_events: StudentEventsTable;

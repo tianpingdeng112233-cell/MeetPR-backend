@@ -257,11 +257,21 @@ describe('sequence progression completion undo', () => {
     expect(response.body).toEqual({ error: 'NO_COMPLETION_TO_UNDO' });
   });
 
-  it('uses the 04:00 Shanghai gym-day boundary for the undo window', async () => {
-    const beforeCutoff = new Date('2026-07-12T19:59:00.000Z');
+  it.each([
+    ['Asia/Shanghai', '2026-07-12T19:59:59Z', '2026-07-12T20:00:00Z'],
+    ['Europe/London', '2026-01-13T03:59:59Z', '2026-01-13T04:00:00Z'],
+    ['Europe/London', '2026-07-13T02:59:59Z', '2026-07-13T03:00:00Z'],
+    ['America/New_York', '2026-07-13T07:59:59Z', '2026-07-13T08:00:00Z'],
+  ])('uses the %s 04:00 gym-day boundary for the undo window', async (timezone, before, at) => {
+    const beforeCutoff = new Date(before);
 
     const allowedCtx = await makeContext();
     const allowedPlan = await createPublishedPlan(allowedCtx);
+    await allowedCtx.db
+      .updateTable('users')
+      .set({ timezone })
+      .where('id', '=', ids.trainee)
+      .execute();
     await allowedCtx.db
       .insertInto('plan_day_completions')
       .values({
@@ -281,6 +291,11 @@ describe('sequence progression completion undo', () => {
     const blockedCtx = await makeContext();
     const blockedPlan = await createPublishedPlan(blockedCtx);
     await blockedCtx.db
+      .updateTable('users')
+      .set({ timezone })
+      .where('id', '=', ids.trainee)
+      .execute();
+    await blockedCtx.db
       .insertInto('plan_day_completions')
       .values({
         plan_day_id: blockedPlan.dayId,
@@ -289,7 +304,7 @@ describe('sequence progression completion undo', () => {
         completed_at: beforeCutoff,
       })
       .execute();
-    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-12T20:00:00.000Z') });
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(at) });
     const blocked = await request(blockedCtx.app)
       .delete(`/plans/days/${blockedPlan.dayId}/complete`)
       .set(auth(blockedCtx.traineeToken));
@@ -299,6 +314,33 @@ describe('sequence progression completion undo', () => {
 });
 
 describe('sequence progression backfill and serialization', () => {
+  it.each([
+    ['Asia/Shanghai', '2026-07-10T16:30:00Z', 1],
+    ['Europe/London', '2026-07-10T23:30:00Z', 1],
+    ['America/New_York', '2026-07-11T00:30:00Z', 0],
+  ])(
+    'uses the %s requester calendar date for imported-history windows',
+    async (timezone, instant, expectedCreated) => {
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(instant) });
+      const ctx = await makeContext();
+      const plan = await createPublishedPlan(ctx);
+      await ctx.db.updateTable('users').set({ timezone }).where('id', '=', ids.coach).execute();
+      await ctx.db
+        .updateTable('plans')
+        .set({ start_date: '2026-07-10', end_date: '2026-07-31' })
+        .where('id', '=', plan.planId)
+        .execute();
+
+      const response = await request(ctx.app)
+        .post(`/plans/${plan.planId}/imported-history`)
+        .set(auth(ctx.coachToken))
+        .send({ confirm: true });
+
+      expect(response.status).toBe(200);
+      expect(response.body.created_set_logs).toBe(expectedCreated);
+    },
+  );
+
   it('backfills old assumed days once and leaves the first unimported day incomplete', async () => {
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-08-07T12:00:00.000Z') });
     const ctx = await makeContext();

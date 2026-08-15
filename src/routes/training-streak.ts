@@ -5,11 +5,7 @@ import { z } from 'zod';
 import type { Database } from '../db/types';
 import { getStudentTrainingStreak } from '../handlers/training-streak';
 import { requireRole } from '../middleware/auth';
-import {
-  isIsoCalendarDate,
-  isoCalendarDateSchemaMessage,
-  shanghaiTrainingDay,
-} from '../utils/date';
+import { isIsoCalendarDate, isoCalendarDateSchemaMessage, trainingDay } from '../utils/date';
 import { route, validationEnvelope } from './http';
 
 const DateSchema = z
@@ -39,9 +35,17 @@ export function studentTrainingStreakRouter(deps: { db: Kysely<Database> }): Exp
         return;
       }
 
-      // training_sessions.session_date is stored with this exact Shanghai
-      // 04:00 cutoff, so the default must use the same gym-day clock.
-      const asOf = query.data.as_of ?? shanghaiTrainingDay();
+      const student = await deps.db
+        .selectFrom('users')
+        .select('timezone')
+        .where('id', '=', req.user.id)
+        .executeTakeFirst();
+      if (!student) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      // training_sessions.session_date uses the student's 04:00 gym-day.
+      const asOf = query.data.as_of ?? trainingDay(new Date(), student.timezone);
       const streak = await getStudentTrainingStreak(deps.db, req.user.id, asOf);
 
       res.status(200).json({
