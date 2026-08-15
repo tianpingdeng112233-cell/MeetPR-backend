@@ -1,6 +1,6 @@
 # 042 — 全用户时区化(gym-day / 结算 / 推送全按用户所在时区)
 
-- **Status: Draft**(2026-08-15 起草,⚖️同日 David 拍板方案 A:「覆盖每一个时区,这是一个全球化产品」;等终审)
+- **Status: InProgress**(2026-08-15 起草,⚖️同日 David 拍板方案 A 并终审通过,按现稿开工)
 - **级别**: T3(一条 additive 迁移 + cron 调度重构 + ~10 文件口径改造 + 约 8 组测试基线重写)
 - **侦察依据**: `~/Projects/scratch/meetpr-uk-timezone-recon-2026-08-15.md`(全量日期边界清单,行号锚 staging@41a04e5)
 
