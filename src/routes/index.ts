@@ -83,7 +83,11 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
     setsRouter({ db: deps.db, pushEnabled: deps.config.PUSH_ENABLED }),
   );
   app.use('/feedback', deps.requireAuth, feedbackRouter({ db: deps.db }));
-  app.use('/me', deps.requireAuth, meRouter({ db: deps.db, logger: deps.logger }));
+  app.use(
+    '/me',
+    deps.requireAuth,
+    meRouter({ config: deps.config, db: deps.db, logger: deps.logger }),
+  );
   app.use('/devices', deps.requireAuth, devicesRouter({ db: deps.db }));
   app.use(
     '/conversations',

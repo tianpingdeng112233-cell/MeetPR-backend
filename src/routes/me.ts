@@ -4,16 +4,21 @@ import { sql, type Kysely } from 'kysely';
 import type { Logger } from 'pino';
 import { z } from 'zod';
 
+import type { Config } from '../config';
 import type { Database } from '../db/types';
 import { requireRole } from '../middleware/auth';
+import { appleCredentials, revokeAppleRefreshToken } from '../services/apple';
+import { storePasswordAndRevokeSessions } from '../services/password';
 import { BCRYPT_COST } from './auth/constants';
 import { ChangePasswordBodySchema } from './auth/schemas';
 import { route, validationEnvelope } from './http';
 import { isSupportedTimeZone } from '../utils/timezone';
 
 export interface MeRouterDeps {
+  config: Pick<Config, 'APPLE_CLIENT_ID' | 'SIWA_KEY_ID' | 'SIWA_TEAM_ID' | 'SIWA_PRIVATE_KEY'>;
   db: Kysely<Database>;
   logger: Logger;
+  fetch?: typeof fetch;
 }
 
 const TimezoneBodySchema = z.object({ timezone: z.unknown() }).strict();
@@ -115,6 +120,29 @@ export function meRouter(deps: MeRouterDeps): ExpressRouter {
         return;
       }
 
+      const appleIdentity = await deps.db
+        .selectFrom('user_identities')
+        .select('apple_refresh_token')
+        .where('user_id', '=', req.user.id)
+        .where('provider', '=', 'apple')
+        .executeTakeFirst();
+      if (appleIdentity?.apple_refresh_token) {
+        const credentials = appleCredentials(deps.config);
+        if (credentials === null) {
+          deps.logger.warn({ userId: req.user.id }, 'apple_token_revoke_not_configured');
+        } else {
+          try {
+            await revokeAppleRefreshToken(
+              credentials,
+              appleIdentity.apple_refresh_token,
+              deps.fetch,
+            );
+          } catch (error: unknown) {
+            deps.logger.error({ err: error, userId: req.user.id }, 'apple_token_revoke_failed');
+          }
+        }
+      }
+
       // Every users FK is ON DELETE CASCADE (new tables must keep this) — one
       // statement clears every table. Repeat deletes affect 0 rows, stay 204.
       await deps.db.deleteFrom('users').where('id', '=', req.user.id).execute();
@@ -159,23 +187,7 @@ export function meRouter(deps: MeRouterDeps): ExpressRouter {
       const passwordHash = await bcrypt.hash(body.data.new_password, BCRYPT_COST);
       const userId = req.user.id;
       await deps.db.transaction().execute(async (trx) => {
-        await trx
-          .updateTable('users')
-          .set({
-            password_hash: passwordHash,
-            // The legacy column doubles as a session-backfill credential in
-            // /auth/refresh; clear it so pre-migration tokens die here too.
-            refresh_token_jti: null,
-            updated_at: sql<Date>`now()`,
-          })
-          .where('id', '=', userId)
-          .execute();
-        await trx
-          .updateTable('sessions')
-          .set({ revoked_at: sql<Date>`now()` })
-          .where('user_id', '=', userId)
-          .where('revoked_at', 'is', null)
-          .execute();
+        await storePasswordAndRevokeSessions(trx, userId, passwordHash);
       });
       deps.logger.info({ userId }, 'password_changed');
       res.status(204).end();

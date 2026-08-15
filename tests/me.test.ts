@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto';
 
 import jwt from 'jsonwebtoken';
 import type { SignOptions } from 'jsonwebtoken';
-import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
 import { auth, config, ids, makeContext } from './helpers/bindEval';
+import { request } from './helpers/inMemoryRequest';
 
 describe('DELETE /me (spec 011 §1)', () => {
   it('deletes a student account and cascades their data', async () => {

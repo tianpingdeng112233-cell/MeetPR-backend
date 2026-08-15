@@ -1,4 +1,5 @@
 import rateLimit, { type RateLimitRequestHandler } from 'express-rate-limit';
+import type { Request, Response } from 'express';
 
 import type { Config } from '../config';
 
@@ -46,6 +47,51 @@ export function createEventsRateLimit(
     },
     // anon_id is the real key; the IP fallback is incidental, so skip the
     // library's default-keyGenerator IP validation.
+    validate: { ip: false },
+  });
+}
+
+const EMAIL_AUTH_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+
+function emailKey(req: Request): string {
+  const email = (req.body as { email?: unknown } | undefined)?.email;
+  return typeof email === 'string' ? email.trim().toLowerCase() : 'invalid-email';
+}
+
+function silentNoContent(_req: Request, res: Response): void {
+  res.status(204).end();
+}
+
+export function createForgotEmailRateLimit(): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: EMAIL_AUTH_RATE_LIMIT_WINDOW_MS,
+    limit: 3,
+    standardHeaders: false,
+    legacyHeaders: false,
+    keyGenerator: emailKey,
+    handler: silentNoContent,
+    validate: { ip: false },
+  });
+}
+
+export function createForgotIpRateLimit(): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: EMAIL_AUTH_RATE_LIMIT_WINDOW_MS,
+    limit: 10,
+    standardHeaders: false,
+    legacyHeaders: false,
+    handler: silentNoContent,
+  });
+}
+
+export function createResetEmailRateLimit(): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: EMAIL_AUTH_RATE_LIMIT_WINDOW_MS,
+    limit: 10,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'rate_limited' },
+    keyGenerator: emailKey,
     validate: { ip: false },
   });
 }

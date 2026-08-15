@@ -51,6 +51,11 @@ export type AuthConfig = Pick<
   | 'SELF_SIGNUP_ROLES'
   | 'APPLE_CLIENT_ID'
   | 'GOOGLE_CLIENT_ID'
+  | 'RESEND_API_KEY'
+  | 'EMAIL_FROM'
+  | 'SIWA_KEY_ID'
+  | 'SIWA_TEAM_ID'
+  | 'SIWA_PRIVATE_KEY'
 >;
 
 interface AuthRouterDeps {
