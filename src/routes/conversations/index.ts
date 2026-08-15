@@ -8,12 +8,13 @@ import { z } from 'zod';
 import { resolveCanonicalAcceptedBond, resolveCanonicalAcceptedBonds } from '../../db/bonds';
 import type { ConversationsTable, Database, MessagesTable } from '../../db/types';
 import { bodyMatchesSetRef, SetRefV1Schema, type SetRefV1 } from '../../domain/set-ref';
+import { requesterOssSignOptions } from '../../handlers/oss-sign-options';
 import { timestamp } from '../../handlers/serialization';
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
 import { chatMessageEvent, chatReadEvent } from '../../realtime/events';
 import type { RealtimeHub } from '../../realtime/hub';
-import type { OssService } from '../../services/oss';
+import type { OssService, OssSignOptions } from '../../services/oss';
 import { pushDisplayName, tryEnqueuePushOutbox } from '../../services/push-outbox';
 import { uuidEquals } from '../../utils/uuid';
 import { route, validationEnvelope } from '../http';
@@ -250,18 +251,19 @@ async function serializeMessage(
     video_oss_key: string | null;
   },
   oss: OssService | undefined,
+  signOptions: OssSignOptions,
   signedVideoUrls = new Map<string, Promise<string>>(),
 ): Promise<MessageWire> {
   const isImage = row.kind === 'image';
   const imageUrl =
     isImage && oss && row.attachment_oss_key !== null
-      ? await oss.signGetUrl(row.attachment_oss_key, IMAGE_URL_TTL_SECONDS)
+      ? await oss.signGetUrl(row.attachment_oss_key, IMAGE_URL_TTL_SECONDS, signOptions)
       : null;
   let videoUrl: string | null = null;
   if (row.video_id !== null && oss && row.video_oss_key !== null) {
     let signedUrl = signedVideoUrls.get(row.video_oss_key);
     if (!signedUrl) {
-      signedUrl = oss.signGetUrl(row.video_oss_key, IMAGE_URL_TTL_SECONDS);
+      signedUrl = oss.signGetUrl(row.video_oss_key, IMAGE_URL_TTL_SECONDS, signOptions);
       signedVideoUrls.set(row.video_oss_key, signedUrl);
     }
     videoUrl = await signedUrl;
@@ -304,6 +306,7 @@ async function fetchMessageWire(
   db: Kysely<Database>,
   messageId: string,
   oss: OssService | undefined,
+  signOptions: OssSignOptions,
 ): Promise<MessageWire> {
   const row = await db
     .selectFrom('messages')
@@ -323,6 +326,7 @@ async function fetchMessageWire(
       video_oss_key: row.video_id === null ? null : (attachmentOssKeys.get(row.video_id) ?? null),
     },
     oss,
+    signOptions,
   );
 }
 
@@ -661,6 +665,11 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
               db,
               selected.flatMap((message) => [message.attachment_id, message.video_id]),
             );
+      const signOptions = await requesterOssSignOptions(db, oss, user.id, logger);
+      if (signOptions === null) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
       const signedVideoUrls = new Map<string, Promise<string>>();
       const messages = await Promise.all(
         selected.map((message) =>
@@ -677,6 +686,7 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
                   : (attachmentOssKeys.get(message.video_id) ?? null),
             },
             oss,
+            signOptions,
             signedVideoUrls,
           ),
         ),
@@ -716,6 +726,11 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
       const body = SendMessageBodySchema.safeParse(req.body);
       if (!body.success) {
         res.status(400).json(validationEnvelope(body.error));
+        return;
+      }
+      const signOptions = await requesterOssSignOptions(db, oss, user.id, logger);
+      if (signOptions === null) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
         return;
       }
 
@@ -1066,7 +1081,7 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
         }
       }
 
-      const message = await fetchMessageWire(db, result.message.id, oss);
+      const message = await fetchMessageWire(db, result.message.id, oss, signOptions);
       res.status(result.created ? 201 : 200).json({ message });
     }),
   );

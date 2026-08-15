@@ -165,6 +165,29 @@ describe('chat_image messages and URL authorization', () => {
       messages: [{ image_url: null, image_expires_in: 900 }],
     });
   });
+
+  it('signs conversation attachment URLs for the current Global requester', async () => {
+    const ctx = await makeUploadsContext({
+      accelerateEndpoint: 'https://oss-accelerate.aliyuncs.com',
+    });
+    const conversationId = await createConversation(ctx);
+    const attachmentId = await createReadyChatImage(ctx, ctx.traineeToken);
+    await request(ctx.app)
+      .post(`/conversations/${conversationId}/messages`)
+      .set(auth(ctx.traineeToken))
+      .send({ kind: 'image', attachment_id: attachmentId, client_id: 'accelerated-image' });
+    await ctx.db.updateTable('users').set({ phone: null }).where('id', '=', ids.coach).execute();
+
+    const response = await request(ctx.app)
+      .get(`/conversations/${conversationId}/messages`)
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(200);
+    expect(new URL(response.body.messages[0].image_url as string).hostname).toBe(
+      'oss-accelerate.aliyuncs.com',
+    );
+    expect(response.body.messages[0].image_expires_in).toBe(900);
+  });
 });
 
 describe('referenced chat_image deletion', () => {

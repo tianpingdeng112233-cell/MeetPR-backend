@@ -22,6 +22,26 @@ describe('GET /uploads/:attachmentId/url', () => {
     expect(ctx.oss.calls.signGet).toEqual([{ key: expect.any(String), expiresSeconds: 900 }]);
   });
 
+  it('selects the GET host from the current requester rather than the attachment owner', async () => {
+    const ctx = await makeUploadsContext({
+      accelerateEndpoint: 'https://oss-accelerate.aliyuncs.com',
+    });
+    const attachmentId = await createReadyAttachment(ctx, ctx.traineeToken);
+    await ctx.db.updateTable('users').set({ phone: null }).where('id', '=', ids.trainee).execute();
+
+    const globalOwner = await request(ctx.app)
+      .get(`/uploads/${attachmentId}/url`)
+      .set(auth(ctx.traineeToken));
+    const domesticCoach = await request(ctx.app)
+      .get(`/uploads/${attachmentId}/url`)
+      .set(auth(ctx.coachToken));
+
+    expect(new URL(globalOwner.body.url as string).hostname).toBe('oss-accelerate.aliyuncs.com');
+    expect(new URL(domesticCoach.body.url as string).hostname).toBe('fake-oss.invalid');
+    expect(globalOwner.body.expires_in).toBe(900);
+    expect(domesticCoach.body.expires_in).toBe(900);
+  });
+
   it('allows the accepted-bind coach of the owner', async () => {
     const ctx = await makeUploadsContext();
     // trainee has accepted binds with both coach and otherCoach (fixture).
