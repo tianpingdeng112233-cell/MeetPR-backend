@@ -19,6 +19,7 @@ export interface FakeOss {
 }
 
 export interface FakeOssOptions {
+  accelerateEndpoint?: string;
   completeError?: Error;
   abortError?: Error;
   deleteError?: Error;
@@ -44,17 +45,23 @@ export function makeFakeOss(options: FakeOssOptions = {}): FakeOss {
   const completedSizes = new Map<string, number>();
   const hasHeadObjectResult = Object.prototype.hasOwnProperty.call(options, 'headObjectResult');
   const service: OssService = {
+    accelerationEnabled: options.accelerateEndpoint !== undefined,
+
     initiateMultipartUpload(key, contentType) {
       calls.initiate.push({ key, contentType });
       uploadCounter += 1;
       return Promise.resolve(`fake-upload-${String(uploadCounter)}`);
     },
-    signPartUrls(key, uploadId, partCount, expiresSeconds) {
+    signPartUrls(key, uploadId, partCount, expiresSeconds, signOptions) {
       calls.signParts.push({ key, uploadId, partCount, expiresSeconds });
+      const host =
+        signOptions?.useAccelerateEndpoint === true && options.accelerateEndpoint !== undefined
+          ? new URL(options.accelerateEndpoint).host
+          : 'fake-oss.invalid';
       return Promise.resolve(
         Array.from({ length: partCount }, (_, index) => ({
           part_number: index + 1,
-          url: `https://fake-oss.invalid/${key}?partNumber=${String(index + 1)}&uploadId=${uploadId}&expires=${String(expiresSeconds)}`,
+          url: `https://${host}/${key}?partNumber=${String(index + 1)}&uploadId=${uploadId}&expires=${String(expiresSeconds)}`,
         })),
       );
     },
@@ -69,11 +76,13 @@ export function makeFakeOss(options: FakeOssOptions = {}): FakeOss {
       if (options.abortError) return Promise.reject(options.abortError);
       return Promise.resolve();
     },
-    signGetUrl(key, expiresSeconds) {
+    signGetUrl(key, expiresSeconds, signOptions) {
       calls.signGet.push({ key, expiresSeconds });
-      return Promise.resolve(
-        `https://fake-oss.invalid/${key}?expires=${String(expiresSeconds)}&sig=get`,
-      );
+      const host =
+        signOptions?.useAccelerateEndpoint === true && options.accelerateEndpoint !== undefined
+          ? new URL(options.accelerateEndpoint).host
+          : 'fake-oss.invalid';
+      return Promise.resolve(`https://${host}/${key}?expires=${String(expiresSeconds)}&sig=get`);
     },
     headObject(key) {
       calls.head.push({ key });

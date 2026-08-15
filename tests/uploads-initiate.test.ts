@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
-import { auth, ids } from './helpers/studentActions';
+import { auth, ids, signToken } from './helpers/studentActions';
 import { initiateUpload, makeUploadsContext } from './helpers/uploads';
 
 const MB = 1024 * 1024;
@@ -44,6 +44,48 @@ describe('POST /uploads/initiate', () => {
       { key: row.oss_key, uploadId: 'fake-upload-1', partCount: 3, expiresSeconds: 3600 },
     ]);
     expect(ctx.oss.calls.initiate).toEqual([{ key: row.oss_key, contentType: 'video/mp4' }]);
+  });
+
+  it('keeps domestic and Global part URLs on the default host when acceleration is disabled', async () => {
+    const ctx = await makeUploadsContext();
+
+    const domestic = await initiateUpload(ctx, ctx.coachToken, { part_count: 1 });
+    await ctx.db.updateTable('users').set({ phone: null }).where('id', '=', ids.trainee).execute();
+    const global = await initiateUpload(ctx, ctx.traineeToken, { part_count: 1 });
+
+    expect(new URL(domestic.body.part_urls[0].url as string).hostname).toBe('fake-oss.invalid');
+    expect(new URL(global.body.part_urls[0].url as string).hostname).toBe('fake-oss.invalid');
+  });
+
+  it('uses accelerated part URLs only for a Global requester when acceleration is enabled', async () => {
+    const ctx = await makeUploadsContext({
+      accelerateEndpoint: 'https://oss-accelerate.aliyuncs.com',
+    });
+    await ctx.db.updateTable('users').set({ phone: null }).where('id', '=', ids.trainee).execute();
+
+    const global = await initiateUpload(ctx, ctx.traineeToken, { part_count: 1 });
+    const domestic = await initiateUpload(ctx, ctx.coachToken, { part_count: 1 });
+
+    expect(new URL(global.body.part_urls[0].url as string).hostname).toBe(
+      'oss-accelerate.aliyuncs.com',
+    );
+    expect(new URL(domestic.body.part_urls[0].url as string).hostname).toBe('fake-oss.invalid');
+  });
+
+  it('maps a stale authenticated user to the existing auth failure path', async () => {
+    const ctx = await makeUploadsContext({
+      accelerateEndpoint: 'https://oss-accelerate.aliyuncs.com',
+    });
+
+    const response = await initiateUpload(
+      ctx,
+      signToken('99999999-0000-4000-8000-000000000099', 'coached_student'),
+      { part_count: 1 },
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'AUTH_INVALID_TOKEN' });
+    expect(ctx.oss.calls.initiate).toHaveLength(0);
   });
 
   it('initiates onboarding kinds and derives the extension from content_type', async () => {

@@ -383,12 +383,13 @@ describe('GET /videos/:videoId/markers', () => {
   });
 
   it('lets the student read annotation URLs and signs each annotated marker separately', async () => {
-    const oss = makeFakeOss();
+    const oss = makeFakeOss({ accelerateEndpoint: 'https://oss-accelerate.aliyuncs.com' });
     const ctx = await makeContext(undefined, { oss: oss.service });
     const videoId = await seedVideo(ctx);
     const annotation = await seedAnnotation(ctx);
     await seedMarker(ctx, videoId, { timeMs: 100, attachmentId: annotation.id });
     await seedMarker(ctx, videoId, { timeMs: 200, attachmentId: annotation.id });
+    await ctx.db.updateTable('users').set({ phone: null }).where('id', '=', ids.trainee).execute();
 
     const response = await request(ctx.app)
       .get(`/videos/${videoId}/markers`)
@@ -398,12 +399,16 @@ describe('GET /videos/:videoId/markers', () => {
     expect(response.body.markers).toEqual([
       expect.objectContaining({
         attachment_id: annotation.id,
-        annotation_url: expect.stringContaining(annotation.ossKey),
+        annotation_url: expect.stringContaining(
+          `https://oss-accelerate.aliyuncs.com/${annotation.ossKey}`,
+        ),
         annotation_expires_in: 900,
       }),
       expect.objectContaining({
         attachment_id: annotation.id,
-        annotation_url: expect.stringContaining(annotation.ossKey),
+        annotation_url: expect.stringContaining(
+          `https://oss-accelerate.aliyuncs.com/${annotation.ossKey}`,
+        ),
         annotation_expires_in: 900,
       }),
     ]);

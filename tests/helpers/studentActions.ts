@@ -123,7 +123,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
   mem.public.none(`
     CREATE TABLE users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      phone TEXT NOT NULL UNIQUE,
+      phone TEXT UNIQUE,
       apple_user_id TEXT,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL,

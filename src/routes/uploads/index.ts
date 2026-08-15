@@ -5,6 +5,7 @@ import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 
 import type { Database } from '../../db/types';
+import { requesterOssSignOptions } from '../../handlers/oss-sign-options';
 import { resolveSetVideoAccess } from '../../handlers/set-video-access';
 import {
   coachHasAcceptedBind,
@@ -279,6 +280,12 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
         };
       }
 
+      const signOptions = await requesterOssSignOptions(db, oss, req.user.id, logger);
+      if (signOptions === null) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
       const ossKey = `attachments/${req.user.id}/${randomUUID()}${extension}`;
       const uploadId = await oss.initiateMultipartUpload(ossKey, body.data.content_type);
 
@@ -303,6 +310,7 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
           uploadId,
           body.data.part_count,
           PART_URL_TTL_SECONDS,
+          signOptions,
         );
       } catch (err) {
         // If the DB write itself fails, the client never receives an upload ID;
@@ -719,7 +727,13 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
         return;
       }
 
-      const url = await oss.signGetUrl(attachment.oss_key, GET_URL_TTL_SECONDS);
+      const signOptions = await requesterOssSignOptions(db, oss, req.user.id, logger);
+      if (signOptions === null) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      const url = await oss.signGetUrl(attachment.oss_key, GET_URL_TTL_SECONDS, signOptions);
       res.status(200).json({ url, expires_in: GET_URL_TTL_SECONDS });
     }),
   );
