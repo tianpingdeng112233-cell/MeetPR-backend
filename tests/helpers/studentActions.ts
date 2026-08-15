@@ -123,10 +123,11 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
   mem.public.none(`
     CREATE TABLE users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      phone TEXT NOT NULL UNIQUE,
+      phone TEXT UNIQUE,
       apple_user_id TEXT,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL,
+      timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
       refresh_token_jti UUID,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -443,6 +444,14 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       delivered_at TIMESTAMPTZ,
       UNIQUE (event_type, aggregate_id, recipient_id)
+    );
+
+    CREATE TABLE digest_watermarks (
+      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      last_gym_day DATE NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (coach_id, student_id)
     );
 
     -- Activity-ledger card 1 schema. Keep in sync with migration 0041.

@@ -34,7 +34,7 @@ import { notifyPlanPublished } from '../../services/notifications';
 import { pushDisplayName, tryEnqueuePushOutbox } from '../../services/push-outbox';
 import { calculateTrainingMaxKg, formatTrainingMaxKg } from '../../services/trainingMax';
 import { uuidEquals } from '../../utils/uuid';
-import { normalizeDateOnly, utcDate, utcDateOnly } from '../../utils/date';
+import { localCalendarDate, normalizeDateOnly, utcDate, utcDateOnly } from '../../utils/date';
 import { visibleExerciseForCoach, visibleExercisesForCoach } from '../exercises';
 import { route, validationEnvelope } from '../http';
 import {
@@ -384,11 +384,18 @@ function addUtcDaysToDateOnly(value: string, days: number): string {
 async function lockPlanShiftContext(
   db: Transaction<Database>,
   planId: string,
-): Promise<{ plan: PlanRow; days: PlanDayRow[]; shifts: PlanDayShiftRow[] } | null> {
+): Promise<{
+  plan: PlanRow;
+  days: PlanDayRow[];
+  shifts: PlanDayShiftRow[];
+  timezone: string;
+} | null> {
   const plan = await db
-    .selectFrom('plans')
-    .selectAll()
-    .where('id', '=', planId)
+    .selectFrom('plans as p')
+    .innerJoin('users as student', 'student.id', 'p.trainee_id')
+    .selectAll('p')
+    .select('student.timezone as student_timezone')
+    .where('p.id', '=', planId)
     .forUpdate()
     .executeTakeFirst();
   if (!plan) return null;
@@ -414,7 +421,7 @@ async function lockPlanShiftContext(
           .orderBy('created_at', 'asc')
           .orderBy('id', 'asc')
           .execute();
-  return { plan, days, shifts };
+  return { plan, days, shifts, timezone: plan.student_timezone };
 }
 
 async function createWholePlanShift(
@@ -440,7 +447,7 @@ async function createWholePlanShift(
   }
   const coachId = context.plan.coach_id;
 
-  const today = utcDateOnly(new Date());
+  const today = localCalendarDate(new Date(), context.timezone);
   const effectiveDays = effectivePlanDays(context.plan, context.days, context.shifts);
   const todayDay = effectiveDays.find((item) => item.effectiveDate === today);
   if (!todayDay) {
@@ -493,8 +500,8 @@ async function undoLatestWholePlanShift(
   if (!firstBatchRow) {
     return { type: 'error', error: 'NO_ACTIVE_SHIFT' };
   }
-  const today = utcDateOnly(new Date());
-  if (utcDateOnly(firstBatchRow.created_at) !== today) {
+  const today = localCalendarDate(new Date(), context.timezone);
+  if (localCalendarDate(firstBatchRow.created_at, context.timezone) !== today) {
     return { type: 'error', error: 'UNDO_WINDOW_PASSED' };
   }
 
@@ -525,6 +532,7 @@ async function undoLatestWholePlanShift(
 export async function createImportedHistory(
   db: Transaction<Database>,
   planRef: Pick<PlanRow, 'id'>,
+  requesterTimezone = 'Asia/Shanghai',
 ): Promise<{ created: number; existing: number }> {
   // Re-read the full row under the lock: the caller's pre-transaction read may
   // carry a stale start_date if a concurrent PATCH committed in between, and
@@ -558,7 +566,7 @@ export async function createImportedHistory(
     .orderBy('ps.set_number', 'asc')
     .execute();
 
-  const today = utcDateOnly(new Date());
+  const today = localCalendarDate(new Date(), requesterTimezone);
   const setsByExercise = new Map<string, ImportedHistoryCandidate[]>();
   const plannedDateByDay = new Map<string, string>();
   for (const row of rows) {
@@ -1090,9 +1098,19 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
+      const requester = await deps.db
+        .selectFrom('users')
+        .select('timezone')
+        .where('id', '=', user.id)
+        .executeTakeFirst();
+      if (!requester) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
       const result = await deps.db
         .transaction()
-        .execute(async (trx) => createImportedHistory(trx, plan));
+        .execute(async (trx) => createImportedHistory(trx, plan, requester.timezone));
       deps.logger.info(
         {
           planId: plan.id,

@@ -49,6 +49,7 @@ function makeContext(configOverride: Partial<Config> = {}) {
   mem.public.none(fs.readFileSync('db/migrations/0039-multi-device-sessions.sql', 'utf8'));
   mem.public.none(fs.readFileSync('db/migrations/0064-global-identity.sql', 'utf8'));
   mem.public.none(fs.readFileSync('db/migrations/0065-email-channel.sql', 'utf8'));
+  mem.public.none(fs.readFileSync('db/migrations/0066-add-user-timezone.sql', 'utf8'));
   const { Pool } = mem.adapters.createPg();
   const db: Kysely<Database> = createDb(new Pool());
   const app = createApp({

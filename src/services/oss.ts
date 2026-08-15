@@ -12,11 +12,18 @@ export interface PresignedPartUrl {
   url: string;
 }
 
+export interface OssSignOptions {
+  /** Use the transfer-acceleration endpoint when one is configured. */
+  useAccelerateEndpoint: boolean;
+}
+
 /**
  * Network boundary for Aliyun OSS. Routes depend on this interface only;
  * tests inject a fake (repo rule: mock only at network/DB boundaries).
  */
 export interface OssService {
+  /** Whether callers can opt into transfer-accelerated signing. */
+  readonly accelerationEnabled: boolean;
   /** InitiateMultipartUpload — returns the OSS upload ID. */
   initiateMultipartUpload(key: string, contentType: string): Promise<string>;
   /** Presigned PUT URL per part (local HMAC signing, no OSS round-trip). */
@@ -25,6 +32,7 @@ export interface OssService {
     uploadId: string,
     partCount: number,
     expiresSeconds: number,
+    options?: OssSignOptions,
   ): Promise<PresignedPartUrl[]>;
   /** CompleteMultipartUpload — throws on etag mismatch / unknown upload. */
   completeMultipartUpload(
@@ -36,7 +44,7 @@ export interface OssService {
   /** AbortMultipartUpload — swallows NoSuchUpload so abort stays idempotent. */
   abortMultipartUpload(key: string, uploadId: string): Promise<void>;
   /** Presigned GET URL (local HMAC signing, no OSS round-trip). */
-  signGetUrl(key: string, expiresSeconds: number): Promise<string>;
+  signGetUrl(key: string, expiresSeconds: number, options?: OssSignOptions): Promise<string>;
   /** Verify the completed object before it is exposed as ready. */
   headObject(key: string): Promise<{ sizeBytes: number } | null>;
   /** Best-effort compensation after a completed object fails verification. */
@@ -49,6 +57,7 @@ export interface OssServiceOptions {
   bucket: string;
   region: string;
   endpoint?: string;
+  accelerateEndpoint?: string;
 }
 
 function isNoSuchUpload(err: unknown): boolean {
@@ -58,24 +67,40 @@ function isNoSuchUpload(err: unknown): boolean {
 }
 
 export function createOssService(options: OssServiceOptions): OssService {
-  const client = new OSS({
+  const clientOptions = {
     accessKeyId: options.accessKeyId,
     accessKeySecret: options.accessKeySecret,
     bucket: options.bucket,
     region: options.region,
-    ...(options.endpoint !== undefined ? { endpoint: options.endpoint } : {}),
     secure: true,
+  };
+  const defaultClient = new OSS({
+    ...clientOptions,
+    ...(options.endpoint !== undefined ? { endpoint: options.endpoint } : {}),
   });
+  const accelerateClient =
+    options.accelerateEndpoint === undefined
+      ? undefined
+      : new OSS({ ...clientOptions, endpoint: options.accelerateEndpoint });
+
+  function signingClient(signOptions: OssSignOptions | undefined): OSS {
+    return signOptions?.useAccelerateEndpoint === true && accelerateClient !== undefined
+      ? accelerateClient
+      : defaultClient;
+  }
 
   return {
+    accelerationEnabled: accelerateClient !== undefined,
+
     async initiateMultipartUpload(key, contentType) {
-      const result = await client.initMultipartUpload(key, {
+      const result = await defaultClient.initMultipartUpload(key, {
         headers: { 'Content-Type': contentType },
       });
       return result.uploadId;
     },
 
-    signPartUrls(key, uploadId, partCount, expiresSeconds) {
+    signPartUrls(key, uploadId, partCount, expiresSeconds, signOptions) {
+      const client = signingClient(signOptions);
       const urls = Array.from({ length: partCount }, (_, index) => {
         const partNumber = index + 1;
         return {
@@ -91,7 +116,7 @@ export function createOssService(options: OssServiceOptions): OssService {
     },
 
     async completeMultipartUpload(key, uploadId, parts, _expectedSizeBytes) {
-      await client.completeMultipartUpload(
+      await defaultClient.completeMultipartUpload(
         key,
         uploadId,
         parts.map((part) => ({ number: part.part_number, etag: part.etag })),
@@ -100,20 +125,21 @@ export function createOssService(options: OssServiceOptions): OssService {
 
     async abortMultipartUpload(key, uploadId) {
       try {
-        await client.abortMultipartUpload(key, uploadId);
+        await defaultClient.abortMultipartUpload(key, uploadId);
       } catch (err) {
         if (isNoSuchUpload(err)) return;
         throw err;
       }
     },
 
-    signGetUrl(key, expiresSeconds) {
+    signGetUrl(key, expiresSeconds, signOptions) {
+      const client = signingClient(signOptions);
       return Promise.resolve(client.signatureUrl(key, { method: 'GET', expires: expiresSeconds }));
     },
 
     async headObject(key) {
       try {
-        const result = await client.head(key);
+        const result = await defaultClient.head(key);
         const headers = result.res.headers as Record<string, string | string[] | undefined>;
         const contentLength = headers['content-length'];
         const parsed = Number(Array.isArray(contentLength) ? contentLength[0] : contentLength);
@@ -127,7 +153,7 @@ export function createOssService(options: OssServiceOptions): OssService {
 
     async deleteObject(key) {
       try {
-        await client.delete(key);
+        await defaultClient.delete(key);
       } catch (err) {
         const record = err as { code?: unknown; status?: unknown };
         if (record.code === 'NoSuchKey' || record.status === 404) return;
@@ -144,7 +170,12 @@ export function createOssService(options: OssServiceOptions): OssService {
 export function maybeCreateOssService(
   config: Pick<
     Config,
-    'OSS_ACCESS_KEY_ID' | 'OSS_ACCESS_KEY_SECRET' | 'OSS_BUCKET' | 'OSS_REGION' | 'OSS_ENDPOINT'
+    | 'OSS_ACCESS_KEY_ID'
+    | 'OSS_ACCESS_KEY_SECRET'
+    | 'OSS_BUCKET'
+    | 'OSS_REGION'
+    | 'OSS_ENDPOINT'
+    | 'OSS_ACCELERATE_ENDPOINT'
   >,
 ): OssService | undefined {
   if (
@@ -162,5 +193,8 @@ export function maybeCreateOssService(
     bucket: config.OSS_BUCKET,
     region: config.OSS_REGION,
     ...(config.OSS_ENDPOINT !== undefined ? { endpoint: config.OSS_ENDPOINT } : {}),
+    ...(config.OSS_ACCELERATE_ENDPOINT !== undefined
+      ? { accelerateEndpoint: config.OSS_ACCELERATE_ENDPOINT }
+      : {}),
   });
 }

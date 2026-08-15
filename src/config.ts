@@ -106,6 +106,7 @@ export const ConfigSchema = z
     OSS_BUCKET: z.string().min(1).optional(),
     OSS_REGION: z.string().min(1).optional(),
     OSS_ENDPOINT: z.string().min(1).optional(),
+    OSS_ACCELERATE_ENDPOINT: z.string().min(1).optional(),
   })
   .superRefine((config, ctx) => {
     if (config.JWT_ACCESS_SECRET === config.JWT_REFRESH_SECRET) {

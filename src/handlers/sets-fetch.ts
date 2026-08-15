@@ -73,17 +73,17 @@ export async function fetchOwnSetLogs(
   const base = db.selectFrom('set_logs').selectAll().where('student_id', '=', studentId);
 
   // scope=plan reproduces the pre-0031 visible set byte-for-byte: plan-linked
-  // rows only, windowed on logged_at. Deployed builds decode plan_exercise_id
+  // rows only. Deployed builds decode plan_exercise_id
   // as a non-optional UUID, so null rows (adhoc/orphaned) must stay out of
-  // their responses. scope=all is the training-day view for spec-045 clients:
-  // every row, windowed on the client-local logged_date so sets flushed from
-  // an offline queue land on the day they were performed.
+  // their responses. Both scopes use the student's gym-day logged_date so
+  // local calendar windows cannot drift at UTC midnight. scope=all additionally
+  // includes adhoc/orphaned rows.
   const rows =
     scope === 'plan'
       ? await base
           .where('plan_exercise_id', 'is not', null)
-          .where('logged_at', '>=', new Date(`${from}T00:00:00.000Z`))
-          .where('logged_at', '<', new Date(`${to}T00:00:00.000Z`))
+          .where('logged_date', '>=', from)
+          .where('logged_date', '<', to)
           .orderBy('logged_at', 'desc')
           .execute()
       : await base
@@ -100,8 +100,8 @@ export async function fetchCoachSetLogs(
   db: Kysely<Database>,
   coachId: string,
   studentId: string,
-  from: Date,
-  to: Date,
+  from: string,
+  to: string,
 ): Promise<SetLogResponse[]> {
   const rows = await db
     .selectFrom('set_logs as sl')
@@ -129,8 +129,8 @@ export async function fetchCoachSetLogs(
     .where('p.coach_id', '=', coachId)
     .where('p.trainee_id', '=', studentId)
     .where('p.status', '=', 'published')
-    .where('sl.logged_at', '>=', from)
-    .where('sl.logged_at', '<', to)
+    .where('sl.logged_date', '>=', from)
+    .where('sl.logged_date', '<', to)
     .orderBy('sl.logged_at', 'desc')
     .execute();
 

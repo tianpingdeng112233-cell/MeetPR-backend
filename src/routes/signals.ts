@@ -3,7 +3,6 @@ import type { Kysely, Selectable } from 'kysely';
 import { sql } from 'kysely';
 import { z } from 'zod';
 
-import { hasAcceptedBond } from '../db/bonds';
 import {
   SIGNAL_STATUSES,
   type Database,
@@ -17,7 +16,7 @@ import {
   isIsoCalendarDate,
   isoCalendarDateSchemaMessage,
   normalizeDateOnly,
-  shanghaiTrainingDay,
+  trainingDay,
   utcDate,
   utcDateOnly,
 } from '../utils/date';
@@ -100,11 +99,14 @@ function eventResponse(row: EventRow) {
   };
 }
 
-function defaultEventRange(query: z.infer<typeof EventsQuerySchema>): {
+function defaultEventRange(
+  query: z.infer<typeof EventsQuerySchema>,
+  timezone: string,
+): {
   from: string;
   to: string;
 } {
-  const to = query.to ?? shanghaiTrainingDay();
+  const to = query.to ?? trainingDay(new Date(), timezone);
   const from =
     query.from ?? utcDateOnly(new Date(utcDate(to).getTime() - (DEFAULT_EVENT_DAYS - 1) * DAY_MS));
   return { from, to };
@@ -283,17 +285,25 @@ export function coachSignalsRouter(deps: SignalsRouterDeps): ExpressRouter {
         return;
       }
 
-      const range = defaultEventRange(query.data);
+      const studentAccess = await deps.db
+        .selectFrom('users as student')
+        .innerJoin('bind_requests as br', 'br.student_id', 'student.id')
+        .select('student.timezone')
+        .where('student.id', '=', params.data.studentId)
+        .where('br.coach_id', '=', req.user.id)
+        .where('br.status', '=', 'accepted')
+        .executeTakeFirst();
+      if (!studentAccess) {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
+
+      const range = defaultEventRange(query.data, studentAccess.timezone);
       if (range.to < range.from) {
         res.status(400).json({
           error: 'VALIDATION_ERROR',
           issues: [{ path: ['to'], message: 'to must be on or after from' }],
         });
-        return;
-      }
-
-      if (!(await hasAcceptedBond(deps.db, req.user.id, params.data.studentId))) {
-        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
         return;
       }
 
@@ -331,7 +341,16 @@ export function studentSignalsRouter(deps: Pick<SignalsRouterDeps, 'db'>): Expre
         return;
       }
 
-      const sessionDate = query.data.date ?? shanghaiTrainingDay();
+      const student = await deps.db
+        .selectFrom('users')
+        .select('timezone')
+        .where('id', '=', req.user.id)
+        .executeTakeFirst();
+      if (!student) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      const sessionDate = query.data.date ?? trainingDay(new Date(), student.timezone);
       const row = await deps.db
         .selectFrom('training_sessions')
         .select(['status', 'started_at', 'last_set_at', 'completed_at'])

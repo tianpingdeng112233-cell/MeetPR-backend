@@ -1,7 +1,7 @@
 import type { Selectable, Transaction } from 'kysely';
 
 import type { Database, PlanDayCompletionsTable, PlanDaysTable, PlansTable } from '../db/types';
-import { shanghaiTrainingDay } from '../utils/date';
+import { trainingDay } from '../utils/date';
 import { uuidEquals } from '../utils/uuid';
 
 type PlanRow = Selectable<PlansTable>;
@@ -15,7 +15,7 @@ async function lockCompletionContext(
   dayId: string,
   studentId: string,
 ): Promise<
-  | { type: 'context'; plan: PlanRow; day: PlanDayRow }
+  | { type: 'context'; plan: PlanRow; day: PlanDayRow; timezone: string }
   | { type: 'error'; error: CompletionCommandError }
 > {
   const day = await db
@@ -28,9 +28,11 @@ async function lockCompletionContext(
   // Interactive completion writers use the plan -> day lock order. The plan
   // lock serializes latest-completion undo against completion on another day.
   const plan = await db
-    .selectFrom('plans')
-    .selectAll()
-    .where('id', '=', day.plan_id)
+    .selectFrom('plans as p')
+    .innerJoin('users as student', 'student.id', 'p.trainee_id')
+    .selectAll('p')
+    .select('student.timezone as student_timezone')
+    .where('p.id', '=', day.plan_id)
     .forUpdate()
     .executeTakeFirst();
   if (!plan || !uuidEquals(plan.trainee_id, studentId)) {
@@ -48,7 +50,7 @@ async function lockCompletionContext(
     .forUpdate()
     .executeTakeFirst();
   return lockedDay
-    ? { type: 'context', plan, day: lockedDay }
+    ? { type: 'context', plan, day: lockedDay, timezone: plan.student_timezone }
     : { type: 'error', error: 'NOT_PLAN_STUDENT' };
 }
 
@@ -123,7 +125,9 @@ export async function undoPlanDayCompletion(
   if (latest?.id !== completion.id) {
     return { type: 'error', error: 'NOT_LATEST_COMPLETION' };
   }
-  if (shanghaiTrainingDay(completion.completed_at) !== shanghaiTrainingDay(now)) {
+  if (
+    trainingDay(completion.completed_at, context.timezone) !== trainingDay(now, context.timezone)
+  ) {
     return { type: 'error', error: 'UNDO_WINDOW_PASSED' };
   }
 

@@ -95,6 +95,7 @@ function makeContext(configOverride: Partial<Config> = {}) {
   mem.public.none(fs.readFileSync('db/migrations/0039-multi-device-sessions.sql', 'utf8'));
   mem.public.none(fs.readFileSync('db/migrations/0064-global-identity.sql', 'utf8'));
   mem.public.none(fs.readFileSync('db/migrations/0065-email-channel.sql', 'utf8'));
+  mem.public.none(fs.readFileSync('db/migrations/0066-add-user-timezone.sql', 'utf8'));
   const { Pool } = mem.adapters.createPg();
   const db: Kysely<Database> = createDb(new Pool());
   const app = createApp({
@@ -137,6 +138,7 @@ function sendProviderToken(
   role = 'coached_student',
   nonce?: string,
   authorizationCode?: string,
+  timezone?: string,
 ) {
   return provider === 'apple'
     ? request(app)
@@ -146,10 +148,16 @@ function sendProviderToken(
           ...(nonce ? { nonce } : {}),
           role,
           ...(authorizationCode ? { authorizationCode } : {}),
+          ...(timezone ? { timezone } : {}),
         })
     : request(app)
         .post('/auth/google')
-        .send({ idToken: identityToken, ...(nonce ? { nonce } : {}), role });
+        .send({
+          idToken: identityToken,
+          ...(nonce ? { nonce } : {}),
+          role,
+          ...(timezone ? { timezone } : {}),
+        });
 }
 
 async function providerRequest(
@@ -157,7 +165,7 @@ async function providerRequest(
   provider: 'apple' | 'google',
   tokenInput: Omit<Parameters<typeof token>[0], 'provider' | 'nonce'> = {},
   role = 'coached_student',
-  authorizationCode?: string,
+  extras: { authorizationCode?: string; timezone?: string } = {},
 ) {
   const nonce = provider === 'apple' ? await issueChallenge(app) : undefined;
   const identityToken = token({
@@ -165,7 +173,15 @@ async function providerRequest(
     ...tokenInput,
     ...(nonce === undefined ? {} : { nonce: sha256(nonce) }),
   });
-  return sendProviderToken(app, provider, identityToken, role, nonce, authorizationCode);
+  return sendProviderToken(
+    app,
+    provider,
+    identityToken,
+    role,
+    nonce,
+    extras.authorizationCode,
+    extras.timezone,
+  );
 }
 
 function requestUrl(input: Parameters<typeof fetch>[0]): string {
@@ -238,6 +254,25 @@ describe.each(['apple', 'google'] as const)('POST /auth/%s', (provider) => {
     expect(mem.public.one(`SELECT count(*)::int AS count FROM user_identities;`)).toEqual({
       count: 1,
     });
+  });
+
+  it('stores the optional timezone only when the identity is first created', async () => {
+    stubJwks();
+    const { app, db } = makeContext();
+    const subject = `${provider}-timezone-subject`;
+
+    const first = await providerRequest(app, provider, { subject }, 'coached_student', {
+      timezone: 'Europe/London',
+    });
+    const second = await providerRequest(app, provider, { subject }, 'coached_student', {
+      timezone: 'America/New_York',
+    });
+    const row = await db.selectFrom('users').select('timezone').executeTakeFirstOrThrow();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(row.timezone).toBe('Europe/London');
+    expect(first.body.user).not.toHaveProperty('timezone');
   });
 
   it('rejects a forged token', async () => {
@@ -374,7 +409,7 @@ describe('POST /auth/apple authorizationCode', () => {
       'apple',
       { subject: 'apple-refresh-success' },
       'coached_student',
-      'authorization-code',
+      { authorizationCode: 'authorization-code' },
     );
 
     expect(response.status).toBe(200);
@@ -399,7 +434,7 @@ describe('POST /auth/apple authorizationCode', () => {
       'apple',
       { subject: 'apple-refresh-failure' },
       'coached_student',
-      'authorization-code',
+      { authorizationCode: 'authorization-code' },
     );
 
     expect(response.status).toBe(200);
@@ -419,7 +454,7 @@ describe('POST /auth/apple authorizationCode', () => {
       'apple',
       { subject: 'apple-refresh-unconfigured' },
       'coached_student',
-      'authorization-code',
+      { authorizationCode: 'authorization-code' },
     );
 
     expect(response.status).toBe(200);
@@ -449,7 +484,7 @@ describe('DELETE /me Apple revocation', () => {
       'apple',
       { subject: `apple-delete-${String(status)}` },
       'coached_student',
-      'authorization-code',
+      { authorizationCode: 'authorization-code' },
     );
     const deleted = await request(app)
       .delete('/me')
@@ -536,6 +571,7 @@ describe('email identity', () => {
       email: 'Student@Example.com',
       password: 'hunter2hunter2',
       role: 'coached_student',
+      timezone: 'Europe/London',
     });
     expect(registration.status).toBe(201);
     expect(registration.body.user).toMatchObject({
@@ -543,9 +579,10 @@ describe('email identity', () => {
       email: 'student@example.com',
       role: 'coached_student',
     });
-    expect(mem.public.one(`SELECT email, email_verified_at FROM users;`)).toEqual({
+    expect(mem.public.one(`SELECT email, email_verified_at, timezone FROM users;`)).toEqual({
       email: 'student@example.com',
       email_verified_at: null,
+      timezone: 'Europe/London',
     });
 
     const login = await request(app).post('/auth/email/login').send({
@@ -581,6 +618,16 @@ describe('email identity', () => {
 });
 
 describe('global auth safe defaults', () => {
+  it.each(['/auth/apple', '/auth/google', '/auth/email/register'])(
+    'rejects an invalid timezone on %s',
+    async (path) => {
+      const { app } = makeContext();
+      const response = await request(app).post(path).send({ timezone: 'Mars/Olympus_Mons' });
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'INVALID_TIMEZONE' });
+    },
+  );
+
   it('returns explicit provider configuration errors without blocking app startup', async () => {
     const { app } = makeContext({ APPLE_CLIENT_ID: undefined, GOOGLE_CLIENT_ID: undefined });
     const apple = await request(app).post('/auth/apple').send({

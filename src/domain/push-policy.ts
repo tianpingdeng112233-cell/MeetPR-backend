@@ -1,5 +1,4 @@
 export const PUSH_POLICY = {
-  dailyDigestCron: '0 8 * * *',
   consumerCron: '* * * * *',
   consumerBatchSize: 50,
   maxAttempts: 5,

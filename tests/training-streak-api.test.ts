@@ -1,8 +1,8 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { SessionStatus } from '../src/db/types';
-import { shanghaiTrainingDay } from '../src/utils/date';
+import { trainingDay } from '../src/utils/date';
 import { auth, ids, makeContext, type TestContext } from './helpers/studentActions';
 
 async function insertSession(
@@ -26,6 +26,10 @@ async function insertSession(
 }
 
 describe('GET /students/me/streak', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns the exact empty shape and defaults as_of to the current Shanghai gym-day', async () => {
     const ctx = await makeContext();
     const response = await request(ctx.app).get('/students/me/streak').set(auth(ctx.traineeToken));
@@ -34,21 +38,33 @@ describe('GET /students/me/streak', () => {
     expect(response.body).toEqual({
       streak: {
         current: 0,
-        as_of: shanghaiTrainingDay(),
+        as_of: trainingDay(new Date(), 'Asia/Shanghai'),
         started_on: null,
         last_session_date: null,
       },
     });
   });
 
-  it('uses shanghaiTrainingDay when as_of is omitted', async () => {
+  it.each([
+    ['Asia/Shanghai', '2026-07-12T20:00:00Z'],
+    ['Europe/London', '2026-01-13T04:00:00Z'],
+    ['Europe/London', '2026-07-13T03:00:00Z'],
+    ['America/New_York', '2026-07-13T08:00:00Z'],
+  ])('uses the %s training day when as_of is omitted', async (timezone, instant) => {
     const ctx = await makeContext();
+    await ctx.db
+      .updateTable('users')
+      .set({ timezone })
+      .where('id', '=', ids.selfTrainStudent)
+      .execute();
+    const now = new Date(instant);
+    vi.useFakeTimers({ toFake: ['Date'], now });
     const response = await request(ctx.app)
       .get('/students/me/streak')
       .set(auth(ctx.selfTrainStudentToken));
 
     expect(response.status).toBe(200);
-    expect(response.body.streak.as_of).toBe(shanghaiTrainingDay());
+    expect(response.body.streak.as_of).toBe(trainingDay(now, timezone));
   });
 
   it('counts all session statuses and applies a published plan shift', async () => {

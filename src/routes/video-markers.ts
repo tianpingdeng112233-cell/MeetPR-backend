@@ -3,10 +3,11 @@ import { sql, type Kysely } from 'kysely';
 import { z } from 'zod';
 
 import { VIDEO_MARKER_LEVELS, type Database, type VideoMarkerLevel } from '../db/types';
+import { requesterOssSignOptions } from '../handlers/oss-sign-options';
 import { timestamp } from '../handlers/serialization';
 import { resolveSetVideoAccess } from '../handlers/set-video-access';
 import { requireRole } from '../middleware/auth';
-import type { OssService } from '../services/oss';
+import type { OssService, OssSignOptions } from '../services/oss';
 import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
@@ -57,6 +58,7 @@ async function serializeMarker(
   },
   annotationOssKey: string | null,
   oss: OssService | undefined,
+  signOptions: OssSignOptions,
   logger?: { warn: (obj: unknown, msg: string) => void },
 ) {
   // Signing must never take down the whole list (or fail a POST whose row is
@@ -64,7 +66,11 @@ async function serializeMarker(
   let annotationUrl: string | null = null;
   if (marker.attachment_id !== null && annotationOssKey !== null && oss) {
     try {
-      annotationUrl = await oss.signGetUrl(annotationOssKey, ANNOTATION_URL_TTL_SECONDS);
+      annotationUrl = await oss.signGetUrl(
+        annotationOssKey,
+        ANNOTATION_URL_TTL_SECONDS,
+        signOptions,
+      );
     } catch (err) {
       logger?.warn({ err, markerId: marker.id }, 'marker_annotation_sign_failed');
       annotationUrl = null;
@@ -117,6 +123,12 @@ export function videoMarkersRouter(deps: VideoMarkersRouterDeps): ExpressRouter 
         return;
       }
 
+      const signOptions = await requesterOssSignOptions(db, oss, req.user.id, logger);
+      if (signOptions === null) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
       const rows = await db
         .selectFrom('video_markers')
         .leftJoin('attachments as annotation', 'annotation.id', 'video_markers.attachment_id')
@@ -137,6 +149,7 @@ export function videoMarkersRouter(deps: VideoMarkersRouterDeps): ExpressRouter 
             row,
             row.annotation_status === 'ready' ? row.annotation_oss_key : null,
             oss,
+            signOptions,
             logger,
           ),
         ),
@@ -231,6 +244,11 @@ export function videoMarkersRouter(deps: VideoMarkersRouterDeps): ExpressRouter 
         return;
       }
       const user = req.user;
+      const signOptions = await requesterOssSignOptions(db, oss, user.id, logger);
+      if (signOptions === null) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
 
       const result = await db.transaction().execute(async (trx) => {
         let annotationOssKey: string | null = null;
@@ -297,7 +315,9 @@ export function videoMarkersRouter(deps: VideoMarkersRouterDeps): ExpressRouter 
 
       res
         .status(201)
-        .json(await serializeMarker(result.marker, result.annotationOssKey, oss, logger));
+        .json(
+          await serializeMarker(result.marker, result.annotationOssKey, oss, signOptions, logger),
+        );
     }),
   );
 

@@ -9,6 +9,7 @@ import { sweepTimedOutSessions } from '../handlers/activity-ledger';
 import type { Logger } from '../logger';
 import { pushDisplayName, tryEnqueuePushOutbox } from '../services/push-outbox';
 import { isIsoCalendarDate, normalizeDateOnly } from '../utils/date';
+import { DEFAULT_TIME_ZONE } from '../utils/timezone';
 
 type SettlementLogger = Pick<Logger, 'warn'>;
 type SettlementTransaction = Transaction<Database>;
@@ -353,17 +354,20 @@ async function settleStudent(
   return pushCandidates;
 }
 
-async function expireOpenSignals(
+export async function expireOpenSignalsForTimeZone(
   db: Kysely<Database>,
   now: Date,
   logger?: SettlementLogger,
+  timezone = DEFAULT_TIME_ZONE,
 ): Promise<void> {
   const candidates = await db
-    .selectFrom('student_signals')
-    .select('student_id')
+    .selectFrom('student_signals as ss')
+    .innerJoin('users as student', 'student.id', 'ss.student_id')
+    .select('ss.student_id')
     .distinct()
-    .where('status', '=', 'open')
-    .where('expires_at', '<', now)
+    .where('ss.status', '=', 'open')
+    .where('ss.expires_at', '<', now)
+    .where('student.timezone', '=', timezone)
     .execute();
 
   for (const candidate of candidates) {
@@ -393,7 +397,8 @@ export async function runDailySettlement(
   now: Date = new Date(),
   logger?: SettlementLogger,
   pushEnabled = false,
-): Promise<void> {
+  timezone = DEFAULT_TIME_ZONE,
+): Promise<string[]> {
   const students = await db
     .selectFrom('bind_requests as br')
     .innerJoin('users as u', 'u.id', 'br.student_id')
@@ -401,8 +406,10 @@ export async function runDailySettlement(
     .distinct()
     .where('br.status', '=', 'accepted')
     .where('u.role', '=', 'coached_student')
+    .where('u.timezone', '=', timezone)
     .execute();
 
+  const failedStudentIds: string[] = [];
   for (const student of students) {
     try {
       const pushCandidates = await db
@@ -422,14 +429,14 @@ export async function runDailySettlement(
         }
       }
     } catch (err) {
+      failedStudentIds.push(student.student_id);
       logger?.warn(
         { err, studentId: student.student_id, gymDay },
         'activity_settlement_student_failed',
       );
     }
   }
-
-  await expireOpenSignals(db, now, logger);
+  return failedStudentIds;
 }
 
 export async function runSessionSweep(db: Kysely<Database>, now: Date): Promise<void> {

@@ -29,6 +29,7 @@ describe('config', () => {
     expect(config.SIWA_KEY_ID).toBeUndefined();
     expect(config.SIWA_TEAM_ID).toBeUndefined();
     expect(config.SIWA_PRIVATE_KEY).toBeUndefined();
+    expect(config.OSS_ACCELERATE_ENDPOINT).toBeUndefined();
   });
 
   it('throws when DATABASE_URL is missing', () => {
@@ -91,6 +92,15 @@ describe('config', () => {
     const config = loadConfig({ ...validEnv, PORT: '4000', RATE_LIMIT_MAX: '50' });
     expect(config.PORT).toBe(4000);
     expect(config.RATE_LIMIT_MAX).toBe(50);
+  });
+
+  it('accepts an optional OSS transfer-acceleration endpoint', () => {
+    const config = loadConfig({
+      ...validEnv,
+      OSS_ACCELERATE_ENDPOINT: 'https://oss-accelerate.aliyuncs.com',
+    });
+
+    expect(config.OSS_ACCELERATE_ENDPOINT).toBe('https://oss-accelerate.aliyuncs.com');
   });
 
   it('requires every APNs setting when push is enabled', () => {

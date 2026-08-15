@@ -146,7 +146,7 @@ describe('POST /sets/log', () => {
     expect(wrongStudent.body).toEqual({ error: 'SETS_PLAN_EXERCISE_NOT_PUBLISHED' });
   });
 
-  it('records a server-side Shanghai logged_date when a coached body omits it', async () => {
+  it('records a server-side user-timezone logged_date when a coached body omits it', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
 
@@ -178,37 +178,76 @@ describe('POST /sets/log', () => {
       completed: true,
     });
 
-    it('assigns a set logged at 03:59 Shanghai to the previous training day', async () => {
+    it.each([
+      ['GMT', '2026-01-15T20:30:00Z', '2026-01-15'],
+      ['BST', '2026-07-15T20:30:00Z', '2026-07-15'],
+    ])('keeps a London %s evening workout on the local date', async (_season, now, expected) => {
       const ctx = await makeContext();
       const plan = await createPublishedPlan(ctx);
-      // 2026-07-13T03:59 Asia/Shanghai
-      vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-12T19:59:00Z') });
+      await ctx.db
+        .updateTable('users')
+        .set({ timezone: 'Europe/London' })
+        .where('id', '=', ids.trainee)
+        .execute();
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(now) });
 
       const res = await request(ctx.app)
         .post('/sets/log')
         .set(auth(ctx.traineeToken))
         .send(payload(plan.planExerciseId));
-      const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
+      const row = await ctx.db.selectFrom('set_logs').select('logged_date').executeTakeFirst();
 
       expect(res.status).toBe(201);
-      expect(dateText(rows[0]?.logged_date)).toBe('2026-07-12');
+      expect(dateText(row?.logged_date)).toBe(expected);
     });
 
-    it('assigns a set logged at 04:00 Shanghai to the new training day', async () => {
-      const ctx = await makeContext();
-      const plan = await createPublishedPlan(ctx);
-      // 2026-07-13T04:00 Asia/Shanghai
-      vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-07-12T20:00:00Z') });
+    it.each([
+      ['Asia/Shanghai', '2026-07-12T19:59:00Z', '2026-07-12'],
+      ['Europe/London', '2026-01-13T03:59:00Z', '2026-01-12'],
+      ['Europe/London', '2026-07-13T02:59:00Z', '2026-07-12'],
+      ['America/New_York', '2026-07-13T07:59:00Z', '2026-07-12'],
+    ])(
+      'assigns a %s set logged at 03:59 to the previous training day',
+      async (timezone, now, expected) => {
+        const ctx = await makeContext();
+        const plan = await createPublishedPlan(ctx);
+        await ctx.db.updateTable('users').set({ timezone }).where('id', '=', ids.trainee).execute();
+        vi.useFakeTimers({ toFake: ['Date'], now: new Date(now) });
 
-      const res = await request(ctx.app)
-        .post('/sets/log')
-        .set(auth(ctx.traineeToken))
-        .send(payload(plan.planExerciseId));
-      const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
+        const res = await request(ctx.app)
+          .post('/sets/log')
+          .set(auth(ctx.traineeToken))
+          .send(payload(plan.planExerciseId));
+        const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
 
-      expect(res.status).toBe(201);
-      expect(dateText(rows[0]?.logged_date)).toBe('2026-07-13');
-    });
+        expect(res.status).toBe(201);
+        expect(dateText(rows[0]?.logged_date)).toBe(expected);
+      },
+    );
+
+    it.each([
+      ['Asia/Shanghai', '2026-07-12T20:00:00Z', '2026-07-13'],
+      ['Europe/London', '2026-01-13T04:00:00Z', '2026-01-13'],
+      ['Europe/London', '2026-07-13T03:00:00Z', '2026-07-13'],
+      ['America/New_York', '2026-07-13T08:00:00Z', '2026-07-13'],
+    ])(
+      'assigns a %s set logged at 04:00 to the new training day',
+      async (timezone, now, expected) => {
+        const ctx = await makeContext();
+        const plan = await createPublishedPlan(ctx);
+        await ctx.db.updateTable('users').set({ timezone }).where('id', '=', ids.trainee).execute();
+        vi.useFakeTimers({ toFake: ['Date'], now: new Date(now) });
+
+        const res = await request(ctx.app)
+          .post('/sets/log')
+          .set(auth(ctx.traineeToken))
+          .send(payload(plan.planExerciseId));
+        const rows = await ctx.db.selectFrom('set_logs').selectAll().execute();
+
+        expect(res.status).toBe(201);
+        expect(dateText(rows[0]?.logged_date)).toBe(expected);
+      },
+    );
   });
 
   it('preserves logged_date when an old-build coached upsert edits a historical set', async () => {

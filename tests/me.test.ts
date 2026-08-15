@@ -18,6 +18,16 @@ describe('DELETE /me (spec 011 §1)', () => {
       .send({ unit_preference: 'kg' });
     expect(seeded.status).toBe(200);
 
+    // A digest watermark row must not block deletion (0067 FKs cascade).
+    await ctx.db
+      .insertInto('digest_watermarks')
+      .values({
+        coach_id: ids.coach,
+        student_id: ids.selfTrainStudent,
+        last_gym_day: '2026-01-14',
+      })
+      .execute();
+
     const deleted = await request(ctx.app).delete('/me').set(auth(ctx.selfTrainStudentToken));
     expect(deleted.status).toBe(204);
 
@@ -28,6 +38,12 @@ describe('DELETE /me (spec 011 §1)', () => {
       .where('user_id', '=', ids.selfTrainStudent)
       .executeTakeFirst();
     expect(orphan).toBeUndefined();
+    const watermark = await ctx.db
+      .selectFrom('digest_watermarks')
+      .selectAll()
+      .where('student_id', '=', ids.selfTrainStudent)
+      .executeTakeFirst();
+    expect(watermark).toBeUndefined();
     const userRow = await ctx.db
       .selectFrom('users')
       .selectAll()

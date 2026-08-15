@@ -1,17 +1,21 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { shanghaiTrainingDay } from '../src/utils/date';
+import { trainingDay } from '../src/utils/date';
 import { auth, ids, makeContext, type TestContext } from './helpers/studentActions';
 
 const COMPETITION_SQUAT_ID = '2f708759-821a-4d5b-9fde-32f60bc2b7f2';
 const COMPETITION_DEADLIFT_ID = '4a912d5c-2248-4f3d-80ec-384f8360c315';
 
-function daysFromToday(offset: number): string {
-  const date = new Date(`${shanghaiTrainingDay()}T00:00:00.000Z`);
+function daysFromToday(offset: number, timezone = 'Asia/Shanghai'): string {
+  const date = new Date(`${trainingDay(new Date(), timezone)}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + offset);
   return date.toISOString().slice(0, 10);
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function atTenUtc(date: string, minute = 0): Date {
   return new Date(`${date}T10:${String(minute).padStart(2, '0')}:00.000Z`);
@@ -109,6 +113,50 @@ async function addPlanExercise(
 }
 
 describe('GET /coach/students/:id/exercise-stats', () => {
+  it.each([
+    ['Asia/Shanghai', '2026-07-12T20:00:00Z'],
+    ['Europe/London', '2026-01-13T04:00:00Z'],
+    ['Europe/London', '2026-07-13T03:00:00Z'],
+    ['America/New_York', '2026-07-13T08:00:00Z'],
+  ])('anchors rolling and weekly windows on the %s gym day', async (timezone, instant) => {
+    const now = new Date(instant);
+    vi.useFakeTimers({ toFake: ['Date'], now });
+    const ctx = await makeContext();
+    await ctx.db.updateTable('users').set({ timezone }).where('id', '=', ids.trainee).execute();
+    await addExercise(ctx, COMPETITION_SQUAT_ID, '竞技深蹲', 'squat');
+    const [planExerciseId] = await addPlanExercise(ctx, COMPETITION_SQUAT_ID);
+    if (planExerciseId === undefined) throw new Error('missing plan exercise');
+    const today = trainingDay(now, timezone);
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: planExerciseId,
+        exercise_id: COMPETITION_SQUAT_ID,
+        logged_date: today,
+        set_index: 0,
+        weight_kg: '100.00',
+        reps: 5,
+        rpe: '8.0',
+        completed: true,
+        logged_at: now,
+      })
+      .execute();
+
+    const response = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/exercise-stats`)
+      .set(auth(ctx.coachToken));
+
+    expect(response.status).toBe(200);
+    expect(response.body.recent_4w.trained_days).toBe(1);
+    expect(response.body.e1rm_series.squat.points).toEqual([
+      expect.objectContaining({ date: today }),
+    ]);
+    expect(response.body.weekly_volume).toEqual([
+      expect.objectContaining({ week_start: weekStartMonday(today) }),
+    ]);
+  });
+
   it('resolves e1RM and references from the student competition stance', async () => {
     const ctx = await makeContext();
     const exercises = [

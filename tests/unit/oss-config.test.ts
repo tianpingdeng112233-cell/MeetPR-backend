@@ -7,7 +7,6 @@ const fullOssEnv = {
   OSS_ACCESS_KEY_SECRET: 'test-ak-secret',
   OSS_BUCKET: 'meetpr-test-bucket',
   OSS_REGION: 'oss-cn-hangzhou',
-  OSS_ENDPOINT: undefined,
 };
 
 describe('maybeCreateOssService', () => {
@@ -41,5 +40,17 @@ describe('maybeCreateOssService', () => {
     const service = maybeCreateOssService(fullOssEnv);
 
     expect(service).toBeDefined();
+  });
+
+  it('accepts an optional transfer-acceleration endpoint', async () => {
+    const service = maybeCreateOssService({
+      ...fullOssEnv,
+      OSS_ACCELERATE_ENDPOINT: 'https://oss-accelerate.aliyuncs.com',
+    });
+
+    expect(service?.accelerationEnabled).toBe(true);
+    await expect(
+      service?.signGetUrl('attachments/video.mp4', 900, { useAccelerateEndpoint: true }),
+    ).resolves.toContain('meetpr-test-bucket.oss-accelerate.aliyuncs.com');
   });
 });
