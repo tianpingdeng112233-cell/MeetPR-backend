@@ -113,44 +113,63 @@ describe('activity ledger session state machine', () => {
     });
   });
 
-  it('separates gym days exactly at the Shanghai 04:00 boundary', async () => {
-    const ctx = await makeContext();
-    const beforeId = '30000000-0000-4000-8000-000000000002';
-    const boundaryId = '30000000-0000-4000-8000-000000000003';
-    await insertLog(ctx, {
-      id: beforeId,
-      studentId: ids.selfTrainStudent,
-      loggedDate: '2026-07-09',
-      loggedAt: new Date('2026-07-09T19:59:59Z'),
-      setIndex: 0,
-      adhoc: true,
-    });
-    await insertLog(ctx, {
-      id: boundaryId,
-      studentId: ids.selfTrainStudent,
-      loggedDate: '2026-07-10',
-      loggedAt: new Date('2026-07-09T20:00:00Z'),
-      setIndex: 0,
-      adhoc: true,
-    });
-
-    await recordSetLogActivity(ctx.db, ids.selfTrainStudent, beforeId);
-    await recordSetLogActivity(ctx.db, ids.selfTrainStudent, boundaryId);
-
-    const sessions = await ctx.db
-      .selectFrom('training_sessions')
-      .selectAll()
-      .orderBy('session_date')
-      .execute();
-    expect(sessions.map((session) => normalizeDateOnly(session.session_date))).toEqual([
+  it.each([
+    ['Asia/Shanghai', '2026-07-09T19:59:59Z', '2026-07-09T20:00:00Z', '2026-07-09', '2026-07-10'],
+    ['Europe/London', '2026-01-10T03:59:59Z', '2026-01-10T04:00:00Z', '2026-01-09', '2026-01-10'],
+    ['Europe/London', '2026-07-10T02:59:59Z', '2026-07-10T03:00:00Z', '2026-07-09', '2026-07-10'],
+    [
+      'America/New_York',
+      '2026-07-10T07:59:59Z',
+      '2026-07-10T08:00:00Z',
       '2026-07-09',
       '2026-07-10',
-    ]);
-    expect(sessions.map((session) => session.started_at.toISOString())).toEqual([
-      '2026-07-09T19:59:59.000Z',
-      '2026-07-09T20:00:00.000Z',
-    ]);
-  });
+    ],
+  ])(
+    'separates %s gym days exactly at the local 04:00 boundary',
+    async (timezone, before, at, previousDay, newDay) => {
+      const ctx = await makeContext();
+      await ctx.db
+        .updateTable('users')
+        .set({ timezone })
+        .where('id', '=', ids.selfTrainStudent)
+        .execute();
+      const beforeId = '30000000-0000-4000-8000-000000000002';
+      const boundaryId = '30000000-0000-4000-8000-000000000003';
+      await insertLog(ctx, {
+        id: beforeId,
+        studentId: ids.selfTrainStudent,
+        loggedDate: previousDay,
+        loggedAt: new Date(before),
+        setIndex: 0,
+        adhoc: true,
+      });
+      await insertLog(ctx, {
+        id: boundaryId,
+        studentId: ids.selfTrainStudent,
+        loggedDate: newDay,
+        loggedAt: new Date(at),
+        setIndex: 0,
+        adhoc: true,
+      });
+
+      await recordSetLogActivity(ctx.db, ids.selfTrainStudent, beforeId);
+      await recordSetLogActivity(ctx.db, ids.selfTrainStudent, boundaryId);
+
+      const sessions = await ctx.db
+        .selectFrom('training_sessions')
+        .selectAll()
+        .orderBy('session_date')
+        .execute();
+      expect(sessions.map((session) => normalizeDateOnly(session.session_date))).toEqual([
+        previousDay,
+        newDay,
+      ]);
+      expect(sessions.map((session) => session.started_at.toISOString())).toEqual([
+        new Date(before).toISOString(),
+        new Date(at).toISOString(),
+      ]);
+    },
+  );
 
   it('completes a coached and adhoc mixed day from planned work only', async () => {
     const ctx = await makeContext();

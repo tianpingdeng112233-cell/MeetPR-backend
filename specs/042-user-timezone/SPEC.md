@@ -39,9 +39,9 @@ ALTER TABLE users ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai';
 
 ### 2. 口径函数:`trainingDay(now, timezone)`
 
-`src/utils/date.ts` 的 `shanghaiTrainingDay(now)` 泛化为 `trainingDay(now, tz)`:实例回拨
-4 小时后取 `toLocaleDateString('en-CA', { timeZone: tz })`。**04:00 截断规则全球统一**(gym-day
-的产品语义不变,只换锚定时区)。`shanghaiTrainingDay` 保留为 `trainingDay(now, 'Asia/Shanghai')`
+`src/utils/date.ts` 的 `shanghaiTrainingDay(now)` 泛化为 `trainingDay(now, tz)`:**墙钟判定**
+——该时区本地 hour < 4 则取本地日历日的前一天,否则取当天(禁用「减 4 个流逝小时」,DST 换季日
+会漂,见 §4)。**04:00 截断规则全球统一**(gym-day 的产品语义不变,只换锚定时区)。`shanghaiTrainingDay` 保留为 `trainingDay(now, 'Asia/Shanghai')`
 的别名并标 deprecated,防止仍有漏网调用点在重构窗口期炸掉;全部改造完后删。
 
 **必须成立的等价性(测试钉死)**:`trainingDay(x, 'Asia/Shanghai') ≡ 旧 shanghaiTrainingDay(x)`
@@ -49,19 +49,19 @@ ALTER TABLE users ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai';
 
 ### 3. 改造点(全部换成请求者/所属学员的时区;行号见侦察报告)
 
-| 组                    | 位置                                            | 换成谁的时区                                                                                                            |
-| --------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| 打卡兜底              | `sets.ts:150`                                   | 学员本人                                                                                                                |
-| 连胜 as_of            | `training-streak.ts:44`                         | 学员本人                                                                                                                |
-| 会话/事件流缺省日     | `signals.ts:334` / `:107`                       | 被查学员                                                                                                                |
-| 账本开行与比较        | `activity-ledger.ts:114/155/274`                | 学员本人                                                                                                                |
-| 结算撤销窗口          | `plan-day-completions.ts:126`                   | 学员本人                                                                                                                |
-| e1RM 滚动窗口         | `exercise-stats.ts:495-499`                     | 学员本人                                                                                                                |
-| 顺延三处 UTC today    | `plans/index.ts:443/496/561`                    | 请求者本地 today(注:spec 035 已拍板下线顺延端点,若 035 W2 先落地则前两处自然消失,实装时以当时代码为准,不为将死代码加卡) |
-| scope=plan 查询窗     | `sets-fetch.ts:84-85`                           | 学员本人(与 scope=all 的设备本地口径就此收敛)                                                                           |
-| 周聚合起点            | `exercise-stats.ts:195-199`                     | 学员本人                                                                                                                |
-| 缺练判定              | `missed-training.ts` / `activity-settlement.ts` | 学员本人(见 §4)                                                                                                         |
-| digest 目标日与数据窗 | `daily-digest.ts`                               | **教练**本人(收件人视角)                                                                                                |
+| 组                                                                                  | 位置                                            | 换成谁的时区                                                                                                            |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 打卡兜底                                                                            | `sets.ts:150`                                   | 学员本人                                                                                                                |
+| 连胜 as_of                                                                          | `training-streak.ts:44`                         | 学员本人                                                                                                                |
+| 会话/事件流缺省日                                                                   | `signals.ts:334` / `:107`                       | 被查学员                                                                                                                |
+| 账本开行与比较                                                                      | `activity-ledger.ts:114/155/274`                | 学员本人                                                                                                                |
+| 结算撤销窗口                                                                        | `plan-day-completions.ts:126`                   | 学员本人                                                                                                                |
+| e1RM 滚动窗口                                                                       | `exercise-stats.ts:495-499`                     | 学员本人                                                                                                                |
+| 顺延三处 UTC today                                                                  | `plans/index.ts:443/496/561`                    | 请求者本地 today(注:spec 035 已拍板下线顺延端点,若 035 W2 先落地则前两处自然消失,实装时以当时代码为准,不为将死代码加卡) |
+| scope=plan 查询窗                                                                   | `sets-fetch.ts:84-85`                           | 学员本人(与 scope=all 的设备本地口径就此收敛)                                                                           |
+| 周聚合起点                                                                          | `exercise-stats.ts:195-199`                     | 学员本人                                                                                                                |
+| 缺练判定                                                                            | `missed-training.ts` / `activity-settlement.ts` | 学员本人(见 §4)                                                                                                         |
+| digest 触发时点=教练本地 08:00;数据窗=每学员各自已关账的 gymDay,按水位表推进(见 §4) | `daily-digest.ts`                               | 触发看教练,内容看学员                                                                                                   |
 
 每个 handler 的用户时区随现有的用户行查询捎带(users 表 PK 查已在多数路径上,新增列不加查询;
 个别只拿 id 的路径补一次 PK select,禁止 N+1——列表路径一次性 join 取出)。
@@ -71,20 +71,49 @@ ALTER TABLE users ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai';
 现状:结算 cron `5 4 * * *`(沪)一次结全体;digest `0 8 * * *`(沪)一次推全体。全时区化后
 「每个用户的 04:05 / 08:00」在 UTC 上是连续分布的,改为:
 
-- **runner 每小时跑一次**(`5 * * * *`,UTC,无时区参数)。每轮:
+- **runner 每小时跑一次**(`5 * * * *`,UTC,无时区参数),**两阶段**:
   1. `SELECT DISTINCT timezone FROM users`(实际基数=有用户的时区数,个位数起步);
-  2. 对每个时区算 `justClosedGymDay(now, tz)`;
-  3. 结算该时区中「此 gym-day 尚未结算」的学员;digest 同理对「本地时间已过 08:00 且此 gym-day
-     尚未推送」的教练。
-- **幂等靠账本不靠时刻**:结算与 digest 的「已做过」判定都以 `(user, gymDay)` 为键——结算沿用
-  signals/absence_epoch 的既有去重语义,digest 沿用 `notification_outbox` 唯一约束
-  (`daily-digest.ts:62-66` 的 aggregate_id 本就含 gymDay,天然 per-user 化,**无需改键结构**)。
-  错过的轮次(部署窗口、cron 停摆)下一轮自动补,与今天的 noOverlap 语义一致。
+  2. **阶段一(全部时区)**:结算——对每个时区回看最近 3 个 gymDay
+     (`justClosedGymDay` 起往前数,幂等键天然去重),结「尚未结算」的学员;
+  3. **阶段二(全部时区)**:digest——本地时间已过 08:00 的时区,**只用最新 gymDay key**推
+     「尚未推送」的教练(旧 key 重放会让水位窗口在同轮被旧 key 二次消费——重复推送+错 gym_day
+     标签;停摆补发不靠旧 key,靠水位窗口在下一次成功的最新 key digest 里合并送出)。
+- **两阶段而非逐桶串行**:跨时区绑定(如上海教练带伦敦学员)时,逐桶串行无法保证「学员结算先于
+  教练 digest」;全量结算完再进 digest 阶段,顺序全局成立。
+- **digest 数据窗=水位表推进制**(修订:纯「按当前时差推学员日」在教练/学员 DST 切换日不同步时
+  会重复或漏报,必须有记忆)。新表(迁移 **0067**,纯增量):
+
+  ```sql
+  CREATE TABLE digest_watermarks (
+    coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    last_gym_day DATE NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (coach_id, student_id)
+  );
+  ```
+
+  每次 digest 对每个学员汇报「水位 < gymDay ≤ 该学员最近已关账日」的全部学员日并推进水位;
+  无水位行时首跑初始化为「最近已关账日 − 1」(=只报一天,与现状对齐)。确定性、不重不漏、
+  DST 免疫。同时区场景下每轮恰好推进一天,与现状逐字节一致。幂等键仍为 (教练, 教练 gymDay),
+  键结构不变;水位推进与 outbox 写入同事务。
+
+- **结算失败不冻结不完整摘要**:结算阶段收集失败学员清单(不再静默吞掉后照常返回);digest
+  本轮跳过失败学员的日、其水位不推进,下一轮结算成功后自然补进。补测试:单学员结算抛错 →
+  当轮 digest 不含其数据、水位未动;下一轮恢复后包含。
+- **结算回看 3 天**(digest 不回看,见上):停摆一小时下一轮自动补;停摆跨日靠 3 天回看窗补齐
+  (幂等键防重),更长停摆与旧单发 cron 的丢失行为持平。
+- **0067 两个外键必须 `ON DELETE CASCADE`**:`DELETE /me` 依赖全部 users 外键级联,漏了会让
+  有水位行的账号删号报错(新表入库前逐个核对这条)。
+- **signal expiry 只在本地 04 点桶执行**(localHour==4 的时区才跑 expiry 分支):对上海用户
+  =沿袭「每天 04:05 一次」的旧行为零变化;严禁把 expiry 挂进每小时循环(会把「次日 04:05 过期」
+  提前成「小时级过期」,违反存量零变化红线)。
 - 半点/刻钟时区(印度 +5:30、尼泊尔 +5:45)在整点 runner 下最多延迟 55 分钟触达,记入已知
   容差,不为此加密扫描频率。
-- DST 换季由 IANA tz 数据天然处理;换季日 gym-day 可能 23/25 小时,接受(与手机闹钟同语义)。
-- `scheduler.ts:99-102`「digest 假设结算已完成」的顺序假设改为**同轮先结算后 digest**,
-  显式串行,不再靠 4 小时间隔。
+- **DST 换季日按墙钟 04:00 截断**:`trainingDay` 不得用「减 4 个流逝小时」实现(换季日会漂到
+  本地 03:00/05:00 翻天)——用本地墙钟判定:`localHour < 4` 则取本地日历日的前一天,否则取当天。
+  换季日 gym-day 23/25 小时,接受(与手机闹钟同语义)。测试必须含换季日边界
+  (Europe/London 2026-03-29 / 2026-10-25 的 03:59/04:00 两侧)。
 
 ### 5. 客户端契约(本 spec 只定契约,不含实装)
 
@@ -117,7 +146,7 @@ ALTER TABLE users ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai';
 
 ## 部署序(合并后)
 
-1. DMS 应用迁移 0066(纯增量,秒级);
+1. DMS 应用迁移 0066 与 0067(均纯增量,秒级);
 2. 部署 staging(行为对存量=不变,新调度 runner 空转扫到的都是上海桶,与今日结算结果一致——
    上线当天核对一次结算/digest 是否恰好一次);
 3. 造 tz=Europe/London 测试学员,按验收 2/4 实证。

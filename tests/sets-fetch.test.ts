@@ -1,9 +1,40 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
+import { fetchCoachSetLogs } from '../src/handlers/sets-fetch';
 import { auth, createPublishedPlan, ids, makeContext } from './helpers/studentActions';
 
 describe('GET /students/:id/sets', () => {
+  it('fetchCoachSetLogs windows plan scope on logged_date, not replay time', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: plan.planExerciseId,
+        exercise_id: ids.exercise,
+        logged_date: '2026-05-15',
+        set_index: 1,
+        weight_kg: '100.00',
+        reps: 5,
+        completed: true,
+        logged_at: new Date('2026-06-30T12:00:00.000Z'),
+      })
+      .execute();
+
+    const rows = await fetchCoachSetLogs(
+      ctx.db,
+      ids.coach,
+      ids.trainee,
+      '2026-05-15',
+      '2026-05-16',
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.logged_date).toBe('2026-05-15');
+  });
+
   it('returns self set logs within the date range', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
@@ -22,7 +53,9 @@ describe('GET /students/:id/sets', () => {
         completed: true,
         failed: true,
         assumed: true,
-        logged_at: new Date('2026-05-15T12:00:00.000Z'),
+        // Offline replay: scope=plan now shares the student's gym-day window
+        // with scope=all instead of applying UTC midnights to logged_at.
+        logged_at: new Date('2026-06-30T12:00:00.000Z'),
       })
       .execute();
 
@@ -177,7 +210,9 @@ describe('GET /students/:id/sets', () => {
           rpe: null,
           completed: true,
           failed: true,
-          logged_at: new Date('2026-05-15T12:00:00.000Z'),
+          // Coach scope=plan must use logged_date too: offline replay time is
+          // intentionally outside the requested window.
+          logged_at: new Date('2026-06-30T12:00:00.000Z'),
         },
         {
           student_id: ids.trainee,

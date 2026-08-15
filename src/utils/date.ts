@@ -39,18 +39,37 @@ export function normalizeDateOnly(value: string | Date): string {
   return value instanceof Date ? utcDateOnly(value) : value;
 }
 
-/**
- * A session logged before this hour (Asia/Shanghai) still belongs to the
- * previous calendar day: training days follow the gym clock, not midnight.
- */
+/** A session logged before this local wall-clock hour belongs to the previous day. */
 export const TRAINING_DAY_CUTOFF_HOUR = 4;
 
 /**
- * Server-clock training day for clients that do not send logged_date.
- * Shanghai has no DST, so shifting the instant back by the cutoff before
- * taking the calendar date is exact.
+ * Server-clock training day for clients that do not send logged_date. The
+ * cutoff is 04:00 on the user's wall clock, not four elapsed hours before the
+ * instant: those differ on 23/25-hour DST transition days.
  */
+export function trainingDay(now: Date, timezone: string): string {
+  const localDate = localCalendarDate(now, timezone);
+  const hour = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: '2-digit',
+    hourCycle: 'h23',
+  })
+    .formatToParts(now)
+    .find((part) => part.type === 'hour')?.value;
+  if (hour === undefined) throw new Error(`Unable to derive local hour for ${timezone}`);
+  if (Number(hour) >= TRAINING_DAY_CUTOFF_HOUR) return localDate;
+
+  const previousDate = utcDate(localDate);
+  previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+  return utcDateOnly(previousDate);
+}
+
+/** Calendar date in an IANA timezone, for non-gym-day plan calendar rules. */
+export function localCalendarDate(now: Date, timezone: string): string {
+  return now.toLocaleDateString('en-CA', { timeZone: timezone });
+}
+
+/** @deprecated Use trainingDay(now, timezone) for user-owned dates. */
 export function shanghaiTrainingDay(now: Date = new Date()): string {
-  const shifted = new Date(now.getTime() - TRAINING_DAY_CUTOFF_HOUR * 60 * 60 * 1000);
-  return shifted.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+  return trainingDay(now, 'Asia/Shanghai');
 }

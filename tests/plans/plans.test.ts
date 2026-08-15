@@ -80,6 +80,7 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
   });
 
   mem.public.none(fs.readFileSync('db/migrations/0001-init-users.sql', 'utf8'));
+  mem.public.none(fs.readFileSync('db/migrations/0066-add-user-timezone.sql', 'utf8'));
   mem.public.none(`
     CREATE TABLE exercises (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

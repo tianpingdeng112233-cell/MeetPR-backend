@@ -3,6 +3,8 @@ import type { Kysely } from 'kysely';
 
 import type { Database } from '../db/types';
 import type { Logger } from '../logger';
+import { normalizeDateOnly, trainingDay, utcDate, utcDateOnly } from '../utils/date';
+import { DEFAULT_TIME_ZONE } from '../utils/timezone';
 
 const DIGEST_EVENT_TYPE = 'coach_daily_digest';
 const DIGEST_TITLE = '昨日训练摘要';
@@ -37,9 +39,11 @@ function parsePayload(value: Record<string, unknown> | string): Record<string, u
   }
 }
 
-function includesGymDay(payload: Record<string, unknown> | string, gymDay: string): boolean {
+function missedGymDays(payload: Record<string, unknown> | string): string[] {
   const decoded = parsePayload(payload);
-  return Array.isArray(decoded?.missed_dates) && decoded.missed_dates.includes(gymDay);
+  return Array.isArray(decoded?.missed_dates)
+    ? decoded.missed_dates.filter((value): value is string => typeof value === 'string')
+    : [];
 }
 
 function eventSuffix(
@@ -48,6 +52,31 @@ function eventSuffix(
 ): string | null {
   const prefix = `${eventType}:`;
   return dedupKey.startsWith(prefix) ? dedupKey.slice(prefix.length) : null;
+}
+
+function shiftCalendarDay(value: string, days: number): string {
+  const date = utcDate(value);
+  date.setUTCDate(date.getUTCDate() + days);
+  return utcDateOnly(date);
+}
+
+function latestClosedGymDay(now: Date, timezone: string): string {
+  return shiftCalendarDay(trainingDay(now, timezone), -1);
+}
+
+function gymDaysAfter(startExclusive: string, endInclusive: string): string[] {
+  const cursor = utcDate(startExclusive);
+  const end = utcDate(endInclusive);
+  const days: string[] = [];
+  while (cursor < end) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    days.push(utcDateOnly(cursor));
+  }
+  return days;
+}
+
+function bondKey(coachId: string, studentId: string): string {
+  return `${coachId}:${studentId}`;
 }
 
 // Fixed namespace for daily-digest aggregate ids (RFC 4122 §4.3). Never change
@@ -97,16 +126,57 @@ export async function runDailyDigest(
   gymDay: string,
   now: Date,
   logger: DailyDigestLogger,
+  timezone = DEFAULT_TIME_ZONE,
+  failedStudentIds: ReadonlySet<string> = new Set<string>(),
 ): Promise<void> {
-  const acceptedBonds = await db
-    .selectFrom('bind_requests as br')
-    .innerJoin('users as coach', 'coach.id', 'br.coach_id')
-    .select(['br.coach_id', 'br.student_id'])
-    .where('br.status', '=', 'accepted')
-    .where('coach.role', '=', 'coach')
-    .execute();
+  const acceptedBonds = (
+    await db
+      .selectFrom('bind_requests as br')
+      .innerJoin('users as coach', 'coach.id', 'br.coach_id')
+      .innerJoin('users as student', 'student.id', 'br.student_id')
+      .select(['br.coach_id', 'br.student_id', 'student.timezone as student_timezone'])
+      .where('br.status', '=', 'accepted')
+      .where('coach.role', '=', 'coach')
+      .where('coach.timezone', '=', timezone)
+      .execute()
+  ).filter((bond) => !failedStudentIds.has(bond.student_id));
   const coachIds = [...new Set(acceptedBonds.map((bond) => bond.coach_id))];
   if (coachIds.length === 0) {
+    logger.info({ gymDay, inserted: 0 }, 'coach_daily_digest_completed');
+    return;
+  }
+
+  const studentIds = [...new Set(acceptedBonds.map((bond) => bond.student_id))];
+  const watermarks = await db
+    .selectFrom('digest_watermarks')
+    .select(['coach_id', 'student_id', 'last_gym_day'])
+    .where('coach_id', 'in', coachIds)
+    .where('student_id', 'in', studentIds)
+    .execute();
+  const watermarkByBond = new Map(
+    watermarks.map((watermark) => [
+      bondKey(watermark.coach_id, watermark.student_id),
+      normalizeDateOnly(watermark.last_gym_day),
+    ]),
+  );
+
+  const targetDaysByBond = new Map<string, Set<string>>();
+  const latestDayByBond = new Map<string, string>();
+  const targetDaysByStudent = new Map<string, Set<string>>();
+  for (const bond of acceptedBonds) {
+    const key = bondKey(bond.coach_id, bond.student_id);
+    const latestDay = latestClosedGymDay(now, bond.student_timezone);
+    const watermark = watermarkByBond.get(key) ?? shiftCalendarDay(latestDay, -1);
+    const targetDays = new Set(gymDaysAfter(watermark, latestDay));
+    if (targetDays.size === 0) continue;
+    targetDaysByBond.set(key, targetDays);
+    latestDayByBond.set(key, latestDay);
+    const days = targetDaysByStudent.get(bond.student_id) ?? new Set<string>();
+    for (const targetDay of targetDays) days.add(targetDay);
+    targetDaysByStudent.set(bond.student_id, days);
+  }
+  const targetDays = [...new Set([...targetDaysByStudent.values()].flatMap((days) => [...days]))];
+  if (targetDays.length === 0) {
     logger.info({ gymDay, inserted: 0 }, 'coach_daily_digest_completed');
     return;
   }
@@ -114,13 +184,15 @@ export async function runDailyDigest(
   const [events, signals] = await Promise.all([
     db
       .selectFrom('student_events')
-      .select(['student_id', 'coach_id', 'event_type', 'dedup_key'])
-      .where('session_date', '=', gymDay)
+      .select(['student_id', 'coach_id', 'event_type', 'session_date', 'dedup_key'])
+      .where('student_id', 'in', studentIds)
+      .where('session_date', 'in', targetDays)
       .execute(),
     db
       .selectFrom('student_signals')
       .select(['id', 'student_id', 'coach_id', 'payload'])
       .where('coach_id', 'in', coachIds)
+      .where('student_id', 'in', studentIds)
       .where('signal_type', '=', 'missed_training')
       .where('status', '=', 'open')
       .execute(),
@@ -131,6 +203,8 @@ export async function runDailyDigest(
   // event's coach attribution is null or belongs to a different coach.
   const completedSuffixes = new Set(
     events.flatMap((event) => {
+      const eventDay = normalizeDateOnly(event.session_date);
+      if (!targetDaysByStudent.get(event.student_id)?.has(eventDay)) return [];
       if (event.event_type !== 'session_completed') return [];
       const suffix = eventSuffix(event.dedup_key, 'session_completed');
       return suffix === null ? [] : [suffix];
@@ -142,6 +216,8 @@ export async function runDailyDigest(
     if (event.coach_id === null || !countsByCoach.has(event.coach_id)) {
       continue;
     }
+    const eventDay = normalizeDateOnly(event.session_date);
+    if (!targetDaysByBond.get(bondKey(event.coach_id, event.student_id))?.has(eventDay)) continue;
     const counts = countsByCoach.get(event.coach_id);
     if (counts === undefined) continue;
     if (event.event_type === 'session_completed') counts.session_completed += 1;
@@ -152,39 +228,92 @@ export async function runDailyDigest(
     }
   }
 
-  const missedStudentsByCoach = new Map<string, Set<string>>();
+  const missedCountsByCoach = new Map<string, number>();
   for (const signal of signals) {
-    if (!includesGymDay(signal.payload, gymDay)) continue;
-    const students = missedStudentsByCoach.get(signal.coach_id) ?? new Set<string>();
-    students.add(signal.student_id);
-    missedStudentsByCoach.set(signal.coach_id, students);
+    const targetDaysForBond = targetDaysByBond.get(bondKey(signal.coach_id, signal.student_id));
+    if (targetDaysForBond === undefined) continue;
+    const count = missedGymDays(signal.payload).filter((day) => targetDaysForBond.has(day)).length;
+    if (count === 0) continue;
+    missedCountsByCoach.set(
+      signal.coach_id,
+      (missedCountsByCoach.get(signal.coach_id) ?? 0) + count,
+    );
   }
-  for (const [coachId, students] of missedStudentsByCoach) {
+  for (const [coachId, missedCount] of missedCountsByCoach) {
     const counts = countsByCoach.get(coachId);
-    if (counts !== undefined) counts.missed_training = students.size;
+    if (counts !== undefined) counts.missed_training = missedCount;
   }
 
   let inserted = 0;
   for (const [coachId, counts] of countsByCoach) {
+    const watermarkValues = acceptedBonds.flatMap((bond) => {
+      if (bond.coach_id !== coachId) return [];
+      const lastGymDay = latestDayByBond.get(bondKey(coachId, bond.student_id));
+      return lastGymDay === undefined
+        ? []
+        : [
+            {
+              coach_id: coachId,
+              student_id: bond.student_id,
+              last_gym_day: lastGymDay,
+              updated_at: now,
+            },
+          ];
+    });
+    if (watermarkValues.length === 0) continue;
     const body = dailyDigestBody(counts);
-    if (body === null) continue;
-    const result = await db
-      .insertInto('notification_outbox')
-      .values({
-        event_type: DIGEST_EVENT_TYPE,
-        aggregate_id: deriveDailyDigestAggregateId(coachId, gymDay),
-        recipient_id: coachId,
-        payload: JSON.stringify({
-          aps: { alert: { title: DIGEST_TITLE, body } },
-          counts,
-          gym_day: gymDay,
-        }),
-        created_at: now,
-      })
-      .onConflict((oc) => oc.columns(['event_type', 'aggregate_id', 'recipient_id']).doNothing())
-      .returning('id')
-      .executeTakeFirst();
-    if (result !== undefined) inserted += 1;
+    const didInsert = await db.transaction().execute(async (trx) => {
+      let outboxInserted = false;
+      if (body !== null) {
+        const aggregateId = deriveDailyDigestAggregateId(coachId, gymDay);
+        const existingOutbox = await trx
+          .selectFrom('notification_outbox')
+          .select('id')
+          .where('event_type', '=', DIGEST_EVENT_TYPE)
+          .where('aggregate_id', '=', aggregateId)
+          .where('recipient_id', '=', coachId)
+          .executeTakeFirst();
+        if (existingOutbox === undefined) {
+          const result = await trx
+            .insertInto('notification_outbox')
+            .values({
+              event_type: DIGEST_EVENT_TYPE,
+              aggregate_id: aggregateId,
+              recipient_id: coachId,
+              payload: JSON.stringify({
+                aps: { alert: { title: DIGEST_TITLE, body } },
+                counts,
+                gym_day: gymDay,
+              }),
+              created_at: now,
+            })
+            .onConflict((oc) =>
+              oc.columns(['event_type', 'aggregate_id', 'recipient_id']).doNothing(),
+            )
+            .returning('id')
+            .executeTakeFirst();
+          outboxInserted = result !== undefined;
+        }
+      }
+      // A later hourly scan can see a west-of-coach student close another day
+      // after this coach-day's digest was already sent. The idempotency conflict
+      // must leave that student's watermark untouched so the next coach-day can
+      // include it. A zero-count window is safe to consume without an outbox.
+      if (body === null || outboxInserted) {
+        await trx
+          .insertInto('digest_watermarks')
+          .values(watermarkValues)
+          .onConflict((oc) =>
+            oc.columns(['coach_id', 'student_id']).doUpdateSet({
+              last_gym_day: (eb) => eb.ref('excluded.last_gym_day'),
+              updated_at: (eb) => eb.ref('excluded.updated_at'),
+            }),
+          )
+          .execute();
+      }
+      return outboxInserted;
+    });
+    if (didInsert) inserted += 1;
   }
 
   logger.info({ gymDay, inserted }, 'coach_daily_digest_completed');

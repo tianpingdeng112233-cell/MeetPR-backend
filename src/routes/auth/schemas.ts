@@ -15,6 +15,7 @@ export const RegisterBodySchema = z.object({
   phone: PhoneSchema,
   password: PasswordSchema,
   role: z.enum(REGISTERABLE_ROLES),
+  timezone: z.string().optional(),
 });
 
 export const LoginBodySchema = z.object({

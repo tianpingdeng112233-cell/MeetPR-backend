@@ -10,6 +10,7 @@ import { selfSignupRoles, type Config } from '../../config';
 import { REGISTERABLE_ROLES, type Database, type UserRole } from '../../db/types';
 import type { Logger } from '../../logger';
 import { createOidcVerifier, OidcKeysUnavailableError } from '../../services/oidc';
+import { requestedTimeZone } from '../../utils/timezone';
 import { route, validationEnvelope } from '../http';
 import { BCRYPT_COST } from './constants';
 import { PasswordSchema } from './schemas';
@@ -24,6 +25,7 @@ const AppleBodySchema = z
     identityToken: z.string().min(1),
     nonce: NonceSchema,
     role: SignupRoleSchema,
+    timezone: z.string().optional(),
   })
   .strict();
 const GoogleBodySchema = z
@@ -31,6 +33,7 @@ const GoogleBodySchema = z
     idToken: z.string().min(1),
     nonce: NonceSchema.optional(),
     role: SignupRoleSchema,
+    timezone: z.string().optional(),
   })
   .strict();
 const EmailRegisterBodySchema = z
@@ -38,6 +41,7 @@ const EmailRegisterBodySchema = z
     email: z.string().trim().email().max(320),
     password: PasswordSchema,
     role: SignupRoleSchema,
+    timezone: z.string().optional(),
   })
   .strict();
 const EmailLoginBodySchema = z
@@ -144,6 +148,7 @@ async function authenticateIdentity(
   provider: 'apple' | 'google',
   claims: IdentityClaims,
   role: UserRole,
+  timezone: string,
 ): Promise<{ user: GlobalUserRow; jti: string; created: boolean } | string> {
   const existingLogin = await deps.db.transaction().execute(async (trx) => {
     const existing = await findIdentity(trx, provider, claims.subject);
@@ -176,7 +181,7 @@ async function authenticateIdentity(
 
       const user = await trx
         .insertInto('users')
-        .values({ phone: null, email: null, password_hash: passwordHash, role })
+        .values({ phone: null, email: null, password_hash: passwordHash, role, timezone })
         .returning(['id', 'phone', 'email', 'role', 'created_at'])
         .executeTakeFirstOrThrow();
       await trx
@@ -237,6 +242,11 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
   router.post(
     '/apple',
     route(async (req, res) => {
+      const timezone = requestedTimeZone(req.body);
+      if (timezone === null) {
+        res.status(400).json({ error: 'INVALID_TIMEZONE' });
+        return;
+      }
       const body = AppleBodySchema.safeParse(req.body);
       if (!body.success) {
         res.status(400).json(validationEnvelope(body.error));
@@ -269,7 +279,7 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
         return;
       }
 
-      const login = await authenticateIdentity(deps, 'apple', claims, body.data.role);
+      const login = await authenticateIdentity(deps, 'apple', claims, body.data.role, timezone);
       if (typeof login === 'string') {
         res.status(403).json({ error: login });
         return;
@@ -289,6 +299,11 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
   router.post(
     '/google',
     route(async (req, res) => {
+      const timezone = requestedTimeZone(req.body);
+      if (timezone === null) {
+        res.status(400).json({ error: 'INVALID_TIMEZONE' });
+        return;
+      }
       const body = GoogleBodySchema.safeParse(req.body);
       if (!body.success) {
         res.status(400).json(validationEnvelope(body.error));
@@ -321,7 +336,7 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
         return;
       }
 
-      const login = await authenticateIdentity(deps, 'google', claims, body.data.role);
+      const login = await authenticateIdentity(deps, 'google', claims, body.data.role, timezone);
       if (typeof login === 'string') {
         res.status(403).json({ error: login });
         return;
@@ -341,6 +356,11 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
   router.post(
     '/email/register',
     route(async (req, res) => {
+      const timezone = requestedTimeZone(req.body);
+      if (timezone === null) {
+        res.status(400).json({ error: 'INVALID_TIMEZONE' });
+        return;
+      }
       const body = EmailRegisterBodySchema.safeParse(req.body);
       if (!body.success) {
         res.status(400).json(validationEnvelope(body.error));
@@ -364,6 +384,7 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
               email_verified_at: null,
               password_hash: passwordHash,
               role: body.data.role,
+              timezone,
             })
             .returning(['id', 'phone', 'email', 'role', 'created_at'])
             .executeTakeFirstOrThrow();

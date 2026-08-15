@@ -41,6 +41,7 @@ interface UserRecord {
   apple_user_id: string | null;
   password_hash: string;
   role: UserRole;
+  timezone: string;
   refresh_token_jti: string | null;
   created_at: Date;
   updated_at: Date;
@@ -70,6 +71,7 @@ class InMemoryAuthDb {
       implementation: randomUUID,
     });
     this.mem.public.none(fs.readFileSync('db/migrations/0001-init-users.sql', 'utf8'));
+    this.mem.public.none(fs.readFileSync('db/migrations/0066-add-user-timezone.sql', 'utf8'));
     if (options.applySessionsMigration !== false) this.applySessionsMigration();
 
     const { Pool } = this.mem.adapters.createPg();
@@ -177,6 +179,7 @@ describe('auth endpoints', () => {
     expect(row?.password_hash).toMatch(/^\$2[ayb]\$10\$/);
     await expect(bcrypt.compare('hunter2hunter2', row?.password_hash ?? '')).resolves.toBe(true);
     expect(row?.refresh_token_jti).toBeNull();
+    expect(row?.timezone).toBe('Asia/Shanghai');
 
     const issuedJti = refreshJti(response.body.refreshToken as string);
     expect(issuedJti).toMatch(
@@ -192,6 +195,28 @@ describe('auth endpoints', () => {
       sub: response.body.user.id,
       role: 'coach',
     });
+  });
+
+  it('stores an optional IANA timezone and rejects invalid timezone values', async () => {
+    const { app, db } = makeApp();
+    const valid = await request(app).post('/auth/register').send({
+      phone: '+8613800000066',
+      password: 'hunter2hunter2',
+      role: 'coached_student',
+      timezone: 'Europe/London',
+    });
+    const invalid = await request(app).post('/auth/register').send({
+      phone: '+8613800000166',
+      password: 'hunter2hunter2',
+      role: 'coached_student',
+      timezone: 'Mars/Olympus_Mons',
+    });
+
+    expect(valid.status).toBe(201);
+    expect(db.getByPhone('+8613800000066')?.timezone).toBe('Europe/London');
+    expect(valid.body.user).not.toHaveProperty('timezone');
+    expect(invalid.status).toBe(400);
+    expect(invalid.body).toEqual({ error: 'INVALID_TIMEZONE' });
   });
 
   it('rejects duplicate phone registration with AUTH_PHONE_TAKEN', async () => {
