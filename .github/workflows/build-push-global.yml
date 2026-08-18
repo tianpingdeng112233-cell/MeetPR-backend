@@ -1,0 +1,64 @@
+name: Build & push global image to DOCR
+
+# Overseas twin of build-push-staging.yml. Gates first: a sha tag only becomes
+# deployable after the same five checks CI runs, so a red commit never gets a
+# pushable image. doctl is pinned to a full commit SHA (v2.5.2) because this
+# workflow holds the DO cloud token.
+
+on:
+  push:
+    branches: [staging]
+
+concurrency:
+  group: build-push-global
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm build
+      - run: pnpm test
+
+  build-push:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2.5.2
+        with:
+          token: ${{ secrets.DO_ACCESS_TOKEN }}
+
+      - name: Login to DOCR
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Build image
+        run: |
+          docker build \
+            -t registry.digitalocean.com/meetpr-global/meetpr-backend:sha-${GITHUB_SHA} \
+            -t registry.digitalocean.com/meetpr-global/meetpr-backend:latest .
+
+      - name: Push image
+        run: |
+          docker push registry.digitalocean.com/meetpr-global/meetpr-backend:sha-${GITHUB_SHA}
+          docker push registry.digitalocean.com/meetpr-global/meetpr-backend:latest
+
+      - name: Garbage-collect untagged manifests (Starter 500MiB cap)
+        run: doctl registry garbage-collection start --include-untagged-manifests --force || true

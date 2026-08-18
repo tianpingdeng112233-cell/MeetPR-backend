@@ -1,0 +1,91 @@
+name: Deploy global app to DO App Platform
+
+# Manual-only, mirrors deploy-staging.yml's migration gate. `doctl apps create
+# --upsert` gives atomic create-or-update (no list-then-create race). Secrets
+# are injected from GitHub Actions secrets into the rendered spec inside the
+# runner; the spec file is 0600 and removed even on failure.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: 'Full commit sha of the image to deploy (default: HEAD of this ref)'
+        required: false
+      migrations_applied:
+        description: 'All migrations required by this image are applied (db/MIGRATIONS-APPLIED-GLOBAL.md)'
+        type: boolean
+        required: true
+        default: false
+
+concurrency:
+  group: deploy-global
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  APP_NAME: meetpr-backend-global
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Gate on migration confirmation
+        if: ${{ inputs.migrations_applied != true }}
+        run: |
+          echo "::error::migrations_applied not confirmed"
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2.5.2
+        with:
+          token: ${{ secrets.DO_ACCESS_TOKEN }}
+
+      - name: Resolve and verify image tag
+        id: img
+        env:
+          IMAGE_SHA_INPUT: ${{ inputs.image_sha }}
+        run: |
+          SHA="${IMAGE_SHA_INPUT:-$GITHUB_SHA}"
+          if ! echo "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::image_sha must be a full 40-char commit sha"
+            exit 1
+          fi
+          if ! doctl registry repository list-tags meetpr-backend --format Tag --no-header | grep -qx "sha-${SHA}"; then
+            echo "::error::tag sha-${SHA} not found in DOCR — has build-push-global finished for this sha?"
+            exit 1
+          fi
+          echo "tag=sha-${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Render app spec
+        env:
+          JWT_ACCESS_SECRET: ${{ secrets.GLOBAL_JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.GLOBAL_JWT_REFRESH_SECRET }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          RESEND_API_KEY: ${{ secrets.GLOBAL_RESEND_API_KEY }}
+          SIWA_PRIVATE_KEY: ${{ secrets.GLOBAL_SIWA_PRIVATE_KEY }}
+          APNS_PRIVATE_KEY: ${{ secrets.GLOBAL_APNS_PRIVATE_KEY }}
+          S3_ENDPOINT: ${{ vars.GLOBAL_S3_ENDPOINT }}
+          S3_BUCKET: meetpr-videos-global
+          IMAGE_TAG: ${{ steps.img.outputs.tag }}
+        run: |
+          umask 077
+          python3 .github/scripts/render-global-app-spec.py > /tmp/app-spec.yaml
+
+      - name: Create or update app (atomic upsert)
+        run: doctl apps create --upsert --update-sources --spec /tmp/app-spec.yaml --wait
+
+      - name: Remove rendered spec
+        if: always()
+        run: rm -f /tmp/app-spec.yaml
+
+      - name: Health check
+        run: |
+          APP_ID=$(doctl apps list --format ID,Spec.Name --no-header | awk -v n="$APP_NAME" '$2==n{print $1}')
+          URL=$(doctl apps get "$APP_ID" --format DefaultIngress --no-header)
+          curl -sf --max-time 20 "${URL%/}/health"
