@@ -18,7 +18,7 @@ import { selectStorageService } from './services/storage-selector';
 function main(): void {
   const config = loadConfig();
   const logger = createLogger(config);
-  const pool = createPool(config.DATABASE_URL);
+  const pool = createPool(config.DATABASE_URL, {}, config.DATABASE_CA_CERT);
   const db = createDb(pool);
   const oss = selectStorageService(config);
   if (!oss) {
