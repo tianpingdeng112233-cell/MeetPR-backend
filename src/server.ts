@@ -12,17 +12,22 @@ import { createLogger } from './logger';
 import { createRealtimeHub } from './realtime/hub';
 import { attachRealtimeUpgrade } from './realtime/upgrade';
 import { startActivityScheduler, startPushConsumerScheduler } from './jobs/scheduler';
-import { maybeCreateOssService } from './services/oss';
 import { createApnsClient } from './services/apns';
+import { selectStorageService } from './services/storage-selector';
 
 function main(): void {
   const config = loadConfig();
   const logger = createLogger(config);
   const pool = createPool(config.DATABASE_URL);
   const db = createDb(pool);
-  const oss = maybeCreateOssService(config);
+  const oss = selectStorageService(config);
   if (!oss) {
-    logger.warn({}, 'oss_not_configured_uploads_disabled');
+    logger.warn(
+      {},
+      config.STORAGE_BACKEND === 's3'
+        ? 's3_not_configured_uploads_disabled'
+        : 'oss_not_configured_uploads_disabled',
+    );
   }
   const hub = createRealtimeHub({ logger });
 

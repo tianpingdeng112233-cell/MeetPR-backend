@@ -100,6 +100,8 @@ export const ConfigSchema = z
     // canonical external endpoint and makes an incomplete production setup fail
     // at boot instead of silently serving credentials over a raw IP/HTTP URL.
     PUBLIC_BASE_URL: HttpsUrlSchema.optional(),
+    // Selects the storage implementation without changing the legacy OSS default.
+    STORAGE_BACKEND: z.enum(['oss', 's3']).default('oss'),
     // OSS credentials are optional: local dev runs without them and /uploads/* responds 503.
     OSS_ACCESS_KEY_ID: z.string().min(1).optional(),
     OSS_ACCESS_KEY_SECRET: z.string().min(1).optional(),
@@ -107,6 +109,13 @@ export const ConfigSchema = z
     OSS_REGION: z.string().min(1).optional(),
     OSS_ENDPOINT: z.string().min(1).optional(),
     OSS_ACCELERATE_ENDPOINT: z.string().min(1).optional(),
+    // S3-compatible credentials are likewise optional. Selecting S3 with an
+    // incomplete set leaves uploads disabled instead of failing application boot.
+    S3_ENDPOINT: z.string().min(1).optional(),
+    S3_REGION: z.string().min(1).optional(),
+    S3_BUCKET: z.string().min(1).optional(),
+    S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+    S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   })
   .superRefine((config, ctx) => {
     if (config.JWT_ACCESS_SECRET === config.JWT_REFRESH_SECRET) {
@@ -187,7 +196,13 @@ export const ConfigSchema = z
     }
   });
 
-export type Config = z.infer<typeof ConfigSchema>;
+type ParsedConfig = z.infer<typeof ConfigSchema>;
+
+// Directly constructed Config objects predate the backend selector. Keep that
+// field optional at DI boundaries while loadConfig always materializes "oss".
+export type Config = Omit<ParsedConfig, 'STORAGE_BACKEND'> & {
+  STORAGE_BACKEND?: ParsedConfig['STORAGE_BACKEND'];
+};
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return ConfigSchema.parse(env);

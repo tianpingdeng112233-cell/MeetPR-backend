@@ -29,7 +29,9 @@ describe('config', () => {
     expect(config.SIWA_KEY_ID).toBeUndefined();
     expect(config.SIWA_TEAM_ID).toBeUndefined();
     expect(config.SIWA_PRIVATE_KEY).toBeUndefined();
+    expect(config.STORAGE_BACKEND).toBe('oss');
     expect(config.OSS_ACCELERATE_ENDPOINT).toBeUndefined();
+    expect(config.S3_ENDPOINT).toBeUndefined();
   });
 
   it('throws when DATABASE_URL is missing', () => {
@@ -101,6 +103,22 @@ describe('config', () => {
     });
 
     expect(config.OSS_ACCELERATE_ENDPOINT).toBe('https://oss-accelerate.aliyuncs.com');
+  });
+
+  it('accepts a complete S3-compatible storage configuration', () => {
+    const config = loadConfig({
+      ...validEnv,
+      STORAGE_BACKEND: 's3',
+      S3_ENDPOINT: 'https://account-id.r2.cloudflarestorage.com',
+      S3_REGION: 'auto',
+      S3_BUCKET: 'meetpr-test-bucket',
+      S3_ACCESS_KEY_ID: 'test-s3-key-id',
+      S3_SECRET_ACCESS_KEY: 'test-s3-secret',
+    });
+
+    expect(config.STORAGE_BACKEND).toBe('s3');
+    expect(config.S3_REGION).toBe('auto');
+    expect(config.S3_BUCKET).toBe('meetpr-test-bucket');
   });
 
   it('requires every APNs setting when push is enabled', () => {

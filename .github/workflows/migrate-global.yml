@@ -1,0 +1,90 @@
+name: Apply migrations to global database
+
+# Manual-only, the overseas counterpart of the DMS discipline. The runner
+# fetches the connection string via doctl (it never leaves the job), applies
+# db/migrations/*.sql in filename order and records each file in a
+# meetpr_migrations ledger table. Migration files manage their own BEGIN/COMMIT
+# (repo convention); the ledger INSERT rides the same psql invocation, so the
+# only partial-state window is a runner death between the two — acceptable for
+# the fresh-bootstrap use case, where the recovery is re-checking the printed
+# head against db/MIGRATIONS-APPLIED-GLOBAL.md. Real psql errors are printed,
+# never masked.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'I checked db/MIGRATIONS-APPLIED-GLOBAL.md and these migrations are pending'
+        type: boolean
+        required: true
+        default: false
+
+concurrency:
+  group: migrate-global
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Gate on confirmation
+        if: ${{ inputs.confirm != true }}
+        run: |
+          echo "::error::confirm not checked"
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2.5.2
+        with:
+          token: ${{ secrets.DO_ACCESS_TOKEN }}
+
+      - name: Apply migrations in order
+        run: |
+          set -euo pipefail
+          DB_ID=$(doctl databases list --format ID,Name --no-header | awk '$2=="meetpr-global-pg"{print $1}')
+          if [ -z "$DB_ID" ]; then
+            echo "::error::database cluster meetpr-global-pg not found"
+            exit 1
+          fi
+          DATABASE_URL=$(doctl databases connection "$DB_ID" --format URI --no-header)
+          export DATABASE_URL
+
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -qc \
+            "CREATE TABLE IF NOT EXISTS meetpr_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+
+          applied=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc \
+            "SELECT COALESCE(string_agg(name, ','), '') FROM meetpr_migrations")
+
+          # Migration files own a single top-level BEGIN/COMMIT (repo style) or
+          # are single autocommit statements. Strip that outer pair when present
+          # and re-wrap file + ledger INSERT in ONE transaction so schema change
+          # and ledger row commit or roll back together. Files with multiple
+          # COMMITs are refused loudly for manual handling.
+          for f in $(ls db/migrations/*.sql | sort); do
+            base=$(basename "$f")
+            case ",$applied," in
+              *",$base,"*) echo "SKIP  $base"; continue ;;
+            esac
+            commits=$(grep -ciE '^[[:space:]]*COMMIT[[:space:]]*;' "$f" || true)
+            if [ "$commits" -gt 1 ]; then
+              echo "::error::$base has multiple COMMITs — apply manually"
+              exit 1
+            fi
+            echo "APPLY $base"
+            {
+              echo "BEGIN;"
+              sed -E 's/^[[:space:]]*BEGIN[[:space:]]*;[[:space:]]*$//; s/^[[:space:]]*COMMIT[[:space:]]*;[[:space:]]*$//' "$f"
+              echo "INSERT INTO meetpr_migrations (name) VALUES ('$base');"
+              echo "COMMIT;"
+            } | psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f - > /dev/null
+          done
+
+          head=$(psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc \
+            "SELECT name FROM meetpr_migrations ORDER BY name DESC LIMIT 1")
+          echo "head: $head"
