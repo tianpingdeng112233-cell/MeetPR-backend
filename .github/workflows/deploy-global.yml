@@ -55,7 +55,12 @@ jobs:
             echo "::error::image_sha must be a full 40-char commit sha"
             exit 1
           fi
-          if ! doctl registry repository list-tags meetpr-backend --format Tag --no-header | grep -qx "sha-${SHA}"; then
+          # Verify by direct manifest lookup (staging pattern): repository
+          # LISTING can lag for a long window after garbage collection while
+          # pulls by tag work fine — list-tags gave persistent false negatives
+          # on 2026-08-18 even though both pushes had returned digests.
+          doctl registry login --expiry-seconds 600
+          if ! docker manifest inspect "registry.digitalocean.com/meetpr-global/meetpr-backend:sha-${SHA}" > /dev/null; then
             echo "::error::tag sha-${SHA} not found in DOCR — has build-push-global finished for this sha?"
             exit 1
           fi
