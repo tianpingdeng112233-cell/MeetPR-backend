@@ -109,6 +109,8 @@ export const ConfigSchema = z
     OSS_REGION: z.string().min(1).optional(),
     OSS_ENDPOINT: z.string().min(1).optional(),
     OSS_ACCELERATE_ENDPOINT: z.string().min(1).optional(),
+    // Private-CA managed Postgres (DO App Platform binds ${db.CA_CERT}).
+    DATABASE_CA_CERT: z.string().min(1).optional(),
     // S3-compatible credentials are likewise optional. Selecting S3 with an
     // incomplete set leaves uploads disabled instead of failing application boot.
     S3_ENDPOINT: z.string().min(1).optional(),

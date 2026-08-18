@@ -112,6 +112,9 @@ lines = [
     "      - key: DATABASE_URL",
     "        scope: RUN_TIME",
     "        value: ${globalpg.DATABASE_URL}",
+    "      - key: DATABASE_CA_CERT",
+    "        scope: RUN_TIME",
+    "        value: ${globalpg.CA_CERT}",
 ]
 
 for key, value in PLAIN.items():
