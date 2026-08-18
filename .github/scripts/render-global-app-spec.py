@@ -91,6 +91,8 @@ lines = [
     "domains:",
     "  - domain: api.meetpr.app",
     "    type: PRIMARY",
+    "  - domain: coach.meetpr.app",
+    "    type: ALIAS",
     "databases:",
     "  - name: globalpg",
     "    engine: PG",
