@@ -114,6 +114,12 @@ describe('GET /students/:id/feedback', () => {
       ])
       .execute();
 
+    await ctx.db
+      .updateTable('exercises')
+      .set({ name_en: 'Competition Squat (EN)' })
+      .where('name', '=', 'Competition Squat')
+      .execute();
+
     const res = await request(ctx.app)
       .get(`/students/${ids.trainee}/feedback`)
       .set(auth(ctx.traineeToken));
@@ -126,6 +132,7 @@ describe('GET /students/:id/feedback', () => {
       video: {
         id: videoId,
         exercise_name: 'Competition Squat',
+        exercise_name_en: 'Competition Squat (EN)',
         set_index: 2,
         weight_kg: '125.00',
         reps: 4,

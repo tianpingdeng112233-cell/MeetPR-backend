@@ -25,6 +25,7 @@ export interface FeedbackResponse {
 export interface FeedbackVideoResponse {
   id: string;
   exercise_name: string | null;
+  exercise_name_en: string | null;
   set_index: number | null;
   weight_kg: string | null;
   reps: number | null;
@@ -38,6 +39,7 @@ export interface FeedbackWithVideoResponse extends FeedbackResponse {
 export interface FeedbackVideoMetadataRow {
   video_attachment_id: string | null;
   video_exercise_name: string | null;
+  video_exercise_name_en: string | null;
   video_set_index: number | null;
   video_weight_kg: string | null;
   video_reps: number | null;
@@ -69,6 +71,7 @@ export function toFeedbackWithVideo(
         : {
             id: row.video_attachment_id,
             exercise_name: row.video_exercise_name,
+            exercise_name_en: row.video_exercise_name_en,
             set_index: row.video_set_index,
             weight_kg: row.video_weight_kg === null ? null : Number(row.video_weight_kg).toFixed(2),
             reps: row.video_reps,

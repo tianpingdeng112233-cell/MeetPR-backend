@@ -13,6 +13,7 @@ function feedbackWithVideoQuery(db: Kysely<Database>) {
     .select([
       'a.id as video_attachment_id',
       'e.name as video_exercise_name',
+      'e.name_en as video_exercise_name_en',
       'sl.set_index as video_set_index',
       'sl.weight_kg as video_weight_kg',
       'sl.reps as video_reps',
