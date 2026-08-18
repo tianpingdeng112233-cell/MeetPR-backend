@@ -60,5 +60,8 @@ jobs:
           docker push registry.digitalocean.com/meetpr-global/meetpr-backend:sha-${GITHUB_SHA}
           docker push registry.digitalocean.com/meetpr-global/meetpr-backend:latest
 
-      - name: Garbage-collect untagged manifests (Starter 500MiB cap)
-        run: doctl registry garbage-collection start --include-untagged-manifests --force || true
+      # NO auto-GC here: garbage collection immediately after a push can
+      # collect the just-pushed manifest before its tag linkage settles
+      # (observed 2026-08-18 — wiped the registry, blocked deploys ~25min).
+      # Run GC manually from the console when the Starter 500MiB cap nears,
+      # and never while a deploy is pending.
