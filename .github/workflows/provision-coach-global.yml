@@ -63,4 +63,8 @@ jobs:
           fi
           DATABASE_URL=$(doctl databases connection "$DB_ID" --format URI --no-header)
           export DATABASE_URL
+          # The managed cluster presents a private CA; fetch it so the pool can
+          # verify strictly instead of failing on "self-signed certificate".
+          DATABASE_CA_CERT=$(doctl databases get-ca "$DB_ID" --format Certificate --no-header)
+          export DATABASE_CA_CERT
           pnpm tsx scripts/provision-coach-global.ts
