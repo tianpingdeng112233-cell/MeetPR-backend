@@ -1,0 +1,66 @@
+name: Provision a coach on the global database
+
+# Manual-only. The Global track has no coach self-signup, so coach accounts
+# (real US coaches, App Review demo data) are provisioned by an operator.
+# The connection string is fetched via doctl and never leaves the job; the
+# password arrives via the GLOBAL_COACH_PASSWORD secret so it never appears
+# in logs or workflow inputs. Idempotent on email (existing coach → password
+# rotated), so re-runs are safe.
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'Coach email (becomes the login)'
+        type: string
+        required: true
+      timezone:
+        description: 'IANA time zone for the coach'
+        type: string
+        required: true
+        default: 'America/New_York'
+
+concurrency:
+  group: provision-coach-global
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2.5.2
+        with:
+          token: ${{ secrets.DO_ACCESS_TOKEN }}
+
+      - name: Provision coach
+        env:
+          COACH_EMAIL: ${{ inputs.email }}
+          COACH_TIMEZONE: ${{ inputs.timezone }}
+          COACH_PASSWORD: ${{ secrets.GLOBAL_COACH_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$COACH_PASSWORD" ]; then
+            echo "::error::GLOBAL_COACH_PASSWORD secret is not set"
+            exit 1
+          fi
+          DB_ID=$(doctl databases list --format ID,Name --no-header | awk '$2=="meetpr-global-pg"{print $1}')
+          if [ -z "$DB_ID" ]; then
+            echo "::error::database cluster meetpr-global-pg not found"
+            exit 1
+          fi
+          DATABASE_URL=$(doctl databases connection "$DB_ID" --format URI --no-header)
+          export DATABASE_URL
+          pnpm tsx scripts/provision-coach-global.ts
