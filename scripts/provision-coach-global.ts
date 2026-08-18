@@ -18,6 +18,7 @@ const EnvSchema = z.object({
     .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, {
       message: 'COACH_PASSWORD must be at most 72 UTF-8 bytes',
     }),
+  DATABASE_CA_CERT: z.string().min(1).optional(),
   COACH_TIMEZONE: z
     .string()
     .min(1)
@@ -50,7 +51,7 @@ async function main(): Promise<void> {
   const email = parsed.data.COACH_EMAIL.toLowerCase();
   const passwordHash = await bcrypt.hash(parsed.data.COACH_PASSWORD, BCRYPT_COST);
 
-  const pool = createPool(parsed.data.DATABASE_URL);
+  const pool = createPool(parsed.data.DATABASE_URL, {}, parsed.data.DATABASE_CA_CERT);
   const db = createDb(pool);
   try {
     const outcome = await db.transaction().execute(async (trx) => {
