@@ -8,6 +8,7 @@ import { DEFAULT_TIME_ZONE } from '../utils/timezone';
 
 const DIGEST_EVENT_TYPE = 'coach_daily_digest';
 const DIGEST_TITLE = '昨日训练摘要';
+const DIGEST_TITLE_EN = "Yesterday's training recap";
 
 export interface DailyDigestCounts {
   session_completed: number;
@@ -105,14 +106,28 @@ export function deriveDailyDigestAggregateId(coachId: string, gymDay: string): s
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export function dailyDigestBody(counts: DailyDigestCounts): string | null {
-  const segments = [
-    counts.session_completed > 0 ? `${String(counts.session_completed)} 练完` : null,
-    counts.session_partial > 0 ? `${String(counts.session_partial)} 部分完成` : null,
-    counts.missed_training > 0 ? `${String(counts.missed_training)} 缺练` : null,
-    counts.pr_e1rm > 0 ? `${String(counts.pr_e1rm)} 破 PR` : null,
-  ].filter((segment): segment is string => segment !== null);
-  return segments.length === 0 ? null : `昨天：${segments.join(' · ')}`;
+export function dailyDigestBody(
+  counts: DailyDigestCounts,
+  locale: 'zh' | 'en' = 'zh',
+): string | null {
+  const segments =
+    locale === 'en'
+      ? [
+          counts.session_completed > 0 ? `${String(counts.session_completed)} done` : null,
+          counts.session_partial > 0 ? `${String(counts.session_partial)} partial` : null,
+          counts.missed_training > 0 ? `${String(counts.missed_training)} missed` : null,
+          counts.pr_e1rm > 0
+            ? `${String(counts.pr_e1rm)} ${counts.pr_e1rm === 1 ? 'PR' : 'PRs'}`
+            : null,
+        ].filter((segment): segment is string => segment !== null)
+      : [
+          counts.session_completed > 0 ? `${String(counts.session_completed)} 练完` : null,
+          counts.session_partial > 0 ? `${String(counts.session_partial)} 部分完成` : null,
+          counts.missed_training > 0 ? `${String(counts.missed_training)} 缺练` : null,
+          counts.pr_e1rm > 0 ? `${String(counts.pr_e1rm)} 破 PR` : null,
+        ].filter((segment): segment is string => segment !== null);
+  if (segments.length === 0) return null;
+  return locale === 'en' ? `Yesterday: ${segments.join(' · ')}` : `昨天：${segments.join(' · ')}`;
 }
 
 // Demo/DemoStudent hard-ban (CEO plan red line #4): the iOS demo builds are
@@ -134,13 +149,21 @@ export async function runDailyDigest(
       .selectFrom('bind_requests as br')
       .innerJoin('users as coach', 'coach.id', 'br.coach_id')
       .innerJoin('users as student', 'student.id', 'br.student_id')
-      .select(['br.coach_id', 'br.student_id', 'student.timezone as student_timezone'])
+      .select([
+        'br.coach_id',
+        'br.student_id',
+        'student.timezone as student_timezone',
+        'coach.phone as coach_phone',
+      ])
       .where('br.status', '=', 'accepted')
       .where('coach.role', '=', 'coach')
       .where('coach.timezone', '=', timezone)
       .execute()
   ).filter((bond) => !failedStudentIds.has(bond.student_id));
   const coachIds = [...new Set(acceptedBonds.map((bond) => bond.coach_id))];
+  const coachLocaleById = new Map<string, 'zh' | 'en'>(
+    acceptedBonds.map((bond) => [bond.coach_id, bond.coach_phone === null ? 'en' : 'zh']),
+  );
   if (coachIds.length === 0) {
     logger.info({ gymDay, inserted: 0 }, 'coach_daily_digest_completed');
     return;
@@ -261,7 +284,8 @@ export async function runDailyDigest(
           ];
     });
     if (watermarkValues.length === 0) continue;
-    const body = dailyDigestBody(counts);
+    const locale = coachLocaleById.get(coachId) ?? 'zh';
+    const body = dailyDigestBody(counts, locale);
     const didInsert = await db.transaction().execute(async (trx) => {
       let outboxInserted = false;
       if (body !== null) {
@@ -281,7 +305,9 @@ export async function runDailyDigest(
               aggregate_id: aggregateId,
               recipient_id: coachId,
               payload: JSON.stringify({
-                aps: { alert: { title: DIGEST_TITLE, body } },
+                aps: {
+                  alert: { title: locale === 'en' ? DIGEST_TITLE_EN : DIGEST_TITLE, body },
+                },
                 counts,
                 gym_day: gymDay,
               }),

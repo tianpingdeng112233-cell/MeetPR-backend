@@ -50,6 +50,44 @@ function fakeClient(result: ApnsResult): { client: ApnsClient; send: ReturnType<
 }
 
 describe('consumePushOutbox', () => {
+  it('localizes copy by the recipient track: phone set → Chinese, phone NULL → English', async () => {
+    const ctx = await makeContext();
+    const payload = {
+      student_name: 'Alex',
+      consecutive_days: 1,
+      student_id: ids.trainee,
+    };
+    await addToken(ctx, 'aaaa');
+
+    const cnId = await addOutbox(ctx, { eventType: 'missed_training', payload });
+    const cnFake = fakeClient({ ok: true, status: 200 });
+    await consumePushOutbox(ctx.db, cnFake.client, now, logger);
+    const cnPayload = cnFake.send.mock.calls[0]?.[1] as {
+      aps: { alert: { title: string; body: string } };
+    };
+    expect(cnPayload.aps.alert).toEqual({ title: '学员缺练提醒', body: 'Alex已 1 天未训练' });
+
+    // Same event again for the same coach after the track flips to global.
+    await ctx.db.updateTable('users').set({ phone: null }).where('id', '=', ids.coach).execute();
+    const globalId = await addOutbox(ctx, { eventType: 'missed_training', payload });
+    const globalFake = fakeClient({ ok: true, status: 200 });
+    await consumePushOutbox(ctx.db, globalFake.client, now, logger);
+    const globalPayload = globalFake.send.mock.calls[0]?.[1] as {
+      aps: { alert: { title: string; body: string } };
+    };
+    expect(globalPayload.aps.alert).toEqual({
+      title: 'Missed training',
+      body: "Alex hasn't trained for 1 day",
+    });
+
+    const statuses = await ctx.db
+      .selectFrom('notification_outbox')
+      .select(['id', 'status'])
+      .where('id', 'in', [cnId, globalId])
+      .execute();
+    expect(statuses.every((row) => row.status === 'delivered')).toBe(true);
+  });
+
   it('drains unknown pending event types as terminal failures', async () => {
     const ctx = await makeContext();
     const id = await addOutbox(ctx, { eventType: 'plan_published' });
