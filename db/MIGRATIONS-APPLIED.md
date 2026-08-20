@@ -68,7 +68,7 @@
 
 > 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。0043 现由 open PR #77/#79(账本扩展)占号,0044 先行落库,库内号段暂跳 0043——#77/#79 合并应用后回续。0047 已被 open PR #95、0048 已被 #99 占用,因此下一份空号取 0049。
 
-**当前 staging schema head = 0062（此行 2026-08-11 更新;0043 缺位由 open PR #77/#79 占,0047 由 open PR #95 占,0048 由 #99 占,0050 由 open PR #110 占,合并应用后回续;0053 空号未用)。**
+**当前 staging schema head = 0067（此行 2026-08-21 更新,回补 0063/0064/0065/0066/0067 五条散记——应用记录见变更历史节各日期条目,注意 0065 晚于 0066/0067 应用;0043 缺位由 open PR #77/#79 占,0047 由 open PR #95 占,0048 由 #99 占,0050 由 open PR #110 占,合并应用后回续;0053 空号未用)。**
 (此行 2026-08-02 修正:此前长期停在 0052,0054/0055 只记在变更历史漏更此行。)
 
 ## 变更历史
@@ -273,6 +273,11 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-08-21 — `sha-0fb4c90`(=staging HEAD,纯 web/ 换装:plan-web main@582c247 = #90 三条 P0 三态修复
+  (切学员闪空态可点新建/视频列表失败静默空数组/错误死胡同唯一出口清草稿镜像)+ #91 教练游标可见
+  (进行至 WxDy+滞后徽章,completed_at 消费)+ PlanEditor UTC today 改本地)经 deploy-staging.yml
+  (`-f image_sha` 显式指定,migrations_applied=true,无新迁移)部署;**同 sha 同时经 deploy-global.yml 部署海外线**。
+  curl 验证:CN 与 api.meetpr.app 双线入口均回新 index-Bj6iZFjx.js、双 /health 200。构建带 VITE_API_BASE=''。
 - 2026-08-11 — `sha-7797535`(=staging HEAD,#222 纯 web/ 换装:plan-web main@3b9fd47 = #81 播放过半即调
   POST /videos/:id/viewed,待审/已反馈徽章按 viewed_at 实时翻转;#221 首枚 bundle 带 dev '/api' base 被
   build-push 门禁拦下未出镜像,本枚 VITE_API_BASE='' 重建)经 deploy-staging.yml(`-f image_sha` 显式指定,
