@@ -77,9 +77,21 @@ async function consumeRow(
     const outbox = await pendingPushRowQuery(trx, outboxId).executeTakeFirst();
     if (outbox === undefined) return;
 
+    // Global-track recipients (phone IS NULL) get English copy.
+    const recipient = await trx
+      .selectFrom('users')
+      .select('phone')
+      .where('id', '=', outbox.recipient_id)
+      .executeTakeFirst();
+    const locale = recipient?.phone === null ? 'en' : 'zh';
+
     let builtPayload;
     try {
-      builtPayload = buildPushPayload(outbox.event_type as RegisteredPushEventType, outbox.payload);
+      builtPayload = buildPushPayload(
+        outbox.event_type as RegisteredPushEventType,
+        outbox.payload,
+        locale,
+      );
     } catch (err) {
       const lastError = `payload_builder_error:${errorMessage(err)}`;
       await trx

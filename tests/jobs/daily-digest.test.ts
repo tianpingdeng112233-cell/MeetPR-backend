@@ -3,6 +3,7 @@ import pino from 'pino';
 import { describe, expect, it } from 'vitest';
 
 import {
+  dailyDigestBody,
   deriveDailyDigestAggregateId,
   runDailyDigest,
   type DailyDigestCounts,
@@ -184,6 +185,26 @@ describe('runDailyDigest', () => {
       },
     });
     expect(payload.gym_day).toBe(gymDay);
+  });
+
+  it('enqueues English title and body for a global coach and keeps the aggregate id stable', async () => {
+    const ctx = await makeContext();
+    await ctx.db.updateTable('users').set({ phone: null }).where('id', '=', ids.coach).execute();
+    await addEvent(ctx, { eventType: 'session_completed' });
+    await addEvent(ctx, { eventType: 'pr_e1rm' });
+
+    await runDailyDigest(ctx.db, gymDay, now, logger);
+
+    const rows = await outbox(ctx);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.aggregate_id).toBe(deriveDailyDigestAggregateId(ids.coach, gymDay));
+    const payload = decodePayload(rows[0]?.payload);
+    expect(payload.aps).toEqual({
+      alert: {
+        title: "Yesterday's training recap",
+        body: 'Yesterday: 1 done · 1 PR',
+      },
+    });
   });
 
   it('keeps the same-timezone first-run payload byte-identical while advancing its watermark', async () => {
@@ -390,5 +411,25 @@ describe('runDailyDigest', () => {
       missed_training: 0,
       pr_e1rm: 0,
     });
+  });
+});
+
+describe('dailyDigestBody locales', () => {
+  it('keeps the Chinese body byte-identical and adds an English variant', () => {
+    const counts = { session_completed: 3, session_partial: 1, missed_training: 2, pr_e1rm: 1 };
+    expect(dailyDigestBody(counts)).toBe('昨天：3 练完 · 1 部分完成 · 2 缺练 · 1 破 PR');
+    expect(dailyDigestBody(counts, 'en')).toBe('Yesterday: 3 done · 1 partial · 2 missed · 1 PR');
+    expect(
+      dailyDigestBody(
+        { session_completed: 0, session_partial: 0, missed_training: 0, pr_e1rm: 2 },
+        'en',
+      ),
+    ).toBe('Yesterday: 2 PRs');
+    expect(
+      dailyDigestBody(
+        { session_completed: 0, session_partial: 0, missed_training: 0, pr_e1rm: 0 },
+        'en',
+      ),
+    ).toBeNull();
   });
 });
