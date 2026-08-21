@@ -279,7 +279,7 @@ ALTER TABLE plan_sets ADD CONSTRAINT plan_sets_pct_anchor_check CHECK (
 {squat,bench,deadlift}_1rm_kg`),动作经比赛主项 resolver 映射到 lift family;
   映射不出(变式/辅助项)或档案空 → 解析失败。
 - **`e1rm`**:锚 = 头条口径 e1RM(spec 050 滚动窗口 max,`E1RMCalculator` 平滑表),
-  同样经主项 resolver;无打卡数据 → 解析失败。
+  同样经主项 resolver;~~无打卡数据 → 解析失败~~ **⚖️2026-08-21 修订:无打卡数据(e1RM 为空)→ 静默回落登记 1RM,来源标注直接写「按登记 1RM 换算」,不向学员解释回落**(登记 1RM 是注册必填,永远有基准;iOS 实装 PR meetpr#336)。
 - **`top_set` 当日顶组,五条钉死**:
   1. **候选域 = 前序行**:同一训练日(同 `plan_day`)内、同 `exercise_id`、且
      `plan_exercises.sort_order` 严格小于本行的行。不取「全天最大」——back-off 行
