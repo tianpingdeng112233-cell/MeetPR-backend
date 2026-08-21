@@ -18,9 +18,10 @@
 
 ## 应用记录
 
-| 日期(UTC)  | 动作                                                                                                            | 结果                                                                                    |
-| ---------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| 2026-08-21 | deploy-global.yml 上线 `sha-0fb4c908`(web 换装 plan-web main@582c247:#90 P0 三态修复 + #91 教练游标可见,无迁移) | Healthy;入口换 index-Bj6iZFjx.js(与 CN 线同产物),/health 200                            |
-| 2026-08-18 | migrate-global.yml 首次全量重放 `0001` → `0067-digest-watermarks.sql`                                           | 全绿,schema head **0067**;catalog 1227 条随迁移落库                                     |
-| 2026-08-18 | deploy-global.yml 上线 `sha-521c0757`(含 DB TLS 修复 #254)                                                      | Healthy;api.meetpr.app 写路径实证(注册 201/登录 200/forgot 204)                         |
-| 2026-08-18 | deploy-global.yml 重跑同 sha,换入重铸的 R2 S3 密钥对(修复前 GH secrets 存的是 9 字符占位符)                     | R2 全链实证:initiate 201 → part PUT 200 → complete 200 → 签名回读 204800 字节逐字节等长 |
+| 日期(UTC)  | 动作                                                                                                                | 结果                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 2026-08-21 | deploy-global.yml 上线 `sha-e358a9f`(web 换装 plan-web main@aab9746:#92 W0 三态五件套 + W4 花名册单元格三态,无迁移) | Healthy;入口换 index-CtMItCqo.js(与 CN 线同产物),/health 200                            |
+| 2026-08-21 | deploy-global.yml 上线 `sha-0fb4c908`(web 换装 plan-web main@582c247:#90 P0 三态修复 + #91 教练游标可见,无迁移)     | Healthy;入口换 index-Bj6iZFjx.js(与 CN 线同产物),/health 200                            |
+| 2026-08-18 | migrate-global.yml 首次全量重放 `0001` → `0067-digest-watermarks.sql`                                               | 全绿,schema head **0067**;catalog 1227 条随迁移落库                                     |
+| 2026-08-18 | deploy-global.yml 上线 `sha-521c0757`(含 DB TLS 修复 #254)                                                          | Healthy;api.meetpr.app 写路径实证(注册 201/登录 200/forgot 204)                         |
+| 2026-08-18 | deploy-global.yml 重跑同 sha,换入重铸的 R2 S3 密钥对(修复前 GH secrets 存的是 9 字符占位符)                         | R2 全链实证:initiate 201 → part PUT 200 → complete 200 → 签名回读 204800 字节逐字节等长 |

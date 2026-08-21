@@ -273,6 +273,12 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-08-21 — `sha-e358a9f`(=staging HEAD,纯 web/ 换装:plan-web main@aab9746 = #92 W0 通用三态五件套
+  (SkeletonRows/SkeletonCard/ErrorState/EmptyState/InlineFail + 150ms/300ms 延迟 hook,admin 改用共享件)
+  - W4 花名册单元格级三态(失败哨兵拆出 null 混义,e1RM 徽章失败不再伪装「尚无实测」,overview 失败不再毒化缓存))
+    经 deploy-staging.yml(`-f image_sha` 显式,migrations_applied=true,无新迁移)部署;**同 sha 同时经 deploy-global.yml 部署海外线**。
+    curl 验证:CN 与 api.meetpr.app 双线入口均回新 index-CtMItCqo.js、双 /health 200。
+    插曲:前一枚 sha-cf812cf 同内容换装因账本 md 未过 prettier 被 Verify-before-image-push 门禁拦下(临时 worktree 无 node_modules,husky 静默未跑),e358a9f 补格式后重出镜像。
 - 2026-08-21 — `sha-0fb4c90`(=staging HEAD,纯 web/ 换装:plan-web main@582c247 = #90 三条 P0 三态修复
   (切学员闪空态可点新建/视频列表失败静默空数组/错误死胡同唯一出口清草稿镜像)+ #91 教练游标可见
   (进行至 WxDy+滞后徽章,completed_at 消费)+ PlanEditor UTC today 改本地)经 deploy-staging.yml
