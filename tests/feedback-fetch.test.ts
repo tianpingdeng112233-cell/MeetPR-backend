@@ -9,7 +9,7 @@ import {
   type TestContext,
 } from './helpers/studentActions';
 
-async function seedLinkedVideo(ctx: TestContext): Promise<string> {
+async function seedLinkedVideo(ctx: TestContext, rpe: string | null = '8.5'): Promise<string> {
   const plan = await createPublishedPlan(ctx);
   const setLog = await ctx.db
     .insertInto('set_logs')
@@ -20,6 +20,7 @@ async function seedLinkedVideo(ctx: TestContext): Promise<string> {
       set_index: 2,
       weight_kg: '125.00',
       reps: 4,
+      rpe,
       completed: true,
       logged_date: '2026-07-17',
       logged_at: new Date('2026-07-17T10:20:30.000Z'),
@@ -136,6 +137,7 @@ describe('GET /students/:id/feedback', () => {
         set_index: 2,
         weight_kg: '125.00',
         reps: 4,
+        rpe: '8.5',
         logged_at: '2026-07-17T10:20:30.000Z',
       },
     });
@@ -145,6 +147,43 @@ describe('GET /students/:id/feedback', () => {
       video_id: null,
       video: null,
     });
+  });
+
+  it('projects an integer RPE as a one-decimal string and an unrated set as null', async () => {
+    const ctx = await makeContext();
+    const ratedVideoId = await seedLinkedVideo(ctx, '8');
+    const unratedVideoId = await seedLinkedVideo(ctx, null);
+    await ctx.db
+      .insertInto('feedback')
+      .values([
+        {
+          coach_id: ids.coach,
+          student_id: ids.trainee,
+          day_date: '2026-07-17',
+          plan_exercise_id: null,
+          video_id: ratedVideoId,
+          text: 'Rated',
+          posted_at: new Date('2026-07-17T12:00:00.000Z'),
+        },
+        {
+          coach_id: ids.coach,
+          student_id: ids.trainee,
+          day_date: '2026-07-16',
+          plan_exercise_id: null,
+          video_id: unratedVideoId,
+          text: 'Unrated',
+          posted_at: new Date('2026-07-16T12:00:00.000Z'),
+        },
+      ])
+      .execute();
+
+    const res = await request(ctx.app)
+      .get(`/students/${ids.trainee}/feedback`)
+      .set(auth(ctx.traineeToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.items[0].video).toMatchObject({ id: ratedVideoId, rpe: '8.0' });
+    expect(res.body.items[1].video).toMatchObject({ id: unratedVideoId, rpe: null });
   });
 
   it('keeps feedback and nulls its video fields after the attachment is deleted', async () => {
