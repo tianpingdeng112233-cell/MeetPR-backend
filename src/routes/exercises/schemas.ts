@@ -42,6 +42,37 @@ const MuscleGroupSchema = z.enum(MUSCLE_GROUPS);
 const EquipmentSchema = z.enum(EQUIPMENT);
 const MovementPatternSchema = z.enum(MOVEMENT_PATTERNS);
 
+const ExerciseBodySchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  name_en: z.string().trim().min(1).max(120).nullable().optional(),
+  exercise_type: ExerciseTypeSchema,
+  main_lift_family: LiftFamilySchema.nullable().optional(),
+  is_competition_lift: z.boolean(),
+  muscle_groups: z.array(MuscleGroupSchema).min(1).max(MUSCLE_GROUPS.length),
+  equipment: z.array(EquipmentSchema).min(1).max(EQUIPMENT.length),
+  movement_pattern: z.array(MovementPatternSchema).max(MOVEMENT_PATTERNS.length),
+});
+
+function validateExerciseType(
+  data: z.infer<typeof ExerciseBodySchema>,
+  ctx: z.RefinementCtx,
+): void {
+  if (data.exercise_type === 'accessory' && data.main_lift_family != null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['main_lift_family'],
+      message: 'main_lift_family must be null for accessories',
+    });
+  }
+  if (data.exercise_type !== 'accessory' && !data.main_lift_family) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['main_lift_family'],
+      message: 'main_lift_family is required for main lifts',
+    });
+  }
+}
+
 export const ExerciseQuerySchema = z.object({
   muscle_group: csvParam(MUSCLE_GROUPS, 'muscle_group'),
   equipment: csvParam(EQUIPMENT, 'equipment'),
@@ -50,32 +81,14 @@ export const ExerciseQuerySchema = z.object({
   main_lift_family: csvParam(LIFT_FAMILIES, 'main_lift_family'),
 });
 
-export const CreateExerciseBodySchema = z
-  .object({
-    name: z.string().trim().min(1).max(120),
-    exercise_type: ExerciseTypeSchema,
-    main_lift_family: LiftFamilySchema.nullable().optional(),
-    is_competition_lift: z.boolean(),
-    muscle_groups: z.array(MuscleGroupSchema).min(1).max(MUSCLE_GROUPS.length),
-    equipment: z.array(EquipmentSchema).min(1).max(EQUIPMENT.length),
-    movement_pattern: z.array(MovementPatternSchema).max(MOVEMENT_PATTERNS.length),
-  })
-  .superRefine((data, ctx) => {
-    if (data.exercise_type === 'accessory' && data.main_lift_family != null) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['main_lift_family'],
-        message: 'main_lift_family must be null for accessories',
-      });
-    }
-    if (data.exercise_type !== 'accessory' && !data.main_lift_family) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['main_lift_family'],
-        message: 'main_lift_family is required for main lifts',
-      });
-    }
-  });
+export const CreateExerciseBodySchema = ExerciseBodySchema.superRefine(validateExerciseType);
+
+export const PatchExerciseBodySchema = ExerciseBodySchema.partial().refine(
+  (data) => Object.keys(data).length > 0,
+  { message: 'At least one field is required' },
+);
+
+export const ExerciseIdParamSchema = z.object({ id: z.string().uuid() });
 
 export type ExerciseQuery = z.infer<typeof ExerciseQuerySchema>;
 export type CreateExerciseBody = z.infer<typeof CreateExerciseBodySchema>;
