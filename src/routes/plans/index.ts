@@ -51,6 +51,7 @@ import {
   PatchPlanDayBodySchema,
   PatchPlanExerciseBodySchema,
   PatchPlanSetBodySchema,
+  PendingRevisionBodySchema,
   SetIdParamSchema,
   StudentPlansParamSchema,
   StudentPlansQuerySchema,
@@ -89,6 +90,9 @@ type PlanRow = Selectable<PlansTable>;
 type PlanDayRow = Selectable<PlanDaysTable>;
 type PlanDayShiftRow = Selectable<PlanDayShiftsTable>;
 type PlanSetRow = Selectable<PlanSetsTable>;
+type OwnedPlanWithPendingRevision = PlanRow & {
+  pending_revision_saved_at: Date | null;
+};
 type PlanSetValidationShape = Pick<
   PlanSetRow,
   'target_reps' | 'target_reps_max' | 'intensity_mode' | 'target_value'
@@ -151,6 +155,29 @@ async function selectOwnedPlan(
     .where('id', '=', planId)
     .where('coach_id', '=', coachId)
     .executeTakeFirst();
+}
+
+async function selectOwnedPlanWithPendingRevision(
+  db: DbExecutor,
+  planId: string,
+  coachId: string,
+): Promise<OwnedPlanWithPendingRevision | undefined> {
+  return db
+    .selectFrom('plans')
+    .leftJoin('plan_pending_revisions', 'plan_pending_revisions.plan_id', 'plans.id')
+    .selectAll('plans')
+    .select('plan_pending_revisions.saved_at as pending_revision_saved_at')
+    .where('plans.id', '=', planId)
+    .where('plans.coach_id', '=', coachId)
+    .executeTakeFirst();
+}
+
+function timestamp(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+function parsedJson(value: unknown): unknown {
+  return typeof value === 'string' ? (JSON.parse(value) as unknown) : value;
 }
 
 export async function getPlanWithChildren(
@@ -855,6 +882,142 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
     }),
   );
 
+  router.put(
+    '/:id/pending-revision',
+    requireRole('coach'),
+    route(async (req, res) => {
+      const user = ensureUser(req);
+      if (!user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      const params = IdParamSchema.safeParse(req.params);
+      const body = PendingRevisionBodySchema.safeParse(req.body);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+      if (!body.success) {
+        res.status(400).json(validationEnvelope(body.error));
+        return;
+      }
+
+      const content = JSON.stringify(body.data.content);
+      if (Buffer.byteLength(content, 'utf8') > 1024 * 1024) {
+        res.status(413).json({ error: 'PAYLOAD_TOO_LARGE' });
+        return;
+      }
+
+      const plan = await selectOwnedPlan(deps.db, params.data.id, user.id);
+      if (!plan) {
+        res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+        return;
+      }
+      if (plan.status === 'completed' || plan.status === 'paused') {
+        res.status(409).json({ error: 'PLAN_NOT_EDITABLE' });
+        return;
+      }
+
+      const revision = await deps.db
+        .insertInto('plan_pending_revisions')
+        .values({
+          plan_id: plan.id,
+          coach_id: user.id,
+          version: body.data.version,
+          content_hash: body.data.content_hash,
+          content,
+        })
+        .onConflict((conflict) =>
+          conflict.column('plan_id').doUpdateSet({
+            coach_id: user.id,
+            version: body.data.version,
+            content_hash: body.data.content_hash,
+            content,
+            saved_at: sql<Date>`now()`,
+          }),
+        )
+        .returning(['plan_id', 'version', 'content_hash', 'saved_at'])
+        .executeTakeFirstOrThrow();
+
+      res.status(200).json({
+        plan_id: revision.plan_id,
+        version: revision.version,
+        content_hash: revision.content_hash,
+        saved_at: timestamp(revision.saved_at),
+      });
+    }),
+  );
+
+  router.get(
+    '/:id/pending-revision',
+    requireRole('coach'),
+    route(async (req, res) => {
+      const user = ensureUser(req);
+      if (!user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      const params = IdParamSchema.safeParse(req.params);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+
+      const plan = await selectOwnedPlan(deps.db, params.data.id, user.id);
+      if (!plan) {
+        res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+        return;
+      }
+
+      const revision = await deps.db
+        .selectFrom('plan_pending_revisions')
+        .selectAll()
+        .where('plan_id', '=', plan.id)
+        .executeTakeFirst();
+      if (!revision) {
+        res.status(404).json({ error: 'PENDING_REVISION_NOT_FOUND' });
+        return;
+      }
+
+      res.status(200).json({
+        plan_id: revision.plan_id,
+        version: revision.version,
+        content_hash: revision.content_hash,
+        content: parsedJson(revision.content),
+        saved_at: timestamp(revision.saved_at),
+      });
+    }),
+  );
+
+  router.delete(
+    '/:id/pending-revision',
+    requireRole('coach'),
+    route(async (req, res) => {
+      const user = ensureUser(req);
+      if (!user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      const params = IdParamSchema.safeParse(req.params);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+
+      const plan = await selectOwnedPlan(deps.db, params.data.id, user.id);
+      if (!plan) {
+        res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+        return;
+      }
+
+      await deps.db.deleteFrom('plan_pending_revisions').where('plan_id', '=', plan.id).execute();
+      res.status(204).send();
+    }),
+  );
+
   router.get(
     '/:id',
     route(async (req, res) => {
@@ -871,8 +1034,15 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       }
 
       let plan: PlanRow | undefined;
+      let pendingRevisionSavedAt: Date | null = null;
       if (user.role === 'coach') {
-        plan = await selectOwnedPlan(deps.db, params.data.id, user.id);
+        const ownedPlan = await selectOwnedPlanWithPendingRevision(
+          deps.db,
+          params.data.id,
+          user.id,
+        );
+        plan = ownedPlan;
+        pendingRevisionSavedAt = ownedPlan?.pending_revision_saved_at ?? null;
       } else {
         plan = await deps.db
           .selectFrom('plans')
@@ -888,7 +1058,16 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      res.status(200).json(await getPlanWithChildren(deps.db, plan));
+      const response = await getPlanWithChildren(deps.db, plan);
+      res.status(200).json(
+        user.role === 'coach'
+          ? {
+              ...response,
+              pending_revision_saved_at:
+                pendingRevisionSavedAt === null ? null : timestamp(pendingRevisionSavedAt),
+            }
+          : response,
+      );
     }),
   );
 
@@ -2232,26 +2411,46 @@ export function studentPlansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      let dbQuery = deps.db
+      if (user.role === 'coach') {
+        let dbQuery = deps.db
+          .selectFrom('plans')
+          .leftJoin('plan_pending_revisions', 'plan_pending_revisions.plan_id', 'plans.id')
+          .selectAll('plans')
+          .select('plan_pending_revisions.saved_at as pending_revision_saved_at')
+          .where('plans.trainee_id', '=', params.data.studentId)
+          .where('plans.coach_id', '=', user.id)
+          .orderBy('plans.created_at', 'desc');
+        if (query.data.status && query.data.status.length > 0) {
+          dbQuery = dbQuery.where('plans.status', 'in', query.data.status);
+        }
+
+        const plans = await dbQuery.execute();
+        const shiftSummaries = await planShiftSummaries(
+          deps.db,
+          plans.map((plan) => plan.id),
+        );
+        res.status(200).json({
+          plans: plans.map(({ pending_revision_saved_at: savedAt, ...plan }) => ({
+            ...toPlan(plan),
+            ...(shiftSummaries.get(plan.id) ?? toPlanShiftSummary([])),
+            pending_revision_saved_at: savedAt === null ? null : timestamp(savedAt),
+          })),
+        });
+        return;
+      }
+
+      if (!uuidEquals(params.data.studentId, user.id)) {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
+
+      const plans = await deps.db
         .selectFrom('plans')
         .selectAll()
         .where('trainee_id', '=', params.data.studentId)
-        .orderBy('created_at', 'desc');
-
-      if (user.role === 'coach') {
-        dbQuery = dbQuery.where('coach_id', '=', user.id);
-        if (query.data.status && query.data.status.length > 0) {
-          dbQuery = dbQuery.where('status', 'in', query.data.status);
-        }
-      } else {
-        if (!uuidEquals(params.data.studentId, user.id)) {
-          res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
-          return;
-        }
-        dbQuery = dbQuery.where('status', '=', 'published');
-      }
-
-      const plans = await dbQuery.execute();
+        .where('status', '=', 'published')
+        .orderBy('created_at', 'desc')
+        .execute();
       const shiftSummaries = await planShiftSummaries(
         deps.db,
         plans.map((plan) => plan.id),

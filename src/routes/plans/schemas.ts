@@ -38,6 +38,14 @@ export const IdParamSchema = z.object({
   id: UuidSchema,
 });
 
+export const PendingRevisionBodySchema = z
+  .object({
+    version: z.number().int().min(1),
+    content_hash: z.string().min(1).max(64),
+    content: z.record(z.unknown()),
+  })
+  .strict();
+
 export const DayIdParamSchema = z.object({
   dayId: UuidSchema,
 });
