@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import compression from 'compression';
 import cors from 'cors';
-import express, { type Express } from 'express';
+import express, { type ErrorRequestHandler, type Express } from 'express';
 import helmet from 'helmet';
 import type { Kysely } from 'kysely';
 import pinoHttp from 'pino-http';
@@ -28,6 +28,15 @@ export interface AppDeps {
   /** Optional so HTTP-only tests and embeddings keep realtime publishing disabled. */
   hub?: RealtimeHub | undefined;
 }
+
+const pendingRevisionJsonError: ErrorRequestHandler = (err, _req, res, next) => {
+  const bodyParserError = err as { type?: unknown };
+  if (bodyParserError.type === 'entity.too.large') {
+    res.status(413).json({ error: 'PAYLOAD_TOO_LARGE' });
+    return;
+  }
+  next(err);
+};
 
 export function createApp(deps: AppDeps): Express {
   const { config, logger } = deps;
@@ -60,6 +69,9 @@ export function createApp(deps: AppDeps): Express {
   // them from the pre-compression body, which is what lets the iOS catalogue
   // cache revalidate with If-None-Match.
   app.use(compression());
+  // Pending-revision content is capped at 1 MiB after serializing `content` alone.
+  // Allow room for the envelope so the route can apply that exact cap.
+  app.use('/plans/:id/pending-revision', express.json({ limit: '2mb' }), pendingRevisionJsonError);
   app.use(express.json({ limit: '1mb' }));
   if (config.FORCE_HTTPS) {
     app.use((req, res, next) => {
