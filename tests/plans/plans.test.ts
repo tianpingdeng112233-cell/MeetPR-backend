@@ -136,6 +136,15 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    CREATE TABLE plan_pending_revisions (
+      plan_id UUID PRIMARY KEY REFERENCES plans(id) ON DELETE CASCADE,
+      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL,
+      content_hash TEXT NOT NULL,
+      content JSONB NOT NULL,
+      saved_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
 
     CREATE TABLE evaluation_periods (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -166,6 +166,15 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    CREATE TABLE plan_pending_revisions (
+      plan_id UUID PRIMARY KEY REFERENCES plans(id) ON DELETE CASCADE,
+      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL,
+      content_hash TEXT NOT NULL,
+      content JSONB NOT NULL,
+      saved_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
 
     CREATE TABLE plan_days (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

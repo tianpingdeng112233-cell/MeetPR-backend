@@ -142,6 +142,14 @@ function makeContext(): TestContext {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    CREATE TABLE plan_pending_revisions (
+      plan_id UUID PRIMARY KEY REFERENCES plans(id) ON DELETE CASCADE,
+      coach_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL,
+      content_hash TEXT NOT NULL,
+      content JSONB NOT NULL,
+      saved_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
     CREATE TABLE plan_days (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       plan_id UUID NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
@@ -626,7 +634,11 @@ describe('admin read-only API', () => {
         delete item.exercise_name;
       });
     });
-    expect(stripNames).toEqual(coachResponse.body);
+    // Spec 044: the coach detail carries the coach-only pending-revision marker;
+    // the admin read-only view reuses everything else.
+    const { pending_revision_saved_at: _pendingRevision, ...coachShape } =
+      coachResponse.body as Record<string, unknown>;
+    expect(stripNames).toEqual(coachShape);
     expect(adminResponse.body.days[0].exercises[0].exercise_name).toBe('竞技深蹲');
     expect(coachResponse.body.days[0].exercises[0].exercise_name).toBeUndefined();
     expect(adminResponse.body.days[0].exercises[0].sets[0]).toMatchObject({

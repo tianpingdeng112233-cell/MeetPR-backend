@@ -305,6 +305,17 @@ export interface PlansTable {
   updated_at: TimestampColumn;
 }
 
+export interface PlanPendingRevisionsTable {
+  plan_id: string;
+  coach_id: string;
+  version: number;
+  content_hash: string;
+  // JSONB: write serialized JSON so objects keep PostgreSQL JSON semantics;
+  // node-pg reads parsed JSON, while pg-mem may return the serialized string.
+  content: ColumnType<unknown, string, string>;
+  saved_at: TimestampColumn;
+}
+
 export interface PlanDaysTable {
   id: Generated<string>;
   plan_id: string;
@@ -801,6 +812,7 @@ export interface Database {
   sessions: SessionsTable;
   exercises: ExercisesTable;
   plans: PlansTable;
+  plan_pending_revisions: PlanPendingRevisionsTable;
   plan_days: PlanDaysTable;
   plan_day_completions: PlanDayCompletionsTable;
   plan_day_shifts: PlanDayShiftsTable;
