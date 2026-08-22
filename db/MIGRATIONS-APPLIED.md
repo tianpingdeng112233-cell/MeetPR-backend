@@ -273,6 +273,12 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-08-22 — `sha-7b8e931`(=staging HEAD,#262 反馈视频摘要带 `rpe`:feedback-fetch 多 select
+  `sl.rpe`,学员/教练共用投影 toFixed(1)/null,无新迁移)经 deploy-staging.yml(migrations_applied=true)
+  部署 `meetpr-backend-staging`,deploy run 32576924685 绿(镜像 build run 32576708760)。curl 实证:
+  /health 200。插曲:合并后立刻触发的 deploy run 32576710124 因镜像尚未进 ACR 被 Verify 门禁拦下
+  (既有 gotcha「合并后要等镜像进 ACR 再部署」再次应验),等 build-push 完成后重跑即绿。
+  iOS 侧消费方 = release/1.0 #335(学员「教练反馈→关联视频」角标的 RPE 胶囊自此点亮)。
 - 2026-08-21 — `sha-e358a9f`(=staging HEAD,纯 web/ 换装:plan-web main@aab9746 = #92 W0 通用三态五件套
   (SkeletonRows/SkeletonCard/ErrorState/EmptyState/InlineFail + 150ms/300ms 延迟 hook,admin 改用共享件)
   - W4 花名册单元格级三态(失败哨兵拆出 null 混义,e1RM 徽章失败不再伪装「尚无实测」,overview 失败不再毒化缓存))
