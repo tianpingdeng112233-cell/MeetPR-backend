@@ -7,7 +7,12 @@ import { getCoachExerciseUsage } from '../../handlers/exercise-usage';
 import { requireRole } from '../../middleware/auth';
 import { route, validationEnvelope } from '../http';
 import { toExercise } from '../plans/serialization';
-import { CreateExerciseBodySchema, ExerciseQuerySchema } from './schemas';
+import {
+  CreateExerciseBodySchema,
+  ExerciseIdParamSchema,
+  ExerciseQuerySchema,
+  PatchExerciseBodySchema,
+} from './schemas';
 
 interface ExerciseRouterDeps {
   db: Kysely<Database>;
@@ -150,6 +155,7 @@ export function exercisesRouter(deps: ExerciseRouterDeps): ExpressRouter {
         .insertInto('exercises')
         .values({
           ...body.data,
+          name_en: body.data.name_en ?? null,
           main_lift_family: body.data.main_lift_family ?? null,
           created_by_coach_id: req.user.id,
         })
@@ -157,6 +163,146 @@ export function exercisesRouter(deps: ExerciseRouterDeps): ExpressRouter {
         .executeTakeFirstOrThrow();
 
       res.status(201).json(toExercise(row));
+    }),
+  );
+
+  router.patch(
+    '/:id',
+    requireRole('coach'),
+    route(async (req, res) => {
+      if (!req.user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      const params = ExerciseIdParamSchema.safeParse(req.params);
+      const body = PatchExerciseBodySchema.safeParse(req.body);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+      if (!body.success) {
+        res.status(400).json(validationEnvelope(body.error));
+        return;
+      }
+
+      const existing = await deps.db
+        .selectFrom('exercises')
+        .selectAll()
+        .where('id', '=', params.data.id)
+        .where('created_by_coach_id', '=', req.user.id)
+        .executeTakeFirst();
+      if (!existing) {
+        res.status(404).json({ error: 'EXERCISE_NOT_FOUND' });
+        return;
+      }
+
+      const finalState = CreateExerciseBodySchema.safeParse({
+        name: body.data.name ?? existing.name,
+        name_en: body.data.name_en !== undefined ? body.data.name_en : existing.name_en,
+        exercise_type: body.data.exercise_type ?? existing.exercise_type,
+        main_lift_family:
+          body.data.main_lift_family !== undefined
+            ? body.data.main_lift_family
+            : existing.main_lift_family,
+        is_competition_lift: body.data.is_competition_lift ?? existing.is_competition_lift,
+        muscle_groups: body.data.muscle_groups ?? existing.muscle_groups,
+        equipment: body.data.equipment ?? existing.equipment,
+        movement_pattern: body.data.movement_pattern ?? existing.movement_pattern,
+      });
+      if (!finalState.success) {
+        res.status(400).json(validationEnvelope(finalState.error));
+        return;
+      }
+
+      const row = await deps.db
+        .updateTable('exercises')
+        .set({
+          name: finalState.data.name,
+          name_en: finalState.data.name_en ?? null,
+          exercise_type: finalState.data.exercise_type,
+          main_lift_family: finalState.data.main_lift_family ?? null,
+          is_competition_lift: finalState.data.is_competition_lift,
+          muscle_groups: finalState.data.muscle_groups,
+          equipment: finalState.data.equipment,
+          movement_pattern: finalState.data.movement_pattern,
+        })
+        .where('id', '=', existing.id)
+        .where('created_by_coach_id', '=', req.user.id)
+        .returningAll()
+        .executeTakeFirst();
+      if (!row) {
+        res.status(404).json({ error: 'EXERCISE_NOT_FOUND' });
+        return;
+      }
+
+      res.status(200).json(toExercise(row));
+    }),
+  );
+
+  router.delete(
+    '/:id',
+    requireRole('coach'),
+    route(async (req, res) => {
+      if (!req.user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+
+      const params = ExerciseIdParamSchema.safeParse(req.params);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+
+      const coachId = req.user.id;
+
+      const result = await deps.db.transaction().execute(async (trx) => {
+        const exercise = await trx
+          .selectFrom('exercises')
+          .select('id')
+          .where('id', '=', params.data.id)
+          .where('created_by_coach_id', '=', coachId)
+          .forUpdate()
+          .executeTakeFirst();
+        if (!exercise) return { type: 'not-found' } as const;
+
+        const planUsage = await trx
+          .selectFrom('plan_exercises as pe')
+          .innerJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
+          .select(sql<string>`count(distinct pd.plan_id)`.as('plan_count'))
+          .where('pe.exercise_id', '=', exercise.id)
+          .executeTakeFirstOrThrow();
+        const logUsage = await trx
+          .selectFrom('set_logs')
+          .select((eb) => eb.fn.countAll<string>().as('log_count'))
+          .where('exercise_id', '=', exercise.id)
+          .executeTakeFirstOrThrow();
+        const planCount = Number(planUsage.plan_count);
+        const logCount = Number(logUsage.log_count);
+
+        if (planCount > 0 || logCount > 0) {
+          return { type: 'in-use', planCount, logCount } as const;
+        }
+
+        await trx.deleteFrom('exercises').where('id', '=', exercise.id).execute();
+        return { type: 'deleted' } as const;
+      });
+
+      if (result.type === 'not-found') {
+        res.status(404).json({ error: 'EXERCISE_NOT_FOUND' });
+        return;
+      }
+      if (result.type === 'in-use') {
+        res.status(409).json({
+          error: 'EXERCISE_IN_USE',
+          plan_count: result.planCount,
+          log_count: result.logCount,
+        });
+        return;
+      }
+
+      res.status(204).send();
     }),
   );
 
