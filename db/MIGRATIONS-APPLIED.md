@@ -279,6 +279,12 @@
   /health 200。插曲:合并后立刻触发的 deploy run 32576710124 因镜像尚未进 ACR 被 Verify 门禁拦下
   (既有 gotcha「合并后要等镜像进 ACR 再部署」再次应验),等 build-push 完成后重跑即绿。
   iOS 侧消费方 = release/1.0 #335(学员「教练反馈→关联视频」角标的 RPE 胶囊自此点亮)。
+- 2026-08-22 — `sha-2c10b73`(=staging HEAD,#263 教练自建动作 `PATCH/DELETE /exercises/:id` + POST 收
+  `name_en`,无新迁移;同 sha 含 web-swap plan-web main@8f334e3 #93 自建动作编辑/删除+英文名+搜索召回)
+  经 deploy-staging.yml(migrations_applied=true)部署 `meetpr-backend-staging`,deploy run 32599729752 绿
+  (镜像 build run 32599469870)。curl 实证:/health 200、入口 `assets/index-BZ85_TOU.js`、PATCH/DELETE 未鉴权
+  返 401(路由在)。数据回填:`scripts/backfill-custom-exercise-name-en.sql` 经 psql 直连 RDS 事务提交,
+  自建 18 行中 15 行 name_en 填充(David 08-22 审定),余 3 行为教练新建未译。
 - 2026-08-21 — `sha-e358a9f`(=staging HEAD,纯 web/ 换装:plan-web main@aab9746 = #92 W0 通用三态五件套
   (SkeletonRows/SkeletonCard/ErrorState/EmptyState/InlineFail + 150ms/300ms 延迟 hook,admin 改用共享件)
   - W4 花名册单元格级三态(失败哨兵拆出 null 混义,e1RM 徽章失败不再伪装「尚无实测」,overview 失败不再毒化缓存))
