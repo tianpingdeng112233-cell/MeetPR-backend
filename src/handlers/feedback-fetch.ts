@@ -17,6 +17,7 @@ function feedbackWithVideoQuery(db: Kysely<Database>) {
       'sl.set_index as video_set_index',
       'sl.weight_kg as video_weight_kg',
       'sl.reps as video_reps',
+      'sl.rpe as video_rpe',
       'sl.logged_at as video_logged_at',
     ]);
 }

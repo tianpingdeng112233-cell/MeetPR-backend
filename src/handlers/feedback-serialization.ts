@@ -29,6 +29,8 @@ export interface FeedbackVideoResponse {
   set_index: number | null;
   weight_kg: string | null;
   reps: number | null;
+  /** Set RPE on the 0.5 scale as a decimal string ("8.5"); null when unrated. */
+  rpe: string | null;
   logged_at: string | null;
 }
 
@@ -43,6 +45,7 @@ export interface FeedbackVideoMetadataRow {
   video_set_index: number | null;
   video_weight_kg: string | null;
   video_reps: number | null;
+  video_rpe: string | null;
   video_logged_at: Date | null;
 }
 
@@ -75,6 +78,7 @@ export function toFeedbackWithVideo(
             set_index: row.video_set_index,
             weight_kg: row.video_weight_kg === null ? null : Number(row.video_weight_kg).toFixed(2),
             reps: row.video_reps,
+            rpe: row.video_rpe === null ? null : Number(row.video_rpe).toFixed(1),
             logged_at: row.video_logged_at === null ? null : timestamp(row.video_logged_at),
           },
   };
