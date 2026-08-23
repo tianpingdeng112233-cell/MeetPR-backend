@@ -613,4 +613,3 @@
   AUTH_INVALID_RESET_CODE;国内 /auth/login 401 回归无恙;/auth/apple 通道活。
   Resend/SIWA env 五件 08-14 已预配,本次部署起生效。
 - 2026-08-23 — **0068 已应用**(David 经 DMS SQLConsole 于 meetpr-rds-v01-staging `public@meetpr` 整段执行,4/4 绿;首跑误选 `information_schema` schema 报 permission denied,事务整体回滚无残留,切库重跑即可——gotcha:DMS 顶栏库选择器要选 `public@…:meetpr` 那行)。随后 `sha-bd0bd48`(=staging HEAD,#264 spec044 pending-revision + #265 web 换装 plan-web main@0db687b)经 deploy-staging.yml(migrations_applied=true)部署 `meetpr-backend-staging`,env 未动;deploy run 32646408871 绿。curl 实证:/health 200;入口已换 `assets/index-CxdiHy6N.js`;coach token `GET /plans/:id/pending-revision` 返 404 `PENDING_REVISION_NOT_FOUND`(路由+表在线),`GET /plans/:id` coach 分支带 `pending_revision_saved_at`。起因=08-22 倪嘉骏「计划没了」事故(已发布计划编辑未推送)。
-

@@ -20,9 +20,9 @@
 
 | 日期(UTC)  | 动作                                                                                                                | 结果                                                                                    |
 | ---------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| 2026-08-22 | deploy-global.yml 上线 `sha-bd0bd48`(#265 web 换装 plan-web main@0db687b:spec 009 已发布计划云端暂存,无新迁移)                   | Healthy;入口换 index-CxdiHy6N.js(与 CN 线同产物),/health 200                              |
-| 2026-08-22 | deploy-global.yml 上线 `sha-f9a2fcf`(#264 spec044 pending-revision 端点)                                                   | Healthy,/health 200;deploy run 32600530794                                                |
-| 2026-08-22 | migrate-global.yml 应用 `0068-plan-pending-revisions.sql`(run 32600875369)                                                   | 全绿,schema head **0068**                                                                  |
+| 2026-08-22 | deploy-global.yml 上线 `sha-bd0bd48`(#265 web 换装 plan-web main@0db687b:spec 009 已发布计划云端暂存,无新迁移)      | Healthy;入口换 index-CxdiHy6N.js(与 CN 线同产物),/health 200                            |
+| 2026-08-22 | deploy-global.yml 上线 `sha-f9a2fcf`(#264 spec044 pending-revision 端点)                                            | Healthy,/health 200;deploy run 32600530794                                              |
+| 2026-08-22 | migrate-global.yml 应用 `0068-plan-pending-revisions.sql`(run 32600875369)                                          | 全绿,schema head **0068**                                                               |
 | 2026-08-21 | deploy-global.yml 上线 `sha-e358a9f`(web 换装 plan-web main@aab9746:#92 W0 三态五件套 + W4 花名册单元格三态,无迁移) | Healthy;入口换 index-CtMItCqo.js(与 CN 线同产物),/health 200                            |
 | 2026-08-21 | deploy-global.yml 上线 `sha-0fb4c908`(web 换装 plan-web main@582c247:#90 P0 三态修复 + #91 教练游标可见,无迁移)     | Healthy;入口换 index-Bj6iZFjx.js(与 CN 线同产物),/health 200                            |
 | 2026-08-18 | migrate-global.yml 首次全量重放 `0001` → `0067-digest-watermarks.sql`                                               | 全绿,schema head **0067**;catalog 1227 条随迁移落库                                     |
