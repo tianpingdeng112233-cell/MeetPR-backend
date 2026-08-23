@@ -20,6 +20,7 @@
 
 | 日期(UTC)  | 动作                                                                                                                | 结果                                                                                    |
 | ---------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 2026-08-23 | deploy-global.yml 上线 `sha-7ce7245`(#268 web 换装 plan-web main@3366b46:#96 拼音搜索,无迁移)                       | Healthy;入口换 index-rn-QhpHI.js(与 CN 线同产物),/health 200;run 32652429117            |
 | 2026-08-23 | deploy-global.yml 上线 `sha-2be7cf7`(#266 web 换装 plan-web main@13019e0:#95 更新计划失败自动重试+弹窗,无迁移)      | Healthy;入口换 index-BzRQpk1G.js(与 CN 线同产物),/health 200;run 32649910166            |
 | 2026-08-22 | deploy-global.yml 上线 `sha-bd0bd48`(#265 web 换装 plan-web main@0db687b:spec 009 已发布计划云端暂存,无新迁移)      | Healthy;入口换 index-CxdiHy6N.js(与 CN 线同产物),/health 200                            |
 | 2026-08-22 | deploy-global.yml 上线 `sha-f9a2fcf`(#264 spec044 pending-revision 端点)                                            | Healthy,/health 200;deploy run 32600530794                                              |
