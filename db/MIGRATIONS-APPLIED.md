@@ -615,3 +615,10 @@
 - 2026-08-23 — **0068 已应用**(David 经 DMS SQLConsole 于 meetpr-rds-v01-staging `public@meetpr` 整段执行,4/4 绿;首跑误选 `information_schema` schema 报 permission denied,事务整体回滚无残留,切库重跑即可——gotcha:DMS 顶栏库选择器要选 `public@…:meetpr` 那行)。随后 `sha-bd0bd48`(=staging HEAD,#264 spec044 pending-revision + #265 web 换装 plan-web main@0db687b)经 deploy-staging.yml(migrations_applied=true)部署 `meetpr-backend-staging`,env 未动;deploy run 32646408871 绿。curl 实证:/health 200;入口已换 `assets/index-CxdiHy6N.js`;coach token `GET /plans/:id/pending-revision` 返 404 `PENDING_REVISION_NOT_FOUND`(路由+表在线),`GET /plans/:id` coach 分支带 `pending_revision_saved_at`。起因=08-22 倪嘉骏「计划没了」事故(已发布计划编辑未推送)。
 - 2026-08-23 — `sha-2be7cf7`(=staging HEAD,#266 纯 web/ 换装 plan-web main@13019e0:#95 更新计划失败自动重试一次+弹窗报错,无新迁移)经 deploy-staging.yml(migrations_applied=true)部署 `meetpr-backend-staging`,env 未动;deploy run 32649908904 绿。curl 实证:入口已换 `assets/index-BzRQpk1G.js`,/health 200。插曲:前一 sha `5b5e0c8` 因台账 md 未过 prettier(昨夜直推 staging 的 docs commit 所在树没装依赖,husky 钩子静默跳过)导致 Lint 红、镜像未构建、部署失败两条线未变;`2be7cf7` 格式化后重跑全绿。gotcha:直推 docs 前在装了依赖的树里 `pnpm format:check`。
 - 2026-08-23 — `sha-7ce7245`(=staging HEAD,#268 纯 web/ 换装 plan-web main@3366b46:#96 动作搜索支持拼音,无新迁移)经 deploy-staging.yml(migrations_applied=true)部署 `meetpr-backend-staging`,env 未动;deploy run 32652427579 绿。curl 实证:入口已换 `assets/index-rn-QhpHI.js`,/health 200。
+- 2026-08-27 — `sha-6332b0d`(=staging HEAD,#269 纯 web/ 换装 plan-web main@d335dfa:#97
+  更新计划交付失败显式告警 + 安全自动刷新旧客户端,无新迁移)经 deploy-staging.yml
+  (`image_sha=6332b0d11098799a25b359340fdb719fd7d16a25`,migrations_applied=true)部署
+  `meetpr-backend-staging`,env 未动;deploy run 33068029005 绿(镜像 build run 33067562286)。
+  独立 curl 实证:/health 200、登录路由回 `AUTH_INVALID_CREDENTIALS`;连续 6 次 GET / 均回
+  build id `1787829633716` 与入口 `assets/index-CIqZRySE.js`,资源 200、同源 API 标记及
+  「更新计划没有完整成功」告警文案均在线。
