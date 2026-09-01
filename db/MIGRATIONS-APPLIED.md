@@ -622,3 +622,12 @@
   独立 curl 实证:/health 200、登录路由回 `AUTH_INVALID_CREDENTIALS`;连续 6 次 GET / 均回
   build id `1787829633716` 与入口 `assets/index-CIqZRySE.js`,资源 200、同源 API 标记及
   「更新计划没有完整成功」告警文案均在线。
+- 2026-09-01 — `sha-608656a`(=staging HEAD,#271 纯 web/ 换装 plan-web main@e46b6ef:#98
+  spec 039 P0 草稿保存解冻——不完整行降级零组占位入树、pending-revision 快照扩到草稿并
+  静默恢复、保存口径诚实,无新迁移)经 deploy-staging.yml
+  (`image_sha=608656a8ff224bfc158fa94542b5f3a55e4dcd58`,migrations_applied=true)部署
+  `meetpr-backend-staging`,env 未动;deploy run 33496925167 绿(镜像 build run 33496449100)。
+  线上验收(浏览器全流程,测试教练 138****0062):恢复旧未保存草稿后 3s 内 `days/batch` 200 +
+  `pending-revision PUT` 200,`GET /plans/:id` 树含零组占位;清 localStorage 重登(模拟换设备)
+  半填 12×5 从云端快照静默恢复、无横幅;发布预检 alert 照旧拦截,补全重量后 publish 200、
+  发布后快照已清(GET 404)。入口已换 `assets/index-BrmwRjsq.js`(连测 3 次一致),/health 200。
