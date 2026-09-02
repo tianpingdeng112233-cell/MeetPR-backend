@@ -273,6 +273,7 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-09-02 — `sha-d604c8c`(=staging HEAD,#273 已发布计划 batch 更新入 outbox 推 plan_updated + 注册 plan_published builder + 纯树改动 bump updated_at,#274 纯 web/ 换装 plan-web #99:横幅在场直接更新 + 逐组字段透传,入口 index-DVyPjsWT.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署 `meetpr-backend-staging`(deploy run 33622747305 绿);env 未动。curl 验证:/health 200、GET / 回新入口。配套 iOS #339 已落 release/1.0 进 1.0(22)。
 - 2026-08-22 — `sha-7b8e931`(=staging HEAD,#262 反馈视频摘要带 `rpe`:feedback-fetch 多 select
   `sl.rpe`,学员/教练共用投影 toFixed(1)/null,无新迁移)经 deploy-staging.yml(migrations_applied=true)
   部署 `meetpr-backend-staging`,deploy run 32576924685 绿(镜像 build run 32576708760)。curl 实证:
