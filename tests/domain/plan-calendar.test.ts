@@ -15,21 +15,23 @@ describe('plan calendar', () => {
     expect(plannedDate('2026-07-15', 2, 3)).toBe('2026-07-24');
   });
 
-  it('uses the latest shift by created_at and id even when rows are unordered', () => {
+  it('uses the latest shift batch even when rows are unordered', () => {
     const shifts = [
       {
         id: 'shift-b',
         plan_day_id: day.id,
         batch_id: 'batch-2',
         shifted_to_date: '2026-07-26',
-        created_at: new Date('2026-07-16T00:00:00Z'),
+        created_at: new Date('2026-07-14T00:00:00Z'),
+        seq: 2,
       },
       {
         id: 'shift-a',
         plan_day_id: day.id,
         batch_id: 'batch-1',
         shifted_to_date: '2026-07-25',
-        created_at: new Date('2026-07-15T00:00:00Z'),
+        created_at: new Date('2026-07-16T00:00:00Z'),
+        seq: 1,
       },
     ];
 
@@ -42,29 +44,42 @@ describe('plan calendar', () => {
     );
   });
 
-  it('breaks a created_at tie by the larger id', () => {
+  it('orders an entire batch by its minimum day-level seq', () => {
     const tiedAt = new Date('2026-07-16T00:00:00Z');
     const shifts = [
       {
-        id: 'shift-z',
+        id: 'shift-a',
         plan_day_id: day.id,
         batch_id: 'batch-z',
         shifted_to_date: '2026-07-27',
         created_at: tiedAt,
+        seq: 4,
       },
       {
-        id: 'shift-a',
+        id: 'shift-z',
         plan_day_id: day.id,
         batch_id: 'batch-a',
         shifted_to_date: '2026-07-26',
         created_at: tiedAt,
+        seq: 2,
+      },
+      {
+        id: 'shift-other-day',
+        plan_day_id: 'day-2',
+        batch_id: 'batch-z',
+        shifted_to_date: '2026-07-27',
+        created_at: tiedAt,
+        seq: 3,
       },
     ];
 
     expect(effectivePlanDays({ start_date: '2026-07-15' }, [day], shifts)).toEqual([
       { day, effectiveDate: '2026-07-27' },
     ]);
-    expect(latestShiftBatch(shifts)).toEqual([shifts[0]]);
+    expect(latestShiftBatch(shifts)).toEqual([shifts[0], shifts[2]]);
+    expect(effectiveDateBeforeBatch({ start_date: '2026-07-15' }, day, shifts, 'batch-z')).toBe(
+      '2026-07-26',
+    );
   });
 
   it('falls back to the planned date before the first shift batch', () => {
@@ -74,6 +89,7 @@ describe('plan calendar', () => {
       batch_id: 'batch-1',
       shifted_to_date: '2026-07-25',
       created_at: new Date('2026-07-15T00:00:00Z'),
+      seq: 1,
     };
     expect(effectiveDateBeforeBatch({ start_date: '2026-07-15' }, day, [shift], 'batch-1')).toBe(
       '2026-07-24',

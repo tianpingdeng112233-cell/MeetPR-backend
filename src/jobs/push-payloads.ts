@@ -27,6 +27,30 @@ function dayWord(count: number): string {
   return count === 1 ? 'day' : 'days';
 }
 
+const ENGLISH_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+function planShiftDate(value: string, locale: PushLocale): string {
+  const [, month, day] = value.split('-');
+  const monthNumber = Number(month);
+  const dayNumber = Number(day);
+  return locale === 'en'
+    ? `${ENGLISH_MONTHS[monthNumber - 1] ?? value} ${String(dayNumber)}`
+    : `${String(monthNumber)}月${String(dayNumber)}日`;
+}
+
 export type PushPayloadBuilder = (payload: unknown, locale?: PushLocale) => PushPayloadBuildResult;
 
 function decodedPayload(payload: unknown): unknown {
@@ -97,6 +121,24 @@ const PlanShiftSchema = z
   .strict();
 
 const PlanUpdatedSchema = z
+  .object({
+    coach_name: DisplayNameSchema,
+    student_id: UuidSchema,
+    plan_id: UuidSchema,
+  })
+  .strict();
+
+const PlanShiftedSchema = z
+  .object({
+    coach_name: DisplayNameSchema,
+    student_id: UuidSchema,
+    plan_id: UuidSchema,
+    anchor_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    offset_days: z.number().int().min(1).max(30),
+  })
+  .strict();
+
+const PlanShiftUndoneSchema = z
   .object({
     coach_name: DisplayNameSchema,
     student_id: UuidSchema,
@@ -246,6 +288,54 @@ export const PUSH_PAYLOAD_BUILDERS = {
       threadId: 'plan_updated',
       custom: {
         kind: 'plan_updated',
+        student_id: value.student_id,
+        plan_id: value.plan_id,
+      },
+    };
+  },
+  plan_shifted: (payload, locale = 'zh') => {
+    const value = PlanShiftedSchema.parse(decodedPayload(payload));
+    const coachName =
+      locale === 'en' && !cjkFree(value.coach_name) ? 'Your coach' : value.coach_name;
+    return {
+      alert:
+        locale === 'en'
+          ? {
+              title: 'Your plan dates changed',
+              body: `${coachName} moved your training from ${planShiftDate(value.anchor_date, locale)} onward by ${String(value.offset_days)} ${dayWord(value.offset_days)}`,
+            }
+          : {
+              title: '教练调整了你的计划日期',
+              body: `${coachName} 把 ${planShiftDate(value.anchor_date, locale)} 起的训练后移了 ${String(value.offset_days)} 天`,
+            },
+      collapseId: value.plan_id,
+      threadId: 'plan_updated',
+      custom: {
+        kind: 'plan_shifted',
+        student_id: value.student_id,
+        plan_id: value.plan_id,
+      },
+    };
+  },
+  plan_shift_undone: (payload, locale = 'zh') => {
+    const value = PlanShiftUndoneSchema.parse(decodedPayload(payload));
+    const coachName =
+      locale === 'en' && !cjkFree(value.coach_name) ? 'Your coach' : value.coach_name;
+    return {
+      alert:
+        locale === 'en'
+          ? {
+              title: 'Plan date change undone',
+              body: `${coachName} restored the previous dates`,
+            }
+          : {
+              title: '教练撤销了上次的日期调整',
+              body: `${coachName} 恢复了原来的推荐日期`,
+            },
+      collapseId: value.plan_id,
+      threadId: 'plan_updated',
+      custom: {
+        kind: 'plan_shift_undone',
         student_id: value.student_id,
         plan_id: value.plan_id,
       },

@@ -20,6 +20,7 @@ describe('config', () => {
     expect(config.RATE_LIMIT_MAX).toBe(100);
     expect(config.LOG_LEVEL).toBe('info');
     expect(config.PUSH_ENABLED).toBe(false);
+    expect(config.COACH_PLAN_SHIFT_ENABLED).toBe(false);
     expect(config.PUSH_DAILY_DIGEST_ENABLED).toBe(false);
     expect(config.SELF_SIGNUP_ROLES).toBeUndefined();
     expect(config.APPLE_CLIENT_ID).toBeUndefined();
@@ -146,6 +147,12 @@ describe('config', () => {
     });
     expect(config.PUSH_ENABLED).toBe(true);
     expect(config.APNS_ENV).toBe('sandbox');
+  });
+
+  it('parses the coach plan-shift release gate as a boolean', () => {
+    expect(
+      loadConfig({ ...validEnv, COACH_PLAN_SHIFT_ENABLED: 'true' }).COACH_PLAN_SHIFT_ENABLED,
+    ).toBe(true);
   });
 
   it('accepts only student roles in the global self-signup gate', () => {

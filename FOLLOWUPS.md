@@ -2,6 +2,10 @@
 
 Session-scoped reminders. Items resolved during the next session should be removed.
 
+## 待触发
+
+- [ ] F-001：contract 迁移先 reconciliation（复用 0070 的 `INSERT … SELECT` 回填孤儿天级行父批次，并删除无子行的空父批次），再为 `plan_day_shifts.batch_id` 添加 FK + `ON DELETE CASCADE`；触发条件：0070 镜像全量上线且旧写者退场。
+
 ## Open
 
 - [ ] Wire SSL config for Aliyun RDS connection (set `?sslmode=require` in prod DSN; ADR 004 §6 deadline: pre-Stage-2)

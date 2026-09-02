@@ -66,6 +66,10 @@ export const ConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((v) => v === 'true'),
+    COACH_PLAN_SHIFT_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
     PUSH_DAILY_DIGEST_ENABLED: z
       .enum(['true', 'false'])
       .default('false')
@@ -200,10 +204,12 @@ export const ConfigSchema = z
 
 type ParsedConfig = z.infer<typeof ConfigSchema>;
 
-// Directly constructed Config objects predate the backend selector. Keep that
-// field optional at DI boundaries while loadConfig always materializes "oss".
-export type Config = Omit<ParsedConfig, 'STORAGE_BACKEND'> & {
+// Directly constructed Config objects predate the backend selector and rollout
+// gate. Keep those fields optional at DI boundaries while loadConfig always
+// materializes their safe defaults.
+export type Config = Omit<ParsedConfig, 'STORAGE_BACKEND' | 'COACH_PLAN_SHIFT_ENABLED'> & {
   STORAGE_BACKEND?: ParsedConfig['STORAGE_BACKEND'];
+  COACH_PLAN_SHIFT_ENABLED?: ParsedConfig['COACH_PLAN_SHIFT_ENABLED'];
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
