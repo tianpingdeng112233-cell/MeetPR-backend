@@ -22,6 +22,10 @@
 ## 数据模型（0070-plan-shift-batches.sql）
 
 ```sql
+ALTER TABLE plan_day_shifts ADD COLUMN seq BIGSERIAL NOT NULL;
+-- 存量回填：按 (created_at, id) 顺序编号（相关子查询 count(*)+1，避开 pg-mem 不支持的窗口函数），再 setval 到 max(seq)
+CREATE INDEX plan_day_shifts_seq_idx ON plan_day_shifts (seq);
+
 CREATE TABLE plan_shift_batches (
   id          UUID PRIMARY KEY,                       -- = plan_day_shifts.batch_id
   plan_id     UUID NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
@@ -39,16 +43,18 @@ SELECT s.batch_id, d.plan_id, min(s.student_id::text)::uuid, 'coached_student',
        min(s.shifted_to_date) - 1, 1, min(s.created_at)
 FROM plan_day_shifts s JOIN plan_days d ON d.id = s.plan_day_id
 GROUP BY s.batch_id, d.plan_id;
-
-ALTER TABLE plan_day_shifts
-  ADD CONSTRAINT plan_day_shifts_batch_fk FOREIGN KEY (batch_id)
-  REFERENCES plan_shift_batches(id) ON DELETE CASCADE;
 ```
 
-- `plan_day_shifts` 行结构不变（仍是「某天的目标日期」），批次元数据（谁 / 从哪天起 / 几天）上提到 `plan_shift_batches`。删批次级联删该批所有天级行 → 撤销 = 删一行。
+- `plan_day_shifts` 仍是「某天的目标日期」，只加一列 **`seq BIGSERIAL NOT NULL`**（顺序键，DB 分配；存量按 `(created_at, id)` 回填并 `setval`，加索引），批次元数据（谁 / 从哪天起 / 几天）上提到 `plan_shift_batches`。
+- **真相仍是 `plan_day_shifts`**（⚖️2026-09-02 review 轮 2 修订）：有效日期、`total_shift_days`、「最新一批」一律从天级行派生；`plan_shift_batches` 只是元数据，缺父行（滚动窗口旧写者）时摘要按回填口径合成（`actor_role='coached_student'`、`offset_days=1`、`anchor_date=min(shifted_to_date)−1`、`created_at=min(row.created_at)`），无子行的空父批次不参与摘要与撤销。**批次顺序唯一定义**（⚖️2026-09-02 review 轮 4 修订）= 天级行 `seq`：批次序 = 该批天级行的 `min(seq)`，每天的有效日期取所在批次序最高的那行，`latest_shift` 与撤销对象用同一顺序——三处永不分叉。用 DB 序列而不是 `created_at`/uuid：`now()` 是事务开始时间（早于取锁）、JS 读 timestamptz 只有毫秒精度，且滚动窗口内省略 `created_at` 的旧镜像写入也必须单调——序列由 DB 在 INSERT 时分配，任何镜像在计划锁下写入都严格递增。写路径不再显式写 `created_at`。
+- **expand 阶段不加 FK**（⚖️2026-09-02 review 修订）：部署序是「先迁移、后滚镜像」，旧镜像的学员 V2 路径只写 `plan_day_shifts` 不写父批次，立即加 FK 会让滚动窗口内的旧实例 500，违反硬规则 8。撤销由代码在同一事务里先删该批 `plan_day_shifts` 再删 `plan_shift_batches` 行；`batch_id → plan_shift_batches(id)` 的 FK + 级联留到 contract 阶段单独一号迁移（写入 FOLLOWUPS，条件：0070 镜像全量上线且无旧写者后；contract 迁移先做 reconciliation——用 0070 同一条 INSERT…SELECT 回填孤儿行的父批次、删除无子行的空批次——再加 FK）。
 - 一个批次只属于一个计划（V2 语义），`GROUP BY batch_id` 安全；V1 单日顺延在 0038 里已各自成批。
 - `src/db/types.ts` 手工增补 `PlanShiftBatchesTable`。
-- 迁移测试 `tests/migrations/0070-plan-shift-batches.test.ts`：表 / CHECK / FK 级联（删批次连带删天级行；删 plan 连带删批次）/ 回填（pg-mem 里先种两批 V2 行再跑迁移，断言各回填一行且 `offset_days=1`、`anchor_date = min(shifted_to_date)-1`）。
+- 迁移测试 `tests/migrations/0070-plan-shift-batches.test.ts`：表 / CHECK / 删 plan 级联删批次 / **0070 后旧写者仍可只插 `plan_day_shifts`（无 FK）** / 回填（pg-mem 里先种两批 V2 行再跑迁移，断言各回填一行且 `offset_days=1`、`anchor_date = min(shifted_to_date)-1`）。
+
+## 发布闸门（⚖️2026-09-02 review 轮 6 修订，硬规则 8）
+
+新增 env `COACH_PLAN_SHIFT_ENABLED`（zod boolean，**默认 `false`**；`.env.example` 有占位）。关闭时 coach 分支的 `POST/DELETE /plans/:id/shift` 在 body 校验之后、任何 DB 读之前一律 409 `{ "error": "COACH_PLAN_SHIFT_DISABLED" }`，零写入；学员 V2 路径不受影响。上线四步：① 应用 0070 → ② 新镜像滚至全量（混跑期只有学员 V2 能写，`seq` 保证旧写者→新 reader 单调，无 coach 批次即无反向问题）→ ③ 确认无旧实例后 env 置 `true` 并重启 → ④ plan-web 再放开入口（PR #101 合并 / web swap）。台账落 `db/MIGRATIONS-APPLIED.md`。
 
 ## API
 
@@ -83,22 +89,22 @@ coach 分支事务内（复用 `lockPlanShiftContext`，锁序不变）：
 
 ### `DELETE /plans/:id/shift`（新增 coach 分支）
 
-- **coach**：取该计划 `plan_shift_batches` 中 `created_at` 最新一批（tie 按 `id`），**不看作者、不限当日窗口、不看打卡**（Q4 拍板）；无批次 → 409 `NO_ACTIVE_SHIFT`。删该批次行（级联删天级行）。204。提交后入队 `plan_shift_undone`（`aggregateId = 被删 batch_id`，payload `{ coach_name, student_id, plan_id }`）。
-- **coached_student**：维持现行 V2 行为不改。
+- **coach**：撤最新一批，**不看作者、不限当日窗口、不看打卡**（Q4 拍板）；最新一批按数据模型定义的批次顺序从天级行取（与学员 V2 的 `latestShiftBatch` 同源），无天级行 → 409 `NO_ACTIVE_SHIFT`。同事务先删该批 `plan_day_shifts`、再删批次行（可能不存在，无 FK，见数据模型）。204。提交后入队 `plan_shift_undone`（`aggregateId = 被删 batch_id`，payload `{ coach_name, student_id, plan_id }`）。
+- **coached_student**：维持现行 V2 行为不改；唯一新增：最新一批的父批次 `actor_role='coach'` 时 → 409 `SHIFT_OWNED_BY_COACH`（教练的决定学员不能撤；无父行的孤儿批次仍按 V2 可撤）。
 
 ### 序列化（`GET /plans/:id`、`GET /students/:id/plans`）
 
 - 每个 day 的 `shifted_to_date`：不变（学员端 iOS 080 开始消费它作推荐日期）。
 - 计划级 `total_shift_days`：**口径改为** `max(effectiveDate − plannedDate)` 跨全部天、下限 0（不再是批次数）。存量数据下两者相等（每批整份 +1），老消费者无感。
-- 计划级新增 `latest_shift`：`{ batch_id, actor_role, anchor_date, offset_days, created_at } | null`（`toPlanShiftSummary` 扩展；一次聚合查询，禁 N+1）。
+- 计划级新增 `latest_shift`：`{ batch_id, actor_role, anchor_date, offset_days, created_at } | null`——批次 = 天级行派生的最新批次，元数据取父行、缺父行按回填口径合成（`toPlanShiftSummary` 扩展；一次聚合查询，禁 N+1）。
 - `latest_shift_created_at` 保留（= `latest_shift.created_at`），iOS 教练端徽标继续可读。
 
 ### 推送文案（`src/jobs/push-payloads.ts` 注册两种）
 
-| kind | zh | en |
-|---|---|---|
-| `plan_shifted` | 标题「教练调整了你的计划日期」/ 正文「{coach_name} 把 {M月D日} 起的训练后移了 {N} 天」 | "Your plan dates changed" / "{coach_name} moved your training from {Mon D} onward by {N} day(s)" |
-| `plan_shift_undone` | 「教练撤销了上次的日期调整」/「{coach_name} 恢复了原来的推荐日期」 | "Plan date change undone" / "{coach_name} restored the previous dates" |
+| kind                | zh                                                                                     | en                                                                                               |
+| ------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `plan_shifted`      | 标题「教练调整了你的计划日期」/ 正文「{coach_name} 把 {M月D日} 起的训练后移了 {N} 天」 | "Your plan dates changed" / "{coach_name} moved your training from {Mon D} onward by {N} day(s)" |
+| `plan_shift_undone` | 「教练撤销了上次的日期调整」/「{coach_name} 恢复了原来的推荐日期」                     | "Plan date change undone" / "{coach_name} restored the previous dates"                           |
 
 `collapseId = plan_id`，`threadId = 'plan_updated'`（与 #273 同线程，iOS 同一路由处理），`custom: { kind, student_id, plan_id }`。CJK 规则沿现有 `cjkFree` 处理。
 
@@ -112,7 +118,9 @@ coach 分支事务内（复用 `lockPlanShiftContext`，锁序不变）：
 ## 测试 seam
 
 - **路由层（主 seam）** `tests/plans/plan-day-shifts.test.ts`（supertest + pg-mem，现有文件追加 describe）：教练 happy path（3 天、跳过已完成天、越过 end_date）；再叠加一批（第二批基于第一批的有效日期）；撤销最近一批后 GET 回到上一批日期；draft → 409；非本人 → 404；候选为空 → 409；body 校验 400；学员分支回归（无 body +1 行为不变，学员带 body 仍走旧路径）；序列化 `total_shift_days`/`latest_shift`。
-- **迁移** `tests/migrations/0070-plan-shift-batches.test.ts`（见上）。
+- **迁移** `tests/migrations/0070-plan-shift-batches.test.ts`（见上，另断言 `seq` 回填顺序 = `(created_at, id)`、新插入行 `seq` 大于全部存量）。
+- **expand 兼容**（路由层）：孤儿天级行（无父批次）→ GET 显示后移日期、`total_shift_days`、合成 `latest_shift`，教练 DELETE 可撤；空父批次（无子行）不出现在摘要、不被撤销；**旧写者模拟**：新批次之后直接 INSERT 省略 `seq`/`created_at`（或 `created_at` 更早）的天级行 → 它按 `seq` 排最新，GET/DELETE 承认并依次回退；学员 V2 DELETE 遇最新为教练批次 → 409 `SHIFT_OWNED_BY_COACH` 且行不动。
+- **发布闸门**（路由层）：默认 env 下 coach POST/DELETE 均 409 `COACH_PLAN_SHIFT_DISABLED` 且 DB 零写入、学员 V2 照常；测试上下文以 config 覆盖开启后跑其余 coach 用例；`tests/config` 断言 env 解析为 boolean、默认 false。
 - **推送** `tests/jobs/push-payloads.test.ts`：两种 kind 的 zh/en 契约；`tests/plans/plan-day-shifts.test.ts` 中 `PUSH_ENABLED=true` 时 outbox 各落一行、`false` 时零行。
 
 ## Out of Scope
