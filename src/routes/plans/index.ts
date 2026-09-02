@@ -1518,6 +1518,8 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         body.data.plan_patch?.start_date !== undefined ||
         body.data.plan_patch?.end_date !== undefined ||
         body.data.plan_patch?.plan_weeks !== undefined;
+      const hasTreeMutation =
+        body.data.delete_day_ids.length > 0 || body.data.upsert_days.length > 0;
 
       const result = await deps.db.transaction().execute(async (trx) => {
         let currentPlan = plan;
@@ -1642,6 +1644,15 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           }
         }
 
+        if (hasTreeMutation && !body.data.plan_patch) {
+          currentPlan = await trx
+            .updateTable('plans')
+            .set({ updated_at: sql<Date>`now()` })
+            .where('id', '=', plan.id)
+            .returningAll()
+            .executeTakeFirstOrThrow();
+        }
+
         return {
           type: 'batched',
           plan: currentPlan,
@@ -1684,6 +1695,17 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         },
         'plan_days_batched',
       );
+      if (deps.pushEnabled && plan.status === 'published' && hasTreeMutation) {
+        await tryEnqueuePushOutbox(deps.db, deps.logger, 'plan_updated', async () => ({
+          aggregateId: randomUUID(),
+          recipientId: plan.trainee_id,
+          payload: {
+            coach_name: await pushDisplayName(deps.db, user.id),
+            student_id: plan.trainee_id,
+            plan_id: plan.id,
+          },
+        }));
+      }
       res.status(200).json(await getPlanWithChildren(deps.db, result.plan));
     }),
   );

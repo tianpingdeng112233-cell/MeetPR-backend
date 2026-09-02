@@ -96,6 +96,21 @@ const PlanShiftSchema = z
   })
   .strict();
 
+const PlanUpdatedSchema = z
+  .object({
+    coach_name: DisplayNameSchema,
+    student_id: UuidSchema,
+    plan_id: UuidSchema,
+  })
+  .strict();
+
+const PlanPublishedSchema = z
+  .object({
+    plan_id: UuidSchema,
+    trainee_id: UuidSchema,
+  })
+  .strict();
+
 const DailyDigestSchema = z
   .object({
     aps: z.object({ alert: AlertSchema }).passthrough(),
@@ -210,6 +225,50 @@ export const PUSH_PAYLOAD_BUILDERS = {
       custom: {
         kind: 'plan_shift',
         student_id: value.student_id,
+        plan_id: value.plan_id,
+      },
+    };
+  },
+  plan_updated: (payload, locale = 'zh') => {
+    const value = PlanUpdatedSchema.parse(decodedPayload(payload));
+    return {
+      alert:
+        locale === 'en'
+          ? {
+              title: 'Your plan was updated',
+              body: `${value.coach_name} adjusted your current plan`,
+            }
+          : {
+              title: '教练更新了你的计划',
+              body: `${value.coach_name} 调整了你正在练的计划，打开看看`,
+            },
+      collapseId: `plan-updated-${value.plan_id}`,
+      threadId: 'plan_updated',
+      custom: {
+        kind: 'plan_updated',
+        student_id: value.student_id,
+        plan_id: value.plan_id,
+      },
+    };
+  },
+  plan_published: (payload, locale = 'zh') => {
+    const value = PlanPublishedSchema.parse(decodedPayload(payload));
+    return {
+      alert:
+        locale === 'en'
+          ? {
+              title: 'New plan published',
+              body: 'Your next training cycle is ready',
+            }
+          : {
+              title: '教练发布了新计划',
+              body: '新的训练周期已经准备好，打开看看',
+            },
+      collapseId: `plan-published-${value.plan_id}`,
+      threadId: 'plan_published',
+      custom: {
+        kind: 'plan_published',
+        student_id: value.trainee_id,
         plan_id: value.plan_id,
       },
     };
