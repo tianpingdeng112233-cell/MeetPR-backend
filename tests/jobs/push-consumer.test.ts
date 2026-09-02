@@ -90,7 +90,7 @@ describe('consumePushOutbox', () => {
 
   it('drains unknown pending event types as terminal failures', async () => {
     const ctx = await makeContext();
-    const id = await addOutbox(ctx, { eventType: 'plan_published' });
+    const id = await addOutbox(ctx, { eventType: 'legacy_unknown_event' });
     await addToken(ctx, 'aaaa');
     const fake = fakeClient({ ok: true, status: 200 });
 

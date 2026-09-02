@@ -9,7 +9,8 @@ export type PerEventPushType =
   | 'pr_congrats'
   | 'video_pending'
   | 'bind_request'
-  | 'plan_shift';
+  | 'plan_shift'
+  | 'plan_updated';
 
 interface PushOutboxValues {
   aggregateId: string;

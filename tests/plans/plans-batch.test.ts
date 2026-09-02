@@ -6,8 +6,8 @@ import { normalizeDateOnly } from '../../src/utils/date';
 import type { TestContext } from '../helpers/studentActions';
 import { auth, createPublishedPlan, ids, makeContext } from '../helpers/studentActions';
 
-async function makeBatchContext() {
-  const ctx = await makeContext();
+async function makeBatchContext(pushEnabled = false) {
+  const ctx = await makeContext(undefined, { config: { PUSH_ENABLED: pushEnabled } });
   // pg-mem returns NUMERIC as a number, unlike node-postgres, which returns the
   // production NUMERIC(6,2) value as a scale-preserving string.
   await sql`ALTER TABLE plan_sets ALTER COLUMN target_value TYPE TEXT`.execute(ctx.db);
@@ -152,6 +152,105 @@ function batch(ctx: TestContext, planId: string, body: object, token = ctx.coach
 }
 
 describe('POST /plans/:id/days/batch', () => {
+  it('enqueues plan_updated and bumps updated_at for a published plan tree change', async () => {
+    const ctx = await makeBatchContext(true);
+    const plan = await createPublishedPlan(ctx);
+    const previousUpdatedAt = new Date('2020-01-01T00:00:00.000Z');
+    await ctx.db
+      .updateTable('plans')
+      .set({ updated_at: previousUpdatedAt })
+      .where('id', '=', plan.planId)
+      .execute();
+
+    const response = await batch(ctx, plan.planId, {
+      delete_day_ids: [],
+      upsert_days: [upsertDay(2, 2)],
+    });
+    const rows = await ctx.db
+      .selectFrom('notification_outbox')
+      .selectAll()
+      .where('event_type', '=', 'plan_updated')
+      .execute();
+
+    expect(response.status).toBe(200);
+    expect(new Date(response.body.updated_at).getTime()).toBeGreaterThan(
+      previousUpdatedAt.getTime(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      recipient_id: ids.trainee,
+      status: 'pending',
+      payload: {
+        coach_name: 'Coach A',
+        student_id: ids.trainee,
+        plan_id: plan.planId,
+      },
+    });
+    expect(rows[0]?.aggregate_id).not.toBe(plan.planId);
+  });
+
+  it('enqueues separate plan_updated rows for consecutive batches on one plan', async () => {
+    const ctx = await makeBatchContext(true);
+    const plan = await createPublishedPlan(ctx);
+
+    const first = await batch(ctx, plan.planId, {
+      delete_day_ids: [],
+      upsert_days: [upsertDay(2, 2)],
+    });
+    const second = await batch(ctx, plan.planId, {
+      delete_day_ids: [],
+      upsert_days: [upsertDay(2, 3)],
+    });
+    const rows = await ctx.db
+      .selectFrom('notification_outbox')
+      .select('aggregate_id')
+      .where('event_type', '=', 'plan_updated')
+      .execute();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((row) => row.aggregate_id))).toHaveProperty('size', 2);
+  });
+
+  it('does not enqueue plan_updated for a draft plan tree change', async () => {
+    const ctx = await makeBatchContext(true);
+    const plan = await createDraftPlan(ctx);
+
+    const response = await batch(ctx, plan.id, {
+      delete_day_ids: [],
+      upsert_days: [upsertDay(1, 1)],
+    });
+    const rows = await ctx.db
+      .selectFrom('notification_outbox')
+      .select('id')
+      .where('event_type', '=', 'plan_updated')
+      .execute();
+
+    expect(response.status).toBe(200);
+    expect(rows).toEqual([]);
+  });
+
+  it('does not enqueue plan_updated for a published plan name-only patch', async () => {
+    const ctx = await makeBatchContext(true);
+    const plan = await createPublishedPlan(ctx);
+
+    const response = await batch(ctx, plan.planId, {
+      plan_patch: { name: 'Renamed published plan' },
+      delete_day_ids: [],
+      upsert_days: [],
+    });
+    const rows = await ctx.db
+      .selectFrom('notification_outbox')
+      .select('id')
+      .where('event_type', '=', 'plan_updated')
+      .execute();
+
+    expect(response.status).toBe(200);
+    expect(response.body.name).toBe('Renamed published plan');
+    expect(rows).toEqual([]);
+  });
+
   it('upserts days, exercises, and batched sets and returns the sorted normalized tree', async () => {
     const ctx = await makeBatchContext();
     const plan = await createDraftPlan(ctx);
@@ -429,9 +528,14 @@ describe('POST /plans/:id/days/batch', () => {
   });
 
   it('accepts an empty operation and leaves the plan unchanged', async () => {
-    const ctx = await makeBatchContext();
+    const ctx = await makeBatchContext(true);
     const plan = await createPublishedPlan(ctx);
     const before = await treeCounts(ctx, plan.planId);
+    const beforePlan = await ctx.db
+      .selectFrom('plans')
+      .select('updated_at')
+      .where('id', '=', plan.planId)
+      .executeTakeFirstOrThrow();
 
     const response = await batch(ctx, plan.planId, {
       delete_day_ids: [],
@@ -442,6 +546,14 @@ describe('POST /plans/:id/days/batch', () => {
     expect(response.body.days).toHaveLength(1);
     expect(response.body.days[0].id).toBe(plan.dayId);
     expect(await treeCounts(ctx, plan.planId)).toEqual(before);
+    expect(new Date(response.body.updated_at)).toEqual(beforePlan.updated_at);
+    expect(
+      await ctx.db
+        .selectFrom('notification_outbox')
+        .select('id')
+        .where('event_type', '=', 'plan_updated')
+        .execute(),
+    ).toEqual([]);
   });
 
   it('rejects a frozen deleted day with day IDs and rolls back the full transaction', async () => {

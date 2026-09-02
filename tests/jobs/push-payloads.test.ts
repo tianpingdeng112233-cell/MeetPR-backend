@@ -1,9 +1,61 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
-import { buildPushPayload } from '../../src/jobs/push-payloads';
+import { buildPushPayload, REGISTERED_PUSH_EVENT_TYPES } from '../../src/jobs/push-payloads';
 
 describe('push payload builders', () => {
+  it('builds the plan_updated contract in Chinese and English', () => {
+    const studentId = randomUUID();
+    const planId = randomUUID();
+    const payload = { coach_name: 'Coach A', student_id: studentId, plan_id: planId };
+
+    expect(buildPushPayload('plan_updated', payload)).toEqual({
+      alert: {
+        title: '教练更新了你的计划',
+        body: 'Coach A 调整了你正在练的计划，打开看看',
+      },
+      collapseId: `plan-updated-${planId}`,
+      threadId: 'plan_updated',
+      custom: { kind: 'plan_updated', student_id: studentId, plan_id: planId },
+    });
+    expect(buildPushPayload('plan_updated', payload, 'en')).toEqual({
+      alert: {
+        title: 'Your plan was updated',
+        body: 'Coach A adjusted your current plan',
+      },
+      collapseId: `plan-updated-${planId}`,
+      threadId: 'plan_updated',
+      custom: { kind: 'plan_updated', student_id: studentId, plan_id: planId },
+    });
+    expect(REGISTERED_PUSH_EVENT_TYPES).toContain('plan_updated');
+  });
+
+  it('builds the plan_published contract from the existing outbox payload', () => {
+    const traineeId = randomUUID();
+    const planId = randomUUID();
+    const payload = { plan_id: planId, trainee_id: traineeId };
+
+    expect(buildPushPayload('plan_published', payload)).toEqual({
+      alert: {
+        title: '教练发布了新计划',
+        body: '新的训练周期已经准备好，打开看看',
+      },
+      collapseId: `plan-published-${planId}`,
+      threadId: 'plan_published',
+      custom: { kind: 'plan_published', student_id: traineeId, plan_id: planId },
+    });
+    expect(buildPushPayload('plan_published', payload, 'en')).toEqual({
+      alert: {
+        title: 'New plan published',
+        body: 'Your next training cycle is ready',
+      },
+      collapseId: `plan-published-${planId}`,
+      threadId: 'plan_published',
+      custom: { kind: 'plan_published', student_id: traineeId, plan_id: planId },
+    });
+    expect(REGISTERED_PUSH_EVENT_TYPES).toContain('plan_published');
+  });
+
   it('builds the locked six-event APNs contracts', () => {
     const studentId = randomUUID();
     const conversationId = randomUUID();
