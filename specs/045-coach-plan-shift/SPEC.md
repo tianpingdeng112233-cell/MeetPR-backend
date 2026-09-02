@@ -1,6 +1,6 @@
 # 045 — 教练后移计划（从选中日期起整体延后 N 天）
 
-- **状态**: Draft（David 2026-09-02 grill 拍板：1A 2不做 3A 4赞同 5同意 6进；待 plan-web 入口稿拍板后转 InProgress）
+- **状态**: InProgress（David 2026-09-02 grill 拍板：1A 2不做 3A 4赞同 5同意 6进；入口稿拍板 A 日头入口）
 - **级别 / 节奏**: T2（迁移 + 跨三仓）；P1。
 - **对应**: plan-web `docs/specs/045-coach-plan-shift.md`（入口 UI）；iOS `specs/080-coach-plan-shift`（学员端消费）。
 - **前置**: PR #273（`plan_updated` 推送：`push-payloads` 注册表、`pushDisplayName`、`deps.pushEnabled`）先合 staging，本 spec 从其后的 staging 切分支。
