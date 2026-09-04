@@ -179,9 +179,20 @@ export function createOidcVerifier(fetchImpl: typeof fetch = fetch) {
     token: string;
     jwksUrl: string;
     issuer: string | [string, ...string[]];
-    audience: string;
+    audience: string | string[];
     nonce?: string;
   }): Promise<VerifiedOidcIdentity> {
+    let audience: string | [string, ...string[]];
+    if (typeof input.audience === 'string') {
+      audience = input.audience;
+    } else {
+      const [first, ...rest] = input.audience;
+      if (first === undefined) {
+        throw new jwt.JsonWebTokenError('OIDC audience list is empty');
+      }
+      audience = [first, ...rest];
+    }
+
     const decoded = jwt.decode(input.token, { complete: true });
     if (
       decoded === null ||
@@ -197,7 +208,7 @@ export function createOidcVerifier(fetchImpl: typeof fetch = fetch) {
     const payload = jwt.verify(input.token, key, {
       algorithms: ['RS256'],
       issuer: input.issuer,
-      audience: input.audience,
+      audience,
       ...(input.nonce === undefined ? {} : { nonce: input.nonce }),
     });
     return payloadIdentity(payload, Math.floor(Date.now() / 1000));

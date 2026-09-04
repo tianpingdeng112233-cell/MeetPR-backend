@@ -86,7 +86,7 @@ export const ConfigSchema = z
     // existing phone paths fully operational while new registration fails shut.
     SELF_SIGNUP_ROLES: SelfSignupRolesSchema,
     APPLE_CLIENT_ID: z.string().min(1).optional(),
-    GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+    GOOGLE_CLIENT_ID: z.string().optional(),
     RESEND_API_KEY: z.string().min(1).optional(),
     EMAIL_FROM: z.string().min(1).optional(),
     SIWA_KEY_ID: z.string().min(1).optional(),
@@ -196,14 +196,29 @@ export const ConfigSchema = z
         message: 'REGISTRATION_ALLOWLIST is required when production registration is enabled',
       });
     }
+  })
+  .transform(({ GOOGLE_CLIENT_ID, ...config }) => {
+    const clientIds = [
+      ...new Set(
+        (GOOGLE_CLIENT_ID ?? '')
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    ];
+    return {
+      ...config,
+      GOOGLE_CLIENT_IDS: clientIds.length > 0 ? clientIds : undefined,
+    };
   });
 
 type ParsedConfig = z.infer<typeof ConfigSchema>;
 
 // Directly constructed Config objects predate the backend selector. Keep that
 // field optional at DI boundaries while loadConfig always materializes "oss".
-export type Config = Omit<ParsedConfig, 'STORAGE_BACKEND'> & {
+export type Config = Omit<ParsedConfig, 'STORAGE_BACKEND' | 'GOOGLE_CLIENT_IDS'> & {
   STORAGE_BACKEND?: ParsedConfig['STORAGE_BACKEND'];
+  GOOGLE_CLIENT_IDS?: ParsedConfig['GOOGLE_CLIENT_IDS'];
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
