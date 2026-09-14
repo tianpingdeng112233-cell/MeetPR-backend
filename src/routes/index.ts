@@ -55,6 +55,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
       db: deps.db,
       logger: deps.logger,
       pushEnabled: deps.config.PUSH_ENABLED,
+      coachPlanShiftEnabled: deps.config.COACH_PLAN_SHIFT_ENABLED === true,
     }),
   );
   app.use('/students', deps.requireAuth, studentPlansRouter({ db: deps.db, logger: deps.logger }));

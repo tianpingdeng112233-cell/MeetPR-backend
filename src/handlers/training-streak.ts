@@ -53,7 +53,7 @@ export async function getStudentTrainingStreak(
       ? []
       : await db
           .selectFrom('plan_day_shifts')
-          .select(['id', 'plan_day_id', 'batch_id', 'shifted_to_date', 'created_at'])
+          .select(['id', 'seq', 'plan_day_id', 'batch_id', 'shifted_to_date', 'created_at'])
           .where('plan_day_id', 'in', dayIds)
           .execute();
 
@@ -68,6 +68,7 @@ export async function getStudentTrainingStreak(
   // strings while pg-mem returns Date objects for the same columns.
   const normalizedShifts = shiftRows.map((shift) => ({
     ...shift,
+    seq: Number(shift.seq),
     shifted_to_date: normalizeDateOnly(shift.shifted_to_date),
   }));
   const plannedDates = new Set<string>();

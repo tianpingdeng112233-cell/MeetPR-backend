@@ -9,6 +9,7 @@ import {
   PLAN_KINDS,
   SET_TYPES,
 } from '../../db/types';
+import { isIsoCalendarDate } from '../../utils/date';
 import {
   intensityState,
   usesNewIntensityShape,
@@ -17,6 +18,10 @@ import {
 } from './intensity';
 
 const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
+const CalendarDateSchema = DateSchema.refine(
+  isIsoCalendarDate,
+  'Date must be a valid calendar date',
+);
 const UuidSchema = z.string().uuid();
 const NameSchema = z.string().trim().min(1).max(120);
 // Relaxed from {1, 4} to any 1..52 weeks for imported multi-week plans (spec 043
@@ -37,6 +42,13 @@ const TargetValueSchema = z
 export const IdParamSchema = z.object({
   id: UuidSchema,
 });
+
+export const CoachPlanShiftBodySchema = z
+  .object({
+    anchor_date: CalendarDateSchema,
+    offset_days: z.number().int().min(1).max(30),
+  })
+  .strict();
 
 export const PendingRevisionBodySchema = z
   .object({
