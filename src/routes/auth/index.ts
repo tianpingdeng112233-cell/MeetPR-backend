@@ -50,7 +50,7 @@ export type AuthConfig = Pick<
   | 'REGISTRATION_ALLOWLIST'
   | 'SELF_SIGNUP_ROLES'
   | 'APPLE_CLIENT_ID'
-  | 'GOOGLE_CLIENT_ID'
+  | 'GOOGLE_CLIENT_IDS'
   | 'RESEND_API_KEY'
   | 'EMAIL_FROM'
   | 'SIWA_KEY_ID'

@@ -24,7 +24,7 @@ describe('config', () => {
     expect(config.PUSH_DAILY_DIGEST_ENABLED).toBe(false);
     expect(config.SELF_SIGNUP_ROLES).toBeUndefined();
     expect(config.APPLE_CLIENT_ID).toBeUndefined();
-    expect(config.GOOGLE_CLIENT_ID).toBeUndefined();
+    expect(config.GOOGLE_CLIENT_IDS).toBeUndefined();
     expect(config.RESEND_API_KEY).toBeUndefined();
     expect(config.EMAIL_FROM).toBeUndefined();
     expect(config.SIWA_KEY_ID).toBeUndefined();
@@ -33,6 +33,24 @@ describe('config', () => {
     expect(config.STORAGE_BACKEND).toBe('oss');
     expect(config.OSS_ACCELERATE_ENDPOINT).toBeUndefined();
     expect(config.S3_ENDPOINT).toBeUndefined();
+  });
+
+  it('parses comma-separated Google client IDs, trimming and removing empty and duplicate entries', () => {
+    const config = loadConfig({ ...validEnv, GOOGLE_CLIENT_ID: 'a, b,,a' });
+    expect(config.GOOGLE_CLIENT_IDS).toEqual(['a', 'b']);
+  });
+
+  it('preserves a single Google client ID unchanged', () => {
+    const config = loadConfig({
+      ...validEnv,
+      GOOGLE_CLIENT_ID: 'google-client-id.apps.googleusercontent.com',
+    });
+    expect(config.GOOGLE_CLIENT_IDS).toEqual(['google-client-id.apps.googleusercontent.com']);
+  });
+
+  it.each(['', undefined, ' , , '])('leaves Google unconfigured for %j', (clientIds) => {
+    const config = loadConfig({ ...validEnv, GOOGLE_CLIENT_ID: clientIds });
+    expect(config.GOOGLE_CLIENT_IDS).toBeUndefined();
   });
 
   it('throws when DATABASE_URL is missing', () => {

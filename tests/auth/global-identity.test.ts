@@ -8,7 +8,7 @@ import pino from 'pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../../src/app';
-import type { Config } from '../../src/config';
+import { loadConfig, type Config } from '../../src/config';
 import { createDb } from '../../src/db/kysely';
 import type { Database } from '../../src/db/types';
 import { request } from '../helpers/inMemoryRequest';
@@ -35,7 +35,7 @@ const config: Config = {
   TRUST_PROXY: 0,
   SELF_SIGNUP_ROLES: 'coached_student',
   APPLE_CLIENT_ID: 'com.meetpr.global',
-  GOOGLE_CLIENT_ID: 'google-client-id.apps.googleusercontent.com',
+  GOOGLE_CLIENT_IDS: ['google-client-id.apps.googleusercontent.com'],
 };
 
 const signingKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -77,7 +77,7 @@ function token(input: {
       algorithm: 'RS256',
       keyid: kid,
       issuer: apple ? 'https://appleid.apple.com' : 'https://accounts.google.com',
-      audience: input.audience ?? (apple ? config.APPLE_CLIENT_ID : config.GOOGLE_CLIENT_ID),
+      audience: input.audience ?? (apple ? config.APPLE_CLIENT_ID : config.GOOGLE_CLIENT_IDS?.[0]),
       ...(input.missingExp ? {} : { expiresIn: input.expiresIn ?? '5m' }),
     },
   );
@@ -220,6 +220,62 @@ function stubAppleEndpoints(options: { tokenStatus?: number; revokeStatus?: numb
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('POST /auth/google configured audiences', () => {
+  function contextForGoogle(clientIds: string | undefined) {
+    return makeContext(
+      loadConfig({
+        NODE_ENV: 'test',
+        DATABASE_URL: config.DATABASE_URL,
+        JWT_ACCESS_SECRET: config.JWT_ACCESS_SECRET,
+        JWT_REFRESH_SECRET: config.JWT_REFRESH_SECRET,
+        LOG_LEVEL: 'silent',
+        SELF_SIGNUP_ROLES: 'coached_student',
+        GOOGLE_CLIENT_ID: clientIds,
+      }),
+    );
+  }
+
+  it.each(['ios-id', 'android-id'])(
+    'accepts aud=%s with GOOGLE_CLIENT_ID="ios-id, android-id"',
+    async (audience) => {
+      stubJwks();
+      const { app } = contextForGoogle('ios-id, android-id');
+      const response = await providerRequest(app, 'google', { audience });
+      expect(response.status).toBe(200);
+      expect(response.body.user.role).toBe('coached_student');
+      expect(typeof response.body.accessToken).toBe('string');
+    },
+  );
+
+  it('rejects an audience outside the configured Google client IDs', async () => {
+    stubJwks();
+    const { app } = contextForGoogle('ios-id, android-id');
+    const response = await providerRequest(app, 'google', { audience: 'other-id' });
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'AUTH_INVALID_IDENTITY_TOKEN' });
+  });
+
+  it('accepts the existing single Google client ID configuration', async () => {
+    stubJwks();
+    const { app } = contextForGoogle('ios-id');
+    const response = await providerRequest(app, 'google', { audience: 'ios-id' });
+    expect(response.status).toBe(200);
+  });
+
+  it.each(['', undefined, ' , , '])(
+    'returns 503 when GOOGLE_CLIENT_ID is %j',
+    async (clientIds) => {
+      const { app } = contextForGoogle(clientIds);
+      const response = await request(app).post('/auth/google').send({
+        idToken: 'not-read-before-config-gate',
+        role: 'coached_student',
+      });
+      expect(response.status).toBe(503);
+      expect(response.body).toEqual({ error: 'AUTH_PROVIDER_NOT_CONFIGURED', provider: 'google' });
+    },
+  );
 });
 
 describe.each(['apple', 'google'] as const)('POST /auth/%s', (provider) => {
@@ -629,7 +685,7 @@ describe('global auth safe defaults', () => {
   );
 
   it('returns explicit provider configuration errors without blocking app startup', async () => {
-    const { app } = makeContext({ APPLE_CLIENT_ID: undefined, GOOGLE_CLIENT_ID: undefined });
+    const { app } = makeContext({ APPLE_CLIENT_ID: undefined, GOOGLE_CLIENT_IDS: undefined });
     const apple = await request(app).post('/auth/apple').send({
       identityToken: 'not-read-before-config-gate',
       nonce: 'nonce',

@@ -96,6 +96,27 @@ describe('OIDC JWKS verification', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('accepts aud=b when the allowed audiences are a and b', async () => {
+    const verify = createOidcVerifier(fetchJwks());
+    await expect(
+      verify({ ...verifyInput(token({ audience: 'b' })), audience: ['a', 'b'] }),
+    ).resolves.toEqual({ subject: 'provider-user', email: 'user@example.com' });
+  });
+
+  it('rejects aud=c when the allowed audiences are a and b', async () => {
+    const verify = createOidcVerifier(fetchJwks());
+    await expect(
+      verify({ ...verifyInput(token({ audience: 'c' })), audience: ['a', 'b'] }),
+    ).rejects.toBeInstanceOf(jwt.JsonWebTokenError);
+  });
+
+  it('rejects a token when no audiences are allowed', async () => {
+    const verify = createOidcVerifier(fetchJwks());
+    await expect(verify({ ...verifyInput(token()), audience: [] })).rejects.toBeInstanceOf(
+      jwt.JsonWebTokenError,
+    );
+  });
+
   it.each([
     ['audience mismatch', { audience: 'wrong-audience' }, 'nonce'],
     ['expired', { expiresIn: -1 }, 'nonce'],

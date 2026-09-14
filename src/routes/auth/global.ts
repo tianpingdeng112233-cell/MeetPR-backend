@@ -58,7 +58,7 @@ type GlobalAuthConfig = Pick<
   Config,
   | 'SELF_SIGNUP_ROLES'
   | 'APPLE_CLIENT_ID'
-  | 'GOOGLE_CLIENT_ID'
+  | 'GOOGLE_CLIENT_IDS'
   | 'RESEND_API_KEY'
   | 'EMAIL_FROM'
   | 'SIWA_KEY_ID'
@@ -344,7 +344,7 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
         res.status(400).json(validationEnvelope(body.error));
         return;
       }
-      if (deps.config.GOOGLE_CLIENT_ID === undefined) {
+      if (deps.config.GOOGLE_CLIENT_IDS === undefined) {
         res.status(503).json({ error: 'AUTH_PROVIDER_NOT_CONFIGURED', provider: 'google' });
         return;
       }
@@ -359,7 +359,7 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
           token: body.data.idToken,
           jwksUrl: GOOGLE_JWKS_URL,
           issuer: ['accounts.google.com', 'https://accounts.google.com'],
-          audience: deps.config.GOOGLE_CLIENT_ID,
+          audience: deps.config.GOOGLE_CLIENT_IDS,
           ...(body.data.nonce === undefined ? {} : { nonce: nonceHash(body.data.nonce) }),
         });
       } catch (error: unknown) {
