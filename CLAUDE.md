@@ -4,9 +4,7 @@ This file provides repository context for engineering agents. When using Codex, 
 
 > **Status(2026-08-03)**:TestFlight 内测期,backend 随时可独立部署。`staging` 是集成分支(默认分支,PR 都开向它),`main` 收已 review 的内容。Feature 工作由 iOS / plan-web spec 触发,走 `specs/NNN-slug/SPEC.md` 流程;仍不做无 spec 触发的投机性 feature 与 speculative refactor。迁移纪律:迁移号开工现场核实,已应用状态以 `db/MIGRATIONS-APPLIED.md` 账本为准,合并后必须部署 staging(严禁「只合不部署」)。
 
-**045 交接（2026-09-14）**：backend #276、web #101 和 iOS #340 尚未合并，0070 线上迁移、env/gate 与部署尚未执行。原始 SQL 已通过隔离 PostgreSQL 17 验证；结果和四步 rollout 见 [0070 验证记录](docs/verification-0070-pg17-2026-09-14.md)。GitHub 托管 CI 因 billing lock 受阻，本地验证与远端检查分别报告。#339 配套的 backend #273/#274 与 web #99 属已部署历史，详见 [staging 账本](db/MIGRATIONS-APPLIED.md)。
-
-**同日登录后预检**：阿里云会话可用，SAE 当前镜像 `42238a9`、1/1 Running；RDS 实际 18.3，0070 尚未应用，存量 7 行/2 批一致性通过。推送已启用但 APNS_ENV=sandbox，TestFlight 的 production 投递仍待验收。备份及隔离 PG18 补验见 [阿里云预检](docs/aliyun-preflight-2026-09-14.md)。GitHub billing 仍待解除，线上未变更。
+**045 部署（2026-09-16）**：backend #276 已合并，真实 RDS 0070 已应用，d0b919d 镜像全量部署通过；coach gate=true 已在新实例 Webshell 核实，web #101/#53 换装继续跟踪。执行下一次迁移、回退或三端验收前，读取 [本批部署记录](docs/deployment-045-web101-53-2026-09-16.md) 与 [staging 账本](db/MIGRATIONS-APPLIED.md)。APNS_ENV=sandbox，TestFlight production 投递仍待独立验收。
 
 ## Project
 
