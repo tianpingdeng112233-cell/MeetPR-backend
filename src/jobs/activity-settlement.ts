@@ -279,14 +279,15 @@ async function settleStudent(
           .orderBy('id', 'asc')
           .execute();
   const dayIds = days.map((day) => day.id);
-  const shifts =
+  const rawShifts =
     dayIds.length === 0
       ? []
       : await trx
           .selectFrom('plan_day_shifts')
-          .selectAll()
+          .select(['id', 'seq', 'plan_day_id', 'batch_id', 'shifted_to_date', 'created_at'])
           .where('plan_day_id', 'in', dayIds)
           .execute();
+  const shifts = rawShifts.map((shift) => ({ ...shift, seq: Number(shift.seq) }));
 
   const daysByPlan = new Map<string, typeof days>();
   for (const day of days) {

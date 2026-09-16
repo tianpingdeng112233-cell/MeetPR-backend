@@ -261,8 +261,19 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
   // DROP CONSTRAINT because it names 0037's inline UNIQUE differently than
   // real Postgres). Keep in sync with those migrations.
   mem.public.none(`
+    CREATE TABLE plan_shift_batches (
+      id UUID PRIMARY KEY,
+      plan_id UUID NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+      actor_id UUID NOT NULL REFERENCES users(id),
+      actor_role TEXT NOT NULL CHECK (actor_role IN ('coach', 'coached_student')),
+      anchor_date DATE NOT NULL,
+      offset_days INTEGER NOT NULL CHECK (offset_days BETWEEN 1 AND 30),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE plan_day_shifts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      seq BIGSERIAL NOT NULL,
       plan_day_id UUID NOT NULL REFERENCES plan_days(id) ON DELETE CASCADE,
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       batch_id UUID NOT NULL,

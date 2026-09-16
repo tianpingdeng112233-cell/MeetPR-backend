@@ -332,8 +332,20 @@ export interface PlanDayCompletionsTable {
   completed_at: TimestampColumn;
 }
 
+export interface PlanShiftBatchesTable {
+  id: string;
+  plan_id: string;
+  actor_id: string;
+  actor_role: 'coach' | 'coached_student';
+  // DATE-as-text in production; pg-mem returns a Date in integration tests.
+  anchor_date: ColumnType<string | Date, string, string>;
+  offset_days: number;
+  created_at: TimestampColumn;
+}
+
 export interface PlanDayShiftsTable {
   id: Generated<string>;
+  seq: Generated<string | number>;
   plan_day_id: string;
   student_id: string;
   batch_id: string;
@@ -815,6 +827,7 @@ export interface Database {
   plan_pending_revisions: PlanPendingRevisionsTable;
   plan_days: PlanDaysTable;
   plan_day_completions: PlanDayCompletionsTable;
+  plan_shift_batches: PlanShiftBatchesTable;
   plan_day_shifts: PlanDayShiftsTable;
   plan_exercises: PlanExercisesTable;
   plan_sets: PlanSetsTable;

@@ -11,6 +11,7 @@ import type {
   PlanDayShiftsTable,
   PlanDaysTable,
   PlanExercisesTable,
+  PlanShiftBatchesTable,
   PlansTable,
   PlanSetsTable,
   PlanStatus,
@@ -22,6 +23,7 @@ import {
   latestShiftByDay,
   latestShiftBatch,
   plannedDate as plannedDayDate,
+  totalEffectivePlanShiftDays,
 } from '../../domain/plan-calendar';
 import { hasActiveEvaluation } from '../../handlers/evaluations';
 import {
@@ -40,6 +42,7 @@ import { route, validationEnvelope } from '../http';
 import {
   ExerciseIdParamSchema,
   BatchDaysBodySchema,
+  CoachPlanShiftBodySchema,
   CreatePlanBodySchema,
   CreatePlanDayBodySchema,
   CreatePlanExerciseBodySchema,
@@ -83,12 +86,14 @@ interface PlansRouterDeps {
   db: Kysely<Database>;
   logger: Logger;
   pushEnabled?: boolean;
+  coachPlanShiftEnabled?: boolean;
 }
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
 type PlanRow = Selectable<PlansTable>;
 type PlanDayRow = Selectable<PlanDaysTable>;
-type PlanDayShiftRow = Selectable<PlanDayShiftsTable>;
+type PlanDayShiftRow = Omit<Selectable<PlanDayShiftsTable>, 'seq'> & { seq: number };
+type PlanShiftBatchRow = Selectable<PlanShiftBatchesTable>;
 type PlanSetRow = Selectable<PlanSetsTable>;
 type OwnedPlanWithPendingRevision = PlanRow & {
   pending_revision_saved_at: Date | null;
@@ -207,16 +212,8 @@ export async function getPlanWithChildren(
           .orderBy('sort_order', 'asc')
           .execute();
 
-  const shiftRows =
-    dayIds.length === 0
-      ? []
-      : await db
-          .selectFrom('plan_day_shifts')
-          .selectAll()
-          .where('plan_day_id', 'in', dayIds)
-          .orderBy('created_at', 'asc')
-          .orderBy('id', 'asc')
-          .execute();
+  const shiftData = await planShiftSummaries(db, [plan]);
+  const shiftRows = shiftData.shiftsByPlan.get(plan.id) ?? [];
 
   const exerciseIds = exerciseRows.map((exercise) => exercise.id);
   const loggedExerciseIds = await planExercisesWithLogs(db, exerciseIds);
@@ -251,10 +248,11 @@ export async function getPlanWithChildren(
   }
 
   const shiftsByDay = latestShiftByDay(shiftRows);
+  const shiftSummary = shiftData.summaries.get(plan.id) ?? toPlanShiftSummary(plan, [], [], []);
 
   return {
     ...toPlan(plan),
-    ...toPlanShiftSummary(shiftRows),
+    ...shiftSummary,
     days: dayRows.map((day) =>
       toPlanDay(
         day,
@@ -269,26 +267,120 @@ export async function getPlanWithChildren(
 
 async function planShiftSummaries(
   db: Kysely<Database>,
-  planIds: string[],
-): Promise<Map<string, PlanShiftSummaryResponse>> {
-  if (planIds.length === 0) return new Map();
+  plans: Pick<PlanRow, 'id' | 'start_date'>[],
+): Promise<{
+  summaries: Map<string, PlanShiftSummaryResponse>;
+  shiftsByPlan: Map<string, PlanDayShiftRow[]>;
+}> {
+  if (plans.length === 0) {
+    return { summaries: new Map(), shiftsByPlan: new Map() };
+  }
 
   const rows = await db
     .selectFrom('plan_day_shifts as pds')
     .innerJoin('plan_days as pd', 'pd.id', 'pds.plan_day_id')
-    .select(['pd.plan_id as plan_id', 'pds.batch_id as batch_id', 'pds.created_at as created_at'])
-    .where('pd.plan_id', 'in', planIds)
+    .leftJoin('plan_shift_batches as psb', 'psb.id', 'pds.batch_id')
+    .select([
+      'pd.plan_id as plan_id',
+      'pd.week_number as week_number',
+      'pd.day_of_week as day_of_week',
+      'pds.id as shift_id',
+      'pds.seq as shift_seq',
+      'pds.plan_day_id as plan_day_id',
+      'pds.student_id as student_id',
+      'pds.batch_id as batch_id',
+      'pds.shifted_to_date as shifted_to_date',
+      'pds.created_at as shift_created_at',
+      'psb.id as metadata_id',
+      'psb.actor_role as actor_role',
+      'psb.anchor_date as anchor_date',
+      'psb.offset_days as offset_days',
+      'psb.created_at as batch_created_at',
+    ])
+    .where(
+      'pd.plan_id',
+      'in',
+      plans.map((plan) => plan.id),
+    )
     .execute();
-  const rowsByPlan = new Map<string, { batch_id: string; created_at: Date }[]>();
+  const rowsByPlan = new Map<
+    string,
+    {
+      batches: Pick<
+        PlanShiftBatchRow,
+        'id' | 'actor_role' | 'anchor_date' | 'offset_days' | 'created_at'
+      >[];
+      batchIds: Set<string>;
+      days: Pick<PlanDayRow, 'id' | 'week_number' | 'day_of_week'>[];
+      dayIds: Set<string>;
+      shifts: Pick<
+        PlanDayShiftRow,
+        'id' | 'seq' | 'plan_day_id' | 'student_id' | 'batch_id' | 'shifted_to_date' | 'created_at'
+      >[];
+    }
+  >();
   for (const row of rows) {
-    const planRows = rowsByPlan.get(row.plan_id) ?? [];
-    planRows.push({ batch_id: row.batch_id, created_at: row.created_at });
+    const planRows = rowsByPlan.get(row.plan_id) ?? {
+      batches: [],
+      batchIds: new Set<string>(),
+      days: [],
+      dayIds: new Set<string>(),
+      shifts: [],
+    };
+    if (
+      row.metadata_id !== null &&
+      row.actor_role !== null &&
+      row.anchor_date !== null &&
+      row.offset_days !== null &&
+      row.batch_created_at !== null &&
+      !planRows.batchIds.has(row.metadata_id)
+    ) {
+      planRows.batchIds.add(row.metadata_id);
+      planRows.batches.push({
+        id: row.metadata_id,
+        actor_role: row.actor_role,
+        anchor_date: row.anchor_date,
+        offset_days: row.offset_days,
+        created_at: row.batch_created_at,
+      });
+    }
+    if (!planRows.dayIds.has(row.plan_day_id)) {
+      planRows.dayIds.add(row.plan_day_id);
+      planRows.days.push({
+        id: row.plan_day_id,
+        week_number: row.week_number,
+        day_of_week: row.day_of_week,
+      });
+    }
+    planRows.shifts.push({
+      id: row.shift_id,
+      seq: Number(row.shift_seq),
+      plan_day_id: row.plan_day_id,
+      student_id: row.student_id,
+      batch_id: row.batch_id,
+      shifted_to_date: row.shifted_to_date,
+      created_at: row.shift_created_at,
+    });
     rowsByPlan.set(row.plan_id, planRows);
   }
 
-  return new Map(
-    planIds.map((planId) => [planId, toPlanShiftSummary(rowsByPlan.get(planId) ?? [])]),
-  );
+  return {
+    summaries: new Map(
+      plans.map((plan) => {
+        const planRows = rowsByPlan.get(plan.id);
+        return [
+          plan.id,
+          toPlanShiftSummary(
+            plan,
+            planRows?.days ?? [],
+            planRows?.shifts ?? [],
+            planRows?.batches ?? [],
+          ),
+        ];
+      }),
+    ),
+    shiftsByPlan: new Map(plans.map((plan) => [plan.id, rowsByPlan.get(plan.id)?.shifts ?? []])),
+  };
 }
 
 async function publishCounts(db: DbExecutor, planId: string): Promise<PublishCounts> {
@@ -400,6 +492,7 @@ type PlanShiftError =
   | 'NOT_PLAN_STUDENT'
   | 'PLAN_NOT_ACTIVE'
   | 'SHIFT_ONLY_TODAY'
+  | 'SHIFT_OWNED_BY_COACH'
   | 'UNDO_WINDOW_PASSED';
 
 function addUtcDaysToDateOnly(value: string, days: number): string {
@@ -438,16 +531,24 @@ async function lockPlanShiftContext(
     .forUpdate()
     .execute();
   const dayIds = days.map((day) => day.id);
-  const shifts =
+  const rawShifts =
     dayIds.length === 0
       ? []
       : await db
           .selectFrom('plan_day_shifts')
-          .selectAll()
+          .select([
+            'id',
+            'seq',
+            'plan_day_id',
+            'student_id',
+            'batch_id',
+            'shifted_to_date',
+            'created_at',
+          ])
           .where('plan_day_id', 'in', dayIds)
-          .orderBy('created_at', 'asc')
-          .orderBy('id', 'asc')
+          .orderBy('seq', 'asc')
           .execute();
+  const shifts = rawShifts.map((shift) => ({ ...shift, seq: Number(shift.seq) }));
   return { plan, days, shifts, timezone: plan.student_timezone };
 }
 
@@ -492,6 +593,17 @@ async function createWholePlanShift(
       shifted_to_date: addUtcDaysToDateOnly(item.effectiveDate, 1),
     }));
   await db
+    .insertInto('plan_shift_batches')
+    .values({
+      id: batchId,
+      plan_id: planId,
+      actor_id: studentId,
+      actor_role: 'coached_student',
+      anchor_date: today,
+      offset_days: 1,
+    })
+    .execute();
+  await db
     .insertInto('plan_day_shifts')
     .values(
       shiftedDays.map((day) => ({
@@ -527,6 +639,17 @@ async function undoLatestWholePlanShift(
   if (!firstBatchRow) {
     return { type: 'error', error: 'NO_ACTIVE_SHIFT' };
   }
+  // A coach batch (spec 045) is the coach's decision: the student V2 undo
+  // keeps its pre-045 reach and never removes it. Orphan rows without a
+  // parent batch are legacy student writes and stay undoable.
+  const parentBatch = await db
+    .selectFrom('plan_shift_batches')
+    .select('actor_role')
+    .where('id', '=', firstBatchRow.batch_id)
+    .executeTakeFirst();
+  if (parentBatch?.actor_role === 'coach') {
+    return { type: 'error', error: 'SHIFT_OWNED_BY_COACH' };
+  }
   const today = localCalendarDate(new Date(), context.timezone);
   if (localCalendarDate(firstBatchRow.created_at, context.timezone) !== today) {
     return { type: 'error', error: 'UNDO_WINDOW_PASSED' };
@@ -544,16 +667,168 @@ async function undoLatestWholePlanShift(
     }
   }
 
+  if (context.days.length > 0) {
+    await db
+      .deleteFrom('plan_day_shifts')
+      .where('batch_id', '=', firstBatchRow.batch_id)
+      .where(
+        'plan_day_id',
+        'in',
+        context.days.map((day) => day.id),
+      )
+      .execute();
+  }
   await db
-    .deleteFrom('plan_day_shifts')
-    .where('batch_id', '=', firstBatchRow.batch_id)
-    .where(
-      'plan_day_id',
-      'in',
-      context.days.map((day) => day.id),
-    )
+    .deleteFrom('plan_shift_batches')
+    .where('id', '=', firstBatchRow.batch_id)
+    .where('plan_id', '=', planId)
     .execute();
   return { type: 'deleted', batchId: firstBatchRow.batch_id };
+}
+
+type CoachPlanShiftError =
+  | 'NO_ACTIVE_SHIFT'
+  | 'PLAN_NOT_ACTIVE'
+  | 'PLAN_NOT_FOUND'
+  | 'SHIFT_NO_TARGET_DAYS';
+
+async function createCoachPlanShift(
+  db: Transaction<Database>,
+  planId: string,
+  coachId: string,
+  anchorDate: string,
+  offsetDays: number,
+): Promise<
+  | {
+      type: 'shifted';
+      batchId: string;
+      shiftedDays: ShiftedDayResponse[];
+      skippedCompletedDayIds: string[];
+      totalShiftDays: number;
+      traineeId: string;
+    }
+  | { type: 'error'; error: CoachPlanShiftError }
+> {
+  const context = await lockPlanShiftContext(db, planId);
+  if (!context) {
+    return { type: 'error', error: 'PLAN_NOT_FOUND' };
+  }
+  if (context.plan.coach_id === null || !uuidEquals(context.plan.coach_id, coachId)) {
+    return { type: 'error', error: 'PLAN_NOT_FOUND' };
+  }
+  if (context.plan.status !== 'published') {
+    return { type: 'error', error: 'PLAN_NOT_ACTIVE' };
+  }
+
+  const completedRows =
+    context.days.length === 0
+      ? []
+      : await db
+          .selectFrom('plan_day_completions')
+          .select('plan_day_id')
+          .where(
+            'plan_day_id',
+            'in',
+            context.days.map((day) => day.id),
+          )
+          .execute();
+  const completedDayIds = new Set(completedRows.map((row) => row.plan_day_id));
+  const effectiveDays = effectivePlanDays(context.plan, context.days, context.shifts);
+  const anchoredDays = effectiveDays.filter((item) => item.effectiveDate >= anchorDate);
+  const candidates = anchoredDays.filter((item) => !completedDayIds.has(item.day.id));
+  if (candidates.length === 0) {
+    return { type: 'error', error: 'SHIFT_NO_TARGET_DAYS' };
+  }
+
+  const batchId = randomUUID();
+  const shiftedDays = candidates.map((item) => ({
+    day_id: item.day.id,
+    shifted_to_date: addUtcDaysToDateOnly(item.effectiveDate, offsetDays),
+  }));
+  await db
+    .insertInto('plan_shift_batches')
+    .values({
+      id: batchId,
+      plan_id: planId,
+      actor_id: coachId,
+      actor_role: 'coach',
+      anchor_date: anchorDate,
+      offset_days: offsetDays,
+    })
+    .execute();
+  await db
+    .insertInto('plan_day_shifts')
+    .values(
+      shiftedDays.map((day) => ({
+        plan_day_id: day.day_id,
+        student_id: context.plan.trainee_id,
+        batch_id: batchId,
+        shifted_to_date: day.shifted_to_date,
+      })),
+    )
+    .execute();
+
+  const shiftedDates = new Map(shiftedDays.map((day) => [day.day_id, day.shifted_to_date]));
+  const totalShiftDays = totalEffectivePlanShiftDays(
+    context.plan,
+    effectiveDays.map((item) => ({
+      ...item,
+      effectiveDate: shiftedDates.get(item.day.id) ?? item.effectiveDate,
+    })),
+  );
+  return {
+    type: 'shifted',
+    batchId,
+    shiftedDays,
+    skippedCompletedDayIds: anchoredDays
+      .filter((item) => completedDayIds.has(item.day.id))
+      .map((item) => item.day.id),
+    totalShiftDays,
+    traineeId: context.plan.trainee_id,
+  };
+}
+
+async function undoLatestCoachPlanShift(
+  db: Transaction<Database>,
+  planId: string,
+  coachId: string,
+): Promise<
+  | { type: 'deleted'; batchId: string; traineeId: string }
+  | { type: 'error'; error: CoachPlanShiftError }
+> {
+  const context = await lockPlanShiftContext(db, planId);
+  if (!context) {
+    return { type: 'error', error: 'PLAN_NOT_FOUND' };
+  }
+  if (context.plan.coach_id === null || !uuidEquals(context.plan.coach_id, coachId)) {
+    return { type: 'error', error: 'PLAN_NOT_FOUND' };
+  }
+  const latestBatchRows = latestShiftBatch(context.shifts);
+  const latestBatch = latestBatchRows[0];
+  if (latestBatch === undefined) {
+    return { type: 'error', error: 'NO_ACTIVE_SHIFT' };
+  }
+  if (context.days.length > 0) {
+    await db
+      .deleteFrom('plan_day_shifts')
+      .where('batch_id', '=', latestBatch.batch_id)
+      .where(
+        'plan_day_id',
+        'in',
+        context.days.map((day) => day.id),
+      )
+      .execute();
+  }
+  await db
+    .deleteFrom('plan_shift_batches')
+    .where('id', '=', latestBatch.batch_id)
+    .where('plan_id', '=', planId)
+    .execute();
+  return {
+    type: 'deleted',
+    batchId: latestBatch.batch_id,
+    traineeId: context.plan.trainee_id,
+  };
 }
 
 export async function createImportedHistory(
@@ -1917,7 +2192,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
 
   router.post(
     '/:id/shift',
-    requireRole('coached_student'),
+    requireRole('coach', 'coached_student'),
     route(async (req, res) => {
       const user = ensureUser(req);
       const params = IdParamSchema.safeParse(req.params);
@@ -1927,6 +2202,73 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       }
       if (!params.success) {
         res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+
+      if (user.role === 'coach') {
+        const body = CoachPlanShiftBodySchema.safeParse(req.body);
+        if (!body.success) {
+          res.status(400).json(validationEnvelope(body.error));
+          return;
+        }
+        if (!deps.coachPlanShiftEnabled) {
+          res.status(409).json({ error: 'COACH_PLAN_SHIFT_DISABLED' });
+          return;
+        }
+        const ownedPlan = await selectOwnedPlan(deps.db, params.data.id, user.id);
+        if (!ownedPlan) {
+          res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+          return;
+        }
+        const result = await deps.db
+          .transaction()
+          .execute((trx) =>
+            createCoachPlanShift(
+              trx,
+              params.data.id,
+              user.id,
+              body.data.anchor_date,
+              body.data.offset_days,
+            ),
+          );
+        if (deps.pushEnabled && result.type === 'shifted') {
+          await tryEnqueuePushOutbox(deps.db, deps.logger, 'plan_shifted', async () => ({
+            aggregateId: result.batchId,
+            recipientId: result.traineeId,
+            payload: {
+              coach_name: await pushDisplayName(deps.db, user.id),
+              student_id: result.traineeId,
+              plan_id: params.data.id,
+              anchor_date: body.data.anchor_date,
+              offset_days: body.data.offset_days,
+            },
+          }));
+        }
+        if (result.type === 'error') {
+          res.status(result.error === 'PLAN_NOT_FOUND' ? 404 : 409).json({ error: result.error });
+          return;
+        }
+
+        deps.logger.info(
+          {
+            planId: params.data.id,
+            coachId: user.id,
+            studentId: result.traineeId,
+            batchId: result.batchId,
+            anchorDate: body.data.anchor_date,
+            offsetDays: body.data.offset_days,
+            shiftedDayCount: result.shiftedDays.length,
+          },
+          'plan_shifted_by_coach',
+        );
+        res.status(201).json({
+          batch_id: result.batchId,
+          anchor_date: body.data.anchor_date,
+          offset_days: body.data.offset_days,
+          shifted_days: result.shiftedDays,
+          skipped_completed_day_ids: result.skippedCompletedDayIds,
+          total_shift_days: result.totalShiftDays,
+        });
         return;
       }
 
@@ -1970,7 +2312,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
 
   router.delete(
     '/:id/shift',
-    requireRole('coached_student'),
+    requireRole('coach', 'coached_student'),
     route(async (req, res) => {
       const user = ensureUser(req);
       const params = IdParamSchema.safeParse(req.params);
@@ -1980,6 +2322,47 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       }
       if (!params.success) {
         res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+
+      if (user.role === 'coach') {
+        if (!deps.coachPlanShiftEnabled) {
+          res.status(409).json({ error: 'COACH_PLAN_SHIFT_DISABLED' });
+          return;
+        }
+        if (!(await selectOwnedPlan(deps.db, params.data.id, user.id))) {
+          res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+          return;
+        }
+        const result = await deps.db
+          .transaction()
+          .execute((trx) => undoLatestCoachPlanShift(trx, params.data.id, user.id));
+        if (result.type === 'error') {
+          res.status(result.error === 'PLAN_NOT_FOUND' ? 404 : 409).json({ error: result.error });
+          return;
+        }
+
+        deps.logger.info(
+          {
+            planId: params.data.id,
+            coachId: user.id,
+            studentId: result.traineeId,
+            batchId: result.batchId,
+          },
+          'plan_shift_undone_by_coach',
+        );
+        if (deps.pushEnabled) {
+          await tryEnqueuePushOutbox(deps.db, deps.logger, 'plan_shift_undone', async () => ({
+            aggregateId: result.batchId,
+            recipientId: result.traineeId,
+            payload: {
+              coach_name: await pushDisplayName(deps.db, user.id),
+              student_id: result.traineeId,
+              plan_id: params.data.id,
+            },
+          }));
+        }
+        res.status(204).send();
         return;
       }
 
@@ -2447,14 +2830,11 @@ export function studentPlansRouter(deps: PlansRouterDeps): ExpressRouter {
         }
 
         const plans = await dbQuery.execute();
-        const shiftSummaries = await planShiftSummaries(
-          deps.db,
-          plans.map((plan) => plan.id),
-        );
+        const { summaries: shiftSummaries } = await planShiftSummaries(deps.db, plans);
         res.status(200).json({
           plans: plans.map(({ pending_revision_saved_at: savedAt, ...plan }) => ({
             ...toPlan(plan),
-            ...(shiftSummaries.get(plan.id) ?? toPlanShiftSummary([])),
+            ...(shiftSummaries.get(plan.id) ?? toPlanShiftSummary(plan, [], [], [])),
             pending_revision_saved_at: savedAt === null ? null : timestamp(savedAt),
           })),
         });
@@ -2473,14 +2853,11 @@ export function studentPlansRouter(deps: PlansRouterDeps): ExpressRouter {
         .where('status', '=', 'published')
         .orderBy('created_at', 'desc')
         .execute();
-      const shiftSummaries = await planShiftSummaries(
-        deps.db,
-        plans.map((plan) => plan.id),
-      );
+      const { summaries: shiftSummaries } = await planShiftSummaries(deps.db, plans);
       res.status(200).json({
         plans: plans.map((plan) => ({
           ...toPlan(plan),
-          ...(shiftSummaries.get(plan.id) ?? toPlanShiftSummary([])),
+          ...(shiftSummaries.get(plan.id) ?? toPlanShiftSummary(plan, [], [], [])),
         })),
       });
     }),

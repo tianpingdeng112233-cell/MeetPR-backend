@@ -4,6 +4,64 @@ import { describe, expect, it } from 'vitest';
 import { buildPushPayload, REGISTERED_PUSH_EVENT_TYPES } from '../../src/jobs/push-payloads';
 
 describe('push payload builders', () => {
+  it('builds the coach plan_shifted contract in Chinese and English', () => {
+    const studentId = randomUUID();
+    const planId = randomUUID();
+    const payload = {
+      coach_name: 'Coach A',
+      student_id: studentId,
+      plan_id: planId,
+      anchor_date: '2026-09-02',
+      offset_days: 3,
+    };
+
+    expect(buildPushPayload('plan_shifted', payload)).toEqual({
+      alert: {
+        title: '教练调整了你的计划日期',
+        body: 'Coach A 把 9月2日 起的训练后移了 3 天',
+      },
+      collapseId: planId,
+      threadId: 'plan_updated',
+      custom: { kind: 'plan_shifted', student_id: studentId, plan_id: planId },
+    });
+    expect(buildPushPayload('plan_shifted', payload, 'en')).toEqual({
+      alert: {
+        title: 'Your plan dates changed',
+        body: 'Coach A moved your training from Sep 2 onward by 3 days',
+      },
+      collapseId: planId,
+      threadId: 'plan_updated',
+      custom: { kind: 'plan_shifted', student_id: studentId, plan_id: planId },
+    });
+    expect(REGISTERED_PUSH_EVENT_TYPES).toContain('plan_shifted');
+  });
+
+  it('builds the coach plan_shift_undone contract in Chinese and English', () => {
+    const studentId = randomUUID();
+    const planId = randomUUID();
+    const payload = { coach_name: 'Coach A', student_id: studentId, plan_id: planId };
+
+    expect(buildPushPayload('plan_shift_undone', payload)).toEqual({
+      alert: {
+        title: '教练撤销了上次的日期调整',
+        body: 'Coach A 恢复了原来的推荐日期',
+      },
+      collapseId: planId,
+      threadId: 'plan_updated',
+      custom: { kind: 'plan_shift_undone', student_id: studentId, plan_id: planId },
+    });
+    expect(buildPushPayload('plan_shift_undone', payload, 'en')).toEqual({
+      alert: {
+        title: 'Plan date change undone',
+        body: 'Coach A restored the previous dates',
+      },
+      collapseId: planId,
+      threadId: 'plan_updated',
+      custom: { kind: 'plan_shift_undone', student_id: studentId, plan_id: planId },
+    });
+    expect(REGISTERED_PUSH_EVENT_TYPES).toContain('plan_shift_undone');
+  });
+
   it('builds the plan_updated contract in Chinese and English', () => {
     const studentId = randomUUID();
     const planId = randomUUID();

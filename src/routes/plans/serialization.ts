@@ -7,10 +7,12 @@ import type {
   PlanDayShiftsTable,
   PlanDaysTable,
   PlanExercisesTable,
+  PlanShiftBatchesTable,
   PlansTable,
   PlanSetsTable,
 } from '../../db/types';
-import { normalizeDateOnly } from '../../utils/date';
+import { latestShiftBatch, totalPlanShiftDays } from '../../domain/plan-calendar';
+import { normalizeDateOnly, utcDate, utcDateOnly } from '../../utils/date';
 
 type TimestampValue = Date | string;
 
@@ -36,7 +38,8 @@ function nullableOneDecimal(value: string | number | null | undefined): string |
 export type PlanRow = Selectable<PlansTable>;
 export type PlanDayRow = Selectable<PlanDaysTable>;
 export type PlanDayCompletionRow = Selectable<PlanDayCompletionsTable>;
-export type PlanDayShiftRow = Selectable<PlanDayShiftsTable>;
+export type PlanDayShiftRow = Omit<Selectable<PlanDayShiftsTable>, 'seq'> & { seq: number };
+export type PlanShiftBatchRow = Selectable<PlanShiftBatchesTable>;
 export type PlanExerciseRow = Selectable<PlanExercisesTable>;
 export type PlanSetRow = Selectable<PlanSetsTable>;
 export type ExerciseRow = Selectable<ExercisesTable>;
@@ -121,6 +124,13 @@ export interface PlanDayCompletionResponse {
 
 export interface PlanShiftSummaryResponse {
   total_shift_days: number;
+  latest_shift: {
+    batch_id: string;
+    actor_role: PlanShiftBatchRow['actor_role'];
+    anchor_date: string;
+    offset_days: number;
+    created_at: string;
+  } | null;
   latest_shift_created_at: string | null;
 }
 
@@ -205,16 +215,48 @@ export function toPlanDayCompletion(row: PlanDayCompletionRow): PlanDayCompletio
 }
 
 export function toPlanShiftSummary(
-  rows: Pick<PlanDayShiftRow, 'batch_id' | 'created_at'>[],
+  plan: Pick<PlanRow, 'start_date'>,
+  days: Pick<PlanDayRow, 'id' | 'week_number' | 'day_of_week'>[],
+  shifts: Pick<
+    PlanDayShiftRow,
+    'id' | 'seq' | 'plan_day_id' | 'batch_id' | 'shifted_to_date' | 'created_at'
+  >[],
+  batches: Pick<
+    PlanShiftBatchRow,
+    'id' | 'actor_role' | 'anchor_date' | 'offset_days' | 'created_at'
+  >[],
 ): PlanShiftSummaryResponse {
-  const batchIds = new Set(rows.map((row) => row.batch_id));
-  const latestCreatedAt = rows.reduce<Date | null>(
-    (latest, row) => (latest === null || row.created_at > latest ? row.created_at : latest),
+  const totalShiftDays = totalPlanShiftDays(plan, days, shifts);
+  const latestRows = latestShiftBatch(shifts);
+  const latestBatchId = latestRows[0]?.batch_id;
+  const metadata = batches.find((batch) => batch.id === latestBatchId);
+  const earliestShiftedDate = latestRows.reduce<string | null>((earliest, row) => {
+    const shiftedDate = normalizeDateOnly(row.shifted_to_date);
+    return earliest === null || shiftedDate < earliest ? shiftedDate : earliest;
+  }, null);
+  const syntheticAnchor = earliestShiftedDate === null ? null : utcDate(earliestShiftedDate);
+  syntheticAnchor?.setUTCDate(syntheticAnchor.getUTCDate() - 1);
+  const syntheticCreatedAt = latestRows.reduce<Date | null>(
+    (earliest, row) => (earliest === null || row.created_at < earliest ? row.created_at : earliest),
     null,
   );
+  const latestShift =
+    latestBatchId === undefined || syntheticAnchor === null || syntheticCreatedAt === null
+      ? null
+      : {
+          batch_id: latestBatchId,
+          actor_role: metadata?.actor_role ?? ('coached_student' as const),
+          anchor_date:
+            metadata === undefined
+              ? utcDateOnly(syntheticAnchor)
+              : normalizeDateOnly(metadata.anchor_date),
+          offset_days: metadata?.offset_days ?? 1,
+          created_at: timestamp(metadata?.created_at ?? syntheticCreatedAt),
+        };
   return {
-    total_shift_days: batchIds.size,
-    latest_shift_created_at: latestCreatedAt === null ? null : timestamp(latestCreatedAt),
+    total_shift_days: totalShiftDays,
+    latest_shift: latestShift,
+    latest_shift_created_at: latestShift?.created_at ?? null,
   };
 }
 
