@@ -36,7 +36,7 @@ pnpm dev
 
 The service implements authentication, coach/student workflows, plans, set logs, uploads, chat, and notifications. Route registration lives in [`src/routes/`](src/routes/); request, response, and authorization contracts live in the corresponding [`specs/`](specs/). Protected routes enforce authentication and resource ownership.
 
-Coach plan shifting extends the existing `POST/DELETE /plans/:id/shift` routes. Its `COACH_PLAN_SHIFT_ENABLED` gate defaults to `false`; the legacy student path remains compatible. Before enabling the coach path, follow [spec 045](specs/045-coach-plan-shift/SPEC.md) and the [0070 verification and rollout notes](docs/verification-0070-pg17-2026-09-14.md).
+Coach plan shifting extends the existing `POST/DELETE /plans/:id/shift` routes. Its `COACH_PLAN_SHIFT_ENABLED` gate defaults to `false`; the legacy student path remains compatible. Before enabling the coach path, follow [spec 045](specs/045-coach-plan-shift/SPEC.md) and the [0070 verification and rollout notes](docs/verification-0070-pg17-2026-09-14.md). Actual backup, migration, image, and gate evidence for the 2026-09-16 rollout lives in the [deployment record](docs/deployment-045-web101-53-2026-09-16.md).
 
 `staging` is the integration branch. A merge does not apply database migrations or deploy an image. Deployment requires the exact SHA image to exist in the registry and the required migrations to be applied; [`deploy-staging.yml`](.github/workflows/deploy-staging.yml) then rolls that image. Record actual migration and deployment results in [`db/MIGRATIONS-APPLIED.md`](db/MIGRATIONS-APPLIED.md); the [global ledger](db/MIGRATIONS-APPLIED-GLOBAL.md) tracks its environment separately.
 
