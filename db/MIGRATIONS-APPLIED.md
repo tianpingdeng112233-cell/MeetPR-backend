@@ -71,11 +71,13 @@
 **本账本最后记录的 staging schema head = 0070（2026-09-16 实际迁移验证；0069 尚未应用）。** 0063–0067 的应用记录见各日期条目，0065 晚于 0066/0067 应用。缺号与 open PR 的现状须在分配新号前重新核实，编号不代表连续应用。
 (此行 2026-08-02 修正:此前长期停在 0052,0054/0055 只记在变更历史漏更此行。)
 
-**0070 已应用（2026-09-16）**：真实 RDS PostgreSQL 18.3；迁移前逻辑备份通过，持久恢复点为 RDS 手动全量快照任务 `t-0mqie3hpxlx0zw6o6u`（执行成功）。原始 SQL 事务执行后保留 7 条天级行、回填 2 条父批次，seq 无空值且唯一、序列值 7。backend #276 已合并并部署 `d0b919d`；gate 生效核验及 web 换装状态见 [本批部署记录](../docs/deployment-045-web101-53-2026-09-16.md)。0069 与 F-001 contract 迁移未执行。
+**0070 已应用（2026-09-16）**：真实 RDS PostgreSQL 18.3；迁移前逻辑备份通过，持久恢复点为 RDS 手动全量快照任务 `t-0mqie3hpxlx0zw6o6u`（执行成功）。原始 SQL 事务执行后保留 7 条天级行、回填 2 条父批次，seq 无空值且唯一、序列值 7。backend #276 已合并并部署 `d0b919d`；gate 已核验生效，web #101/#53 已换装；实际证据见 [本批部署记录](../docs/deployment-045-web101-53-2026-09-16.md)。0069 与 F-001 contract 迁移未执行。
 
 ## 变更历史
 
-- **2026-09-16** — `sha-d0b919d7bc73979bfcafd370fc791ec6e4428747`（#276，spec 045 教练后移后端）。0070 已先行应用；[部署 run 35072260580](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/35072260580) 成功，旧实例退场，新镜像单实例 Running，health / 登录路由 / 同源 bundle 冒烟通过。随后提交 coach gate=true 的配置滚动；运行值与 web 换装验收见本批部署记录。
+- **2026-09-16** — `sha-27bc3f7c938983ba6aeae9c3607a0b0d70415fbd`（#278，纯 web/ 换装与台账）：plan-web main `9cfc762`（#102，含 #101 后移与 #53 多日选择）。[部署 run 35074778452](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/35074778452) 成功；health/auth/sameorigin 冒烟通过，实际 JS/CSS 与构建逐字节一致，浏览器后移预览及多选工具栏可见。无新增迁移，schema head 0070（0069 未应用），APNs production 送达仍未验收。详情见 [上线记录](../docs/deployment-045-web101-53-2026-09-16.md)。
+
+- **2026-09-16** — `sha-d0b919d7bc73979bfcafd370fc791ec6e4428747`（#276，spec 045 教练后移后端）。0070 已先行应用；[部署 run 35072260580](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/35072260580) 成功，旧实例退场，新镜像单实例 Running，health / 登录路由 / 同源 bundle 冒烟通过。随后完成 coach gate=true 的配置滚动并在新实例 Webshell 核验；web 换装验收见本批部署记录。
 
 - **2026-08-11** — `sha-10f0db0`(=staging HEAD,#231 纯 web/ 换装:plan-web main@#84——David 反馈
   当日落地:追踪卡标题中文化(e1RM 趋势/容量趋势/平均 RPE 趋势/强度趋势/强度分布/次数分布/
