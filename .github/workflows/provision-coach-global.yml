@@ -1,11 +1,8 @@
 name: Provision a coach on the global database
 
-# Manual-only. The Global track has no coach self-signup, so coach accounts
-# (real US coaches, App Review demo data) are provisioned by an operator.
-# The connection string is fetched via doctl and never leaves the job; the
-# password arrives via the GLOBAL_COACH_PASSWORD secret so it never appears
-# in logs or workflow inputs. Idempotent on email (existing coach → password
-# rotated), so re-runs are safe.
+# One-off, create-only QA operation on this branch. Never rotate an existing account.
+# The database connection stays inside this job; the temporary QA password secret
+# is removed after verification. The existing shared coach secret is untouched.
 
 on:
   workflow_dispatch:
@@ -49,11 +46,15 @@ jobs:
         env:
           COACH_EMAIL: ${{ inputs.email }}
           COACH_TIMEZONE: ${{ inputs.timezone }}
-          COACH_PASSWORD: ${{ secrets.GLOBAL_COACH_PASSWORD }}
+          COACH_PASSWORD: ${{ secrets.GLOBAL_QA_20260921_COACH_PASSWORD }}
         run: |
           set -euo pipefail
+          if [ "$COACH_EMAIL" != "qa-rn22-coach-20260921@meetpr.app" ]; then
+            echo "::error::only the dedicated QA coach is authorized"
+            exit 1
+          fi
           if [ -z "$COACH_PASSWORD" ]; then
-            echo "::error::GLOBAL_COACH_PASSWORD secret is not set"
+            echo "::error::GLOBAL_QA_20260921_COACH_PASSWORD secret is not set"
             exit 1
           fi
           DB_ID=$(doctl databases list --format ID,Name --no-header | awk '$2=="meetpr-global-pg"{print $1}')

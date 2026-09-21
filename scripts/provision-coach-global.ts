@@ -1,13 +1,12 @@
 import bcrypt from 'bcrypt';
 import { z } from 'zod';
+import type { Kysely } from 'kysely';
+import type { Database } from '../src/db/types';
 
 import { createDb } from '../src/db/kysely';
 import { createPool } from '../src/db/pool';
 
-// Overseas coach provisioning: the Global track has no phone numbers and no
-// self-signup for coaches, so an operator inserts the account directly —
-// same trust model as scripts/create-admin.ts, email edition. Idempotent on
-// email: an existing coach gets its password rotated instead of a dup row.
+// Dedicated operational branch: create only; every existing email aborts.
 
 const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
@@ -48,62 +47,61 @@ async function main(): Promise<void> {
     return;
   }
 
-  const email = parsed.data.COACH_EMAIL.toLowerCase();
-  const passwordHash = await bcrypt.hash(parsed.data.COACH_PASSWORD, BCRYPT_COST);
-
-  const pool = createPool(parsed.data.DATABASE_URL, {}, parsed.data.DATABASE_CA_CERT);
-  const db = createDb(pool);
+  const db = createDb(createPool(parsed.data.DATABASE_URL, {}, parsed.data.DATABASE_CA_CERT));
   try {
-    const outcome = await db.transaction().execute(async (trx) => {
-      const existing = await trx
-        .selectFrom('users')
-        .select(['id', 'role'])
-        .where('email', '=', email)
-        .executeTakeFirst();
-
-      if (existing !== undefined) {
-        if (existing.role !== 'coach') {
-          throw new Error(`EMAIL_TAKEN_BY_ROLE:${existing.role}`);
-        }
-        await trx
-          .updateTable('users')
-          .set({ password_hash: passwordHash })
-          .where('id', '=', existing.id)
-          .execute();
-        return 'rotated';
-      }
-
-      const user = await trx
-        .insertInto('users')
-        .values({
-          phone: null,
-          email,
-          email_verified_at: null,
-          password_hash: passwordHash,
-          role: 'coach',
-          timezone: parsed.data.COACH_TIMEZONE,
-        })
-        .returning('id')
-        .executeTakeFirstOrThrow();
-      await trx
-        .insertInto('user_identities')
-        .values({
-          user_id: user.id,
-          provider: 'email',
-          provider_uid: email,
-          email_at_provider: email,
-        })
-        .execute();
-      return 'created';
+    await provisionCoach(db, {
+      email: parsed.data.COACH_EMAIL,
+      password: parsed.data.COACH_PASSWORD,
+      timezone: parsed.data.COACH_TIMEZONE,
     });
-    console.log(`COACH_${outcome.toUpperCase()}`);
+    console.log('COACH_CREATED');
   } catch (error: unknown) {
-    console.error('COACH_PROVISION_FAILED');
-    console.error(error instanceof Error ? `${error.name}: ${error.message}` : String(error));
+    console.error(
+      error instanceof Error && error.message === 'COACH_EMAIL_EXISTS'
+        ? 'COACH_EMAIL_EXISTS'
+        : 'COACH_PROVISION_FAILED',
+    );
     process.exitCode = 1;
   } finally {
     await db.destroy();
   }
+}
+
+export async function provisionCoach(
+  db: Kysely<Database>,
+  input: { email: string; password: string; timezone: string },
+): Promise<void> {
+  const email = input.email.trim().toLowerCase();
+  const passwordHash = await bcrypt.hash(input.password, BCRYPT_COST);
+  await db.transaction().execute(async (trx) => {
+    const existing = await trx
+      .selectFrom('users')
+      .select('id')
+      .where((eb) => eb(eb.fn<string>('lower', ['email']), '=', email))
+      .executeTakeFirst();
+    if (existing !== undefined) throw new Error('COACH_EMAIL_EXISTS');
+    const user = await trx
+      .insertInto('users')
+      .values({
+        phone: null,
+        email,
+        email_verified_at: null,
+        password_hash: passwordHash,
+        role: 'coach',
+        timezone: input.timezone,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    await trx
+      .insertInto('user_identities')
+      .values({
+        user_id: user.id,
+        provider: 'email',
+        provider_uid: email,
+        email_at_provider: email,
+      })
+      .execute();
+  });
 }
 
 if (require.main === module) {
