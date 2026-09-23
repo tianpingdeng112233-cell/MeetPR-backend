@@ -40,11 +40,11 @@ Coach plan shifting extends the existing `POST/DELETE /plans/:id/shift` routes. 
 
 `staging` is the integration branch. A merge does not apply database migrations or deploy an image. Deployment requires the exact SHA image to exist in the registry and the required migrations to be applied; [`deploy-staging.yml`](.github/workflows/deploy-staging.yml) then rolls that image. Record actual migration and deployment results in [`db/MIGRATIONS-APPLIED.md`](db/MIGRATIONS-APPLIED.md); the [global ledger](db/MIGRATIONS-APPLIED-GLOBAL.md) tracks its environment separately.
 
-## Knowledge base
-
 Global remains a separate rollout: the [2026-09-23 read-only preflight and approval plan](docs/w3-global-rollout-2026-09-23.md) verified image `7ce7245`, database ledger `0068`, and an absent coach gate. The reviewed candidate requires only migration `0070`; it has not been deployed. `deploy-global.yml` exposes mutually exclusive `read_only_preflight` and deploy jobs, plus explicit `coach_plan_shift_enabled` (default `false`). Preflight cannot authorize a migration or deployment.
 
 The candidate adds optional `last_message.preview_kind` to `GET /conversations`, derived from the visible message (`text`, `image`, `training_plan`, `training_share`). Clients localize only recognized system kinds and preserve ordinary or legacy text. The stored body, push payload and visibility rules are unchanged; see [P-31 contract](specs/w3-preview-kind/SPEC.md).
+
+## Knowledge base
 
 The PRD, ADRs, and architecture decisions live in the Obsidian vault at:
 `~/Brain/wiki/projects/MeetPR/`
