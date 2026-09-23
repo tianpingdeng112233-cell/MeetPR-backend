@@ -13,6 +13,11 @@ on:
         type: boolean
         required: false
         default: false
+      coach_plan_shift_enabled:
+        description: 'Enable coach shift only after verified 0070 migration and compatible rollout'
+        type: boolean
+        required: false
+        default: false
       image_sha:
         description: 'Full commit sha of the image to deploy (default: HEAD of this ref)'
         required: false
@@ -99,6 +104,7 @@ jobs:
           S3_ENDPOINT: ${{ vars.GLOBAL_S3_ENDPOINT }}
           S3_BUCKET: meetpr-videos-global
           IMAGE_TAG: ${{ steps.img.outputs.tag }}
+          COACH_PLAN_SHIFT_ENABLED: ${{ inputs.coach_plan_shift_enabled && 'true' || 'false' }}
         run: |
           umask 077
           python3 .github/scripts/render-global-app-spec.py > /tmp/app-spec.yaml

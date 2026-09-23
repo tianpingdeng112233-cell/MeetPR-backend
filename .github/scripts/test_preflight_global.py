@@ -88,6 +88,29 @@ class PreflightTest(unittest.TestCase):
         self.assertIn("deploy:\n    if: ${{ inputs.read_only_preflight != true }}", text)
         self.assertNotIn("apps create", text.split("  preflight:\n")[1].split("  deploy:\n")[0])
 
+class RenderCoachFlagTest(unittest.TestCase):
+    def render(self, flag=None):
+        import os
+        import subprocess
+        env = {**os.environ, **{key: "fixture" for key in (
+            "IMAGE_TAG", "S3_ENDPOINT", "S3_BUCKET", "JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET",
+            "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "RESEND_API_KEY", "SIWA_PRIVATE_KEY", "APNS_PRIVATE_KEY")}}
+        env.pop("COACH_PLAN_SHIFT_ENABLED", None)
+        if flag is not None:
+            env["COACH_PLAN_SHIFT_ENABLED"] = flag
+        return subprocess.run(["python3", str(Path(__file__).with_name("render-global-app-spec.py"))], env=env, capture_output=True, text=True)
+
+    def test_explicit_gate_is_off_by_default_and_can_be_enabled(self):
+        for flag, expected in [(None, "false"), ("false", "false"), ("true", "true")]:
+            result = self.render(flag)
+            self.assertEqual(result.returncode, 0)
+            self.assertIn('key: COACH_PLAN_SHIFT_ENABLED\n        scope: RUN_TIME\n        value: "' + expected + '"', result.stdout)
+
+    def test_invalid_gate_is_rejected_before_rendering_secrets(self):
+        result = self.render("invalid")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+
 
 if __name__ == "__main__":
     unittest.main()

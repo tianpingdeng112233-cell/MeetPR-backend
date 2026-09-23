@@ -1,0 +1,129 @@
+{
+  "checked_at": "2026-09-23T12:02:26.470080+00:00",
+  "app_name": "meetpr-backend-global",
+  "active_deployment_id": "4ae3a7d1-a025-486d-9927-8ab62eb223d2",
+  "active_deployment_created_at": "2026-08-23T16:41:18Z",
+  "services": [
+    {
+      "name": "api",
+      "image": {
+        "registry": "meetpr-global",
+        "repository": "meetpr-backend",
+        "tag": "sha-7ce724538b385104efdea9e549ddad65657a7dc9",
+        "digest": null
+      },
+      "coach_plan_shift_enabled": "absent"
+    }
+  ],
+  "database_name": "meetpr-global-pg",
+  "database_status": "online",
+  "ledger": {
+    "read_only": "on",
+    "postgres_version": "17.11",
+    "migrations": [
+      "0001-init-users.sql",
+      "0002.1-align-exercises-catalog-v2.sql",
+      "0002-init-exercises.sql",
+      "0003.5-init-profile-tables.sql",
+      "0003.6-init-bind-requests.sql",
+      "0003-init-plans.sql",
+      "0004-seed-internal-users.sql",
+      "0005-init-set-logs.sql",
+      "0006-init-feedback.sql",
+      "0007-init-attachments.sql",
+      "0008-init-invite-codes.sql",
+      "0009-extend-bind-requests.sql",
+      "0010-add-plan-kind.sql",
+      "0011-init-evaluation-periods.sql",
+      "0012-init-student-evaluations.sql",
+      "0013-init-onboarding-profiles.sql",
+      "0014-init-readiness-checkins.sql",
+      "0015-link-attachments-set-logs.sql",
+      "0016-add-sumo-deadlift-main.sql",
+      "0017-add-failed-to-set-logs.sql",
+      "0018-add-rest-seconds-to-plan-sets.sql",
+      "0019-sync-plan-coverage-exercises.sql",
+      "0020-relax-plan-weeks.sql",
+      "0021-add-coach-note-to-plan-sets.sql",
+      "0022-sync-coach-import-exercises.sql",
+      "0023-sync-squat-rdl-rename.sql",
+      "0024-fix-single-leg-rdl-muscle-group.sql",
+      "0025-catalog-plan-web-import-fixes.sql",
+      "0026-dedup-duplicate-name-en.sql",
+      "0027-add-catalog-v2-missing-exercises.sql",
+      "0028-fix-catalog-junk-names.sql",
+      "0029-init-events.sql",
+      "0030-init-analytics-feedback.sql",
+      "0031-adhoc-set-logs.sql",
+      "0032-init-session-reviews.sql",
+      "0033-algo-foundation-schema.sql",
+      "0034-imported-history-assumed.sql",
+      "0035-attachment-lifecycle.sql",
+      "0036-notification-outbox.sql",
+      "0037-add-plan-day-shifts.sql",
+      "0038-whole-plan-shift.sql",
+      "0039-multi-device-sessions.sql",
+      "0040-exercise-competition-stance.sql",
+      "0041-init-activity-ledger.sql",
+      "0042-init-device-tokens.sql",
+      "0044-add-admin-role.sql",
+      "0045-init-chat.sql",
+      "0046-add-feedback-video-id.sql",
+      "0049-add-users-is-test.sql",
+      "0051-add-message-set-ref.sql",
+      "0052-add-set-log-coach-rpe.sql",
+      "0054-video-markers.sql",
+      "0055-marker-annotation-attachment.sql",
+      "0056-promote-barbell-bench-main-lift-variation.sql",
+      "0057-sequence-progression.sql",
+      "0058-intensity-system.sql",
+      "0059-backfill-sequence-completions.sql",
+      "0060-plan-anchor-weekday.sql",
+      "0061-plan-exercise-target.sql",
+      "0062-video-coach-viewed.sql",
+      "0063-pct-anchor.sql",
+      "0064-global-identity.sql",
+      "0065-email-channel.sql",
+      "0066-add-user-timezone.sql",
+      "0067-digest-watermarks.sql",
+      "0068-plan-pending-revisions.sql"
+    ],
+    "shift_batches_exists": false,
+    "shift_seq_exists": false
+  },
+  "backups": [
+    {
+      "created_at": "2026-09-16T10:02:14Z",
+      "size_gigabytes": 0.038297713
+    },
+    {
+      "created_at": "2026-09-17T10:02:10Z",
+      "size_gigabytes": 0.03832843
+    },
+    {
+      "created_at": "2026-09-18T10:02:09Z",
+      "size_gigabytes": 0.037949465
+    },
+    {
+      "created_at": "2026-09-19T10:02:11Z",
+      "size_gigabytes": 0.037990425
+    },
+    {
+      "created_at": "2026-09-20T10:02:10Z",
+      "size_gigabytes": 0.038021144
+    },
+    {
+      "created_at": "2026-09-21T10:02:08Z",
+      "size_gigabytes": 0.038062103
+    },
+    {
+      "created_at": "2026-09-22T10:02:10Z",
+      "size_gigabytes": 0.038502425
+    },
+    {
+      "created_at": "2026-09-23T10:02:08Z",
+      "size_gigabytes": 0.038533144
+    }
+  ],
+  "backup_restore_verified": false
+}

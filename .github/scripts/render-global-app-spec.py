@@ -23,7 +23,13 @@ image_tag = need("IMAGE_TAG")
 s3_endpoint = need("S3_ENDPOINT")
 s3_bucket = need("S3_BUCKET")
 
+coach_shift = os.environ.get("COACH_PLAN_SHIFT_ENABLED", "false")
+if coach_shift not in ("true", "false"):
+    print("COACH_PLAN_SHIFT_ENABLED must be true or false", file=sys.stderr)
+    sys.exit(1)
+
 PLAIN = {
+    "COACH_PLAN_SHIFT_ENABLED": coach_shift,
     "NODE_ENV": "production",
     "PORT": "8080",
     "LOG_LEVEL": "info",
