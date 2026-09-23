@@ -159,6 +159,23 @@ describe('canonical and member authorization', () => {
 });
 
 describe('GET /conversations', () => {
+  it('labels marker-like ordinary text as text without translating its preview', async () => {
+    const ctx = await makeContext();
+    const conversationId = await createConversation(ctx);
+    const sent = await request(ctx.app)
+      .post(`/conversations/${conversationId}/messages`)
+      .set(auth(ctx.traineeToken))
+      .send({ kind: 'text', body: '[训练计划]', client_id: 'literal-preview-marker' });
+    expect(sent.status).toBe(201);
+    const listed = await request(ctx.app).get('/conversations').set(auth(ctx.coachToken));
+    expect(listed.status).toBe(200);
+    expect(listed.body.conversations[0].last_message).toMatchObject({
+      kind: 'text',
+      preview: '[训练计划]',
+      preview_kind: 'text',
+    });
+  });
+
   it('orders non-empty before empty and returns unread count, both cursors, and role profiles', async () => {
     const ctx = await makeContext();
     await chooseCanonicalCoach(ctx);
@@ -255,6 +272,7 @@ describe('GET /conversations', () => {
         seq: 3,
         kind: 'image',
         preview: '[图片]',
+        preview_kind: 'image',
         sender_id: ids.trainee,
       },
       unread_count: 1,

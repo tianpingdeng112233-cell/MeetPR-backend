@@ -271,7 +271,7 @@ describe('POST /conversations/:id/messages set_ref', () => {
       conversations: [
         {
           id: conversation.id,
-          last_message: { preview: '[训练计划]' },
+          last_message: { preview: '[训练计划]', preview_kind: 'training_plan' },
         },
       ],
     });
@@ -956,11 +956,11 @@ describe('set_ref visibility matrix: student / current coach / former coach', ()
 
     expect(conversations.map((conversation) => conversation.id)).toEqual([current.id, former.id]);
     expect(conversations.find((conversation) => conversation.id === current.id)).toMatchObject({
-      last_message: { preview: '[训练分享]' },
+      last_message: { preview: '[训练分享]', preview_kind: 'training_share' },
       last_message_at: '2026-07-03T00:00:00.000Z',
     });
     expect(conversations.find((conversation) => conversation.id === former.id)).toMatchObject({
-      last_message: { preview: 'former visible' },
+      last_message: { preview: 'former visible', preview_kind: 'text' },
       last_message_at: '2026-07-01T00:00:00.000Z',
     });
   });
