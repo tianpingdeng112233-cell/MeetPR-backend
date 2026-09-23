@@ -93,6 +93,7 @@ interface ConversationWire {
     seq: number;
     kind: 'text' | 'image';
     preview: string;
+    preview_kind: 'text' | 'image' | 'training_plan' | 'training_share';
     created_at: string;
     sender_id: string;
   } | null;
@@ -379,6 +380,14 @@ async function fetchConversationWire(
           id: lastMessage.id,
           seq: lastMessage.seq,
           kind: lastMessage.kind,
+          preview_kind:
+            lastMessage.set_ref !== null
+              ? lastMessage.set_ref.source === 'planned'
+                ? 'training_plan'
+                : 'training_share'
+              : lastMessage.kind === 'image'
+                ? 'image'
+                : 'text',
           preview:
             lastMessage.set_ref !== null
               ? lastMessage.set_ref.source === 'planned'
