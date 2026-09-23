@@ -8,6 +8,16 @@ name: Deploy global app to DO App Platform
 on:
   workflow_dispatch:
     inputs:
+      read_only_preflight:
+        description: 'Read active image, migration ledger and backup metadata only; skip deployment'
+        type: boolean
+        required: false
+        default: false
+      coach_plan_shift_enabled:
+        description: 'Enable coach shift only after verified 0070 migration and compatible rollout'
+        type: boolean
+        required: false
+        default: false
       image_sha:
         description: 'Full commit sha of the image to deploy (default: HEAD of this ref)'
         required: false
@@ -28,7 +38,23 @@ env:
   APP_NAME: meetpr-backend-global
 
 jobs:
+  preflight:
+    if: ${{ inputs.read_only_preflight == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify read-only guards
+        run: python3 -m unittest discover -s .github/scripts -p 'test_preflight_global.py'
+      - name: Install doctl for read-only preflight
+        uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f
+        with:
+          token: ${{ secrets.DO_ACCESS_TOKEN }}
+      - name: Read Global release facts
+        run: python3 .github/scripts/preflight-global.py
+
   deploy:
+    if: ${{ inputs.read_only_preflight != true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -78,6 +104,7 @@ jobs:
           S3_ENDPOINT: ${{ vars.GLOBAL_S3_ENDPOINT }}
           S3_BUCKET: meetpr-videos-global
           IMAGE_TAG: ${{ steps.img.outputs.tag }}
+          COACH_PLAN_SHIFT_ENABLED: ${{ inputs.coach_plan_shift_enabled && 'true' || 'false' }}
         run: |
           umask 077
           python3 .github/scripts/render-global-app-spec.py > /tmp/app-spec.yaml
