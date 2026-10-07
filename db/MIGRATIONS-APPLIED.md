@@ -75,6 +75,8 @@
 
 ## 变更历史
 
+- **2026-10-07** — `sha-7782a5945b9c9798cc20f5e69c576096cdb7cc64`（#282，纯 web/ 换装，P0）：plan-web main `f18ec2e`（#104，修复「复制上周计划到本周」只亮成功提示、不写入内容；根因是点击事件被当成目标选区传入，自 2026-08-10 起存在）。[镜像 build run 37599693656](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/37599693656)、[部署 run 37600110913](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/37600110913) 成功；health/登录路由/web bundle 冒烟通过。独立 curl 实证：/health 200，入口 `assets/index-C7mHqwjk.js` SHA-256 `e19c4cde1d0ec58b94ea49bb17ae9c4ecee37c138916311d84665faa227f5de1` 与构建逐字节一致，CSS 不变。无新增迁移，env 未动，schema head 仍 0070（0069 未应用）。线上未在真实学员计划上实点复验，修复由 web 仓 `copy-last-week.test.tsx` 回归测试（修复前红、修复后 7/7 绿）覆盖。Global 未随本次部署。
+
 - **2026-09-16** — `sha-27bc3f7c938983ba6aeae9c3607a0b0d70415fbd`（#278，纯 web/ 换装与台账）：plan-web main `9cfc762`（#102，含 #101 后移与 #53 多日选择）。[部署 run 35074778452](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/35074778452) 成功；health/auth/sameorigin 冒烟通过，实际 JS/CSS 与构建逐字节一致，浏览器后移预览及多选工具栏可见。无新增迁移，schema head 0070（0069 未应用），APNs production 送达仍未验收。详情见 [上线记录](../docs/deployment-045-web101-53-2026-09-16.md)。
 
 - **2026-09-16** — `sha-d0b919d7bc73979bfcafd370fc791ec6e4428747`（#276，spec 045 教练后移后端）。0070 已先行应用；[部署 run 35072260580](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/35072260580) 成功，旧实例退场，新镜像单实例 Running，health / 登录路由 / 同源 bundle 冒烟通过。随后完成 coach gate=true 的配置滚动并在新实例 Webshell 核验；web 换装验收见本批部署记录。
