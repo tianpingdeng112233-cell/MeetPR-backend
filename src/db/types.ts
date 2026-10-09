@@ -475,6 +475,14 @@ export interface StudentEvaluationVersionsTable {
   saved_at: TimestampColumn;
 }
 
+export interface BodyWeightRecordsTable {
+  user_id: string;
+  recorded_on: string;
+  weight_kg: string;
+  created_at: TimestampColumn;
+  updated_at: TimestampColumn;
+}
+
 export interface StudentOnboardingProfilesTable {
   user_id: string;
   unit_preference: NullableColumn<UnitPreference>;
@@ -843,6 +851,7 @@ export interface Database {
   student_evaluations: StudentEvaluationsTable;
   student_evaluation_versions: StudentEvaluationVersionsTable;
   student_onboarding_profiles: StudentOnboardingProfilesTable;
+  body_weight_records: BodyWeightRecordsTable;
   onboarding_uploads: OnboardingUploadsTable;
   attachments: AttachmentsTable;
   video_markers: VideoMarkersTable;

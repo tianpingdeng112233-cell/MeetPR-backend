@@ -335,6 +335,15 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    CREATE TABLE body_weight_records (
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      recorded_on DATE NOT NULL,
+      weight_kg NUMERIC(5,2) NOT NULL CHECK (weight_kg > 0 AND weight_kg < 500),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, recorded_on)
+    );
+
     CREATE TABLE onboarding_uploads (
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       attachment_id UUID NOT NULL,
