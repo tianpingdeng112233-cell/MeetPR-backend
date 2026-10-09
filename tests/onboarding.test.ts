@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { auth, ids, makeContext, type TestContext } from './helpers/bindEval';
 
@@ -315,5 +315,147 @@ describe('student onboarding profile', () => {
     });
     expect(backfill.status).toBe(200);
     expect(backfill.body.squat_1rm_kg).toBe('140.00');
+  });
+});
+
+describe('onboarding body weight linkage (spec 046)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T00:30:00Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  async function records(ctx: TestContext) {
+    const response = await request(ctx.app)
+      .get('/students/me/body-weights')
+      .set(auth(ctx.boundStudentToken));
+    expect(response.status).toBe(200);
+    return response.body as { records: { recorded_on: string; weight_kg: string }[] };
+  }
+
+  it('first weight save creates today’s record and preserves every response field', async () => {
+    const ctx = await makeContext();
+    const before = await putOnboarding(ctx, ctx.boundStudentToken, {
+      gender: 'male',
+      birth_date: '2001-03-12',
+    });
+    expect(before.status).toBe(200);
+    const response = await putOnboarding(ctx, ctx.boundStudentToken, { weight_kg: '83' });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      ...before.body,
+      weight_kg: '83.00',
+      updated_at: expect.any(String),
+    });
+    expect(await records(ctx)).toEqual({
+      records: [{ recorded_on: '2026-10-09', weight_kg: '83.00' }],
+    });
+  });
+
+  it('same numeric value with existing records does not add a record the following day', async () => {
+    const ctx = await makeContext();
+    expect((await putOnboarding(ctx, ctx.boundStudentToken, { weight_kg: '83' })).status).toBe(200);
+    vi.setSystemTime(new Date('2026-10-10T00:30:00Z'));
+    const { signToken } = await import('./helpers/bindEval');
+    ctx.boundStudentToken = signToken(ids.boundStudent, 'coached_student');
+    const response = await putOnboarding(ctx, ctx.boundStudentToken, {
+      weight_kg: 83,
+      gender: 'female',
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.gender).toBe('female');
+    expect(await records(ctx)).toEqual({
+      records: [{ recorded_on: '2026-10-09', weight_kg: '83.00' }],
+    });
+  });
+
+  it('same weight with no records still creates a first record', async () => {
+    const ctx = await makeContext();
+    await ctx.db
+      .insertInto('student_onboarding_profiles')
+      .values({ user_id: ids.boundStudent, weight_kg: '83.00' })
+      .execute();
+    const response = await putOnboarding(ctx, ctx.boundStudentToken, { weight_kg: 83 });
+    expect(response.status).toBe(200);
+    expect(await records(ctx)).toEqual({
+      records: [{ recorded_on: '2026-10-09', weight_kg: '83.00' }],
+    });
+  });
+
+  it('changed weight overwrites today’s record', async () => {
+    const ctx = await makeContext();
+    expect((await putOnboarding(ctx, ctx.boundStudentToken, { weight_kg: 83 })).status).toBe(200);
+    const changed = await putOnboarding(ctx, ctx.boundStudentToken, { weight_kg: '84.25' });
+    expect(changed.status).toBe(200);
+    expect(changed.body.weight_kg).toBe('84.25');
+    expect(await records(ctx)).toEqual({
+      records: [{ recorded_on: '2026-10-09', weight_kg: '84.25' }],
+    });
+  });
+
+  it('saving without weight leaves the records and existing weight unchanged', async () => {
+    const ctx = await makeContext();
+    expect((await putOnboarding(ctx, ctx.boundStudentToken, { gender: 'male' })).status).toBe(200);
+    expect(await records(ctx)).toEqual({ records: [] });
+    expect((await putOnboarding(ctx, ctx.boundStudentToken, { weight_kg: 83 })).status).toBe(200);
+    const response = await putOnboarding(ctx, ctx.boundStudentToken, { height_cm: 178 });
+    expect(response.status).toBe(200);
+    expect(response.body.weight_kg).toBe('83.00');
+    expect(await records(ctx)).toEqual({
+      records: [{ recorded_on: '2026-10-09', weight_kg: '83.00' }],
+    });
+  });
+
+  it.each([
+    ['America/Los_Angeles', '2026-10-08'],
+    ['Asia/Shanghai', '2026-10-09'],
+    ['Pacific/Kiritimati', '2026-10-09'],
+  ])('uses the calendar day in %s, not UTC or a training-day cutoff', async (timezone, date) => {
+    const ctx = await makeContext();
+    await ctx.db
+      .updateTable('users')
+      .set({ timezone })
+      .where('id', '=', ids.boundStudent)
+      .execute();
+    const response = await putOnboarding(ctx, ctx.boundStudentToken, { weight_kg: 83 });
+    expect(response.status).toBe(200);
+    expect(await records(ctx)).toEqual({ records: [{ recorded_on: date, weight_kg: '83.00' }] });
+  });
+
+  it('falls back to the UTC calendar date for an invalid user timezone without failing profile save', async () => {
+    const ctx = await makeContext();
+    await ctx.db
+      .updateTable('users')
+      .set({ timezone: 'Not/AZone' })
+      .where('id', '=', ids.boundStudent)
+      .execute();
+    const response = await putOnboarding(ctx, ctx.boundStudentToken, {
+      weight_kg: 83,
+      gender: 'female',
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.weight_kg).toBe('83.00');
+    expect(response.body.gender).toBe('female');
+    expect(await records(ctx)).toEqual({
+      records: [{ recorded_on: '2026-10-09', weight_kg: '83.00' }],
+    });
+  });
+
+  it('keeps the requested profile weight even when a future record exists (section 3 exception)', async () => {
+    const ctx = await makeContext();
+    const future = await request(ctx.app)
+      .put('/students/me/body-weights/2026-10-10')
+      .set(auth(ctx.boundStudentToken))
+      .send({ weight_kg: 85 });
+    expect(future.status).toBe(200);
+    const response = await putOnboarding(ctx, ctx.boundStudentToken, { weight_kg: 83 });
+    expect(response.status).toBe(200);
+    expect(response.body.weight_kg).toBe('83.00');
+    expect(await records(ctx)).toEqual({
+      records: [
+        { recorded_on: '2026-10-09', weight_kg: '83.00' },
+        { recorded_on: '2026-10-10', weight_kg: '85.00' },
+      ],
+    });
   });
 });

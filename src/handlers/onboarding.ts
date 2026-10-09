@@ -2,6 +2,8 @@ import type { Insertable, Kysely, Selectable, Transaction, Updateable } from 'ky
 import { sql } from 'kysely';
 
 import type { Database, StudentOnboardingProfilesTable, UserRole } from '../db/types';
+import { localCalendarDate, utcDateOnly } from '../utils/date';
+import { lockBodyWeightUser, upsertBodyWeightRecord } from './body-weights';
 import { dateOnly, decimal, timestamp } from './serialization';
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
@@ -182,6 +184,11 @@ export async function upsertOnboardingProfile(
   role: UserRole,
 ): Promise<UpsertOnboardingResult> {
   return db.transaction().execute(async (trx): Promise<UpsertOnboardingResult> => {
+    // Take the same per-user lock as body-weight PUT/DELETE before any profile
+    // row lock, including when the first profile/record has not been created yet.
+    const bodyWeightUser =
+      patch.weight_kg != null ? await lockBodyWeightUser(trx, userId) : undefined;
+
     // The post-completion 1RM lock protects the coached contract (the coach
     // owns the baseline). Solo students have no coach — the lock's only
     // legitimate writer doesn't exist — so they stay exempt (spec 013).
@@ -198,6 +205,32 @@ export async function upsertOnboardingProfile(
         .executeTakeFirst();
       if (existing && existing.completed_at !== null) {
         return { type: 'one-rm-locked' };
+      }
+    }
+
+    if (bodyWeightUser && patch.weight_kg != null) {
+      const existing = await trx
+        .selectFrom('student_onboarding_profiles')
+        .select('weight_kg')
+        .where('user_id', '=', userId)
+        .executeTakeFirst();
+      const record = await trx
+        .selectFrom('body_weight_records')
+        .select('recorded_on')
+        .where('user_id', '=', userId)
+        .limit(1)
+        .executeTakeFirst();
+      if (decimal(existing?.weight_kg ?? null, 2) !== decimal(patch.weight_kg, 2) || !record) {
+        const now = new Date();
+        let recordedOn: string;
+        try {
+          recordedOn = localCalendarDate(now, bodyWeightUser.timezone);
+        } catch (error) {
+          if (!(error instanceof RangeError)) throw error;
+          // Legacy timezone strings must not break an existing profile save.
+          recordedOn = utcDateOnly(now);
+        }
+        await upsertBodyWeightRecord(trx, userId, recordedOn, patch.weight_kg);
       }
     }
 
