@@ -209,3 +209,44 @@ describe('config', () => {
     expect(ConfigSchema).toBeDefined();
   });
 });
+
+describe('email signup configuration', () => {
+  it('defaults verification off and mail locale to English', () => {
+    expect(loadConfig(validEnv)).toMatchObject({
+      EMAIL_SIGNUP_VERIFICATION: 'off',
+      MAIL_LOCALE: 'en',
+    });
+  });
+
+  it.each(['RESEND_API_KEY', 'EMAIL_FROM'])('rejects required verification without %s', (field) => {
+    const env: NodeJS.ProcessEnv = {
+      ...validEnv,
+      EMAIL_SIGNUP_VERIFICATION: 'required',
+      RESEND_API_KEY: 'test-key',
+      EMAIL_FROM: 'test@example.com',
+    };
+    env[field] = undefined;
+    const parsed = ConfigSchema.safeParse(env);
+    expect(parsed.success).toBe(false);
+    if (parsed.success) throw new Error('expected invalid configuration');
+    expect(parsed.error.issues).toContainEqual(
+      expect.objectContaining({ path: [field], message: expect.stringContaining(field) }),
+    );
+  });
+
+  it('accepts required verification with mail configured and rejects unknown settings', () => {
+    expect(
+      loadConfig({
+        ...validEnv,
+        EMAIL_SIGNUP_VERIFICATION: 'required',
+        MAIL_LOCALE: 'zh',
+        RESEND_API_KEY: 'test-key',
+        EMAIL_FROM: 'test@example.com',
+      }),
+    ).toMatchObject({ EMAIL_SIGNUP_VERIFICATION: 'required', MAIL_LOCALE: 'zh' });
+    expect(ConfigSchema.safeParse({ ...validEnv, EMAIL_SIGNUP_VERIFICATION: 'true' }).success).toBe(
+      false,
+    );
+    expect(ConfigSchema.safeParse({ ...validEnv, MAIL_LOCALE: 'fr' }).success).toBe(false);
+  });
+});

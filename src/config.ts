@@ -91,6 +91,8 @@ export const ConfigSchema = z
     SELF_SIGNUP_ROLES: SelfSignupRolesSchema,
     APPLE_CLIENT_ID: z.string().min(1).optional(),
     GOOGLE_CLIENT_ID: z.string().optional(),
+    EMAIL_SIGNUP_VERIFICATION: z.enum(['off', 'required']).default('off'),
+    MAIL_LOCALE: z.enum(['en', 'zh']).default('en'),
     RESEND_API_KEY: z.string().min(1).optional(),
     EMAIL_FROM: z.string().min(1).optional(),
     SIWA_KEY_ID: z.string().min(1).optional(),
@@ -146,6 +148,18 @@ export const ConfigSchema = z
             code: z.ZodIssueCode.custom,
             path: [field],
             message: `${field} is required when PUSH_ENABLED=true`,
+          });
+        }
+      }
+    }
+
+    if (config.EMAIL_SIGNUP_VERIFICATION === 'required') {
+      for (const field of ['RESEND_API_KEY', 'EMAIL_FROM'] as const) {
+        if (config[field] === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: `${field} is required when EMAIL_SIGNUP_VERIFICATION=required`,
           });
         }
       }
@@ -223,8 +237,14 @@ type ParsedConfig = z.infer<typeof ConfigSchema>;
 // loadConfig materializes their defaults.
 export type Config = Omit<
   ParsedConfig,
-  'STORAGE_BACKEND' | 'COACH_PLAN_SHIFT_ENABLED' | 'GOOGLE_CLIENT_IDS'
+  | 'STORAGE_BACKEND'
+  | 'COACH_PLAN_SHIFT_ENABLED'
+  | 'GOOGLE_CLIENT_IDS'
+  | 'EMAIL_SIGNUP_VERIFICATION'
+  | 'MAIL_LOCALE'
 > & {
+  EMAIL_SIGNUP_VERIFICATION?: ParsedConfig['EMAIL_SIGNUP_VERIFICATION'];
+  MAIL_LOCALE?: ParsedConfig['MAIL_LOCALE'];
   STORAGE_BACKEND?: ParsedConfig['STORAGE_BACKEND'];
   COACH_PLAN_SHIFT_ENABLED?: ParsedConfig['COACH_PLAN_SHIFT_ENABLED'];
   GOOGLE_CLIENT_IDS?: ParsedConfig['GOOGLE_CLIENT_IDS'];

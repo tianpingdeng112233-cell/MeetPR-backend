@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt';
-import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
@@ -18,6 +18,7 @@ import { sendPasswordResetEmail } from '../../services/mail';
 import { storePasswordAndRevokeSessions } from '../../services/password';
 import { route, validationEnvelope } from '../http';
 import { BCRYPT_COST } from './constants';
+import { codeHash, hashesEqual } from './email-code';
 import { PasswordSchema } from './schemas';
 
 const RESET_CODE_TTL_MS = 10 * 60 * 1000;
@@ -32,7 +33,7 @@ const ResetBodySchema = z
   })
   .strict();
 
-type EmailRecoveryConfig = Pick<Config, 'RESEND_API_KEY' | 'EMAIL_FROM'>;
+type EmailRecoveryConfig = Pick<Config, 'RESEND_API_KEY' | 'EMAIL_FROM' | 'MAIL_LOCALE'>;
 
 interface EmailRecoveryRouterDeps {
   config: EmailRecoveryConfig;
@@ -43,16 +44,6 @@ interface EmailRecoveryRouterDeps {
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
-}
-
-function codeHash(code: string): string {
-  return createHash('sha256').update(code, 'utf8').digest('hex');
-}
-
-function hashesEqual(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left, 'utf8');
-  const rightBuffer = Buffer.from(right, 'utf8');
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function invalidResetCode(res: Parameters<Parameters<typeof route>[0]>[1]): void {
@@ -119,6 +110,7 @@ export function emailRecoveryRouter(deps: EmailRecoveryRouterDeps): ExpressRoute
               from: deps.config.EMAIL_FROM,
               to: email,
               code: issued.code,
+              locale: deps.config.MAIL_LOCALE ?? 'en',
             },
             deps.fetch,
           ).catch((error: unknown) => {
