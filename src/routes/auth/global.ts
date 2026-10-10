@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely, Transaction } from 'kysely';
@@ -9,11 +9,14 @@ import { z } from 'zod';
 import { selfSignupRoles, type Config } from '../../config';
 import { REGISTERABLE_ROLES, type Database, type UserRole } from '../../db/types';
 import type { Logger } from '../../logger';
+import { createSignupEmailRateLimit, createSignupIpRateLimit } from '../../middleware/rateLimit';
+import { sendAlreadyRegisteredEmail, sendSignupCodeEmail } from '../../services/mail';
 import { appleCredentials, exchangeAppleAuthorizationCode } from '../../services/apple';
 import { createOidcVerifier, OidcKeysUnavailableError } from '../../services/oidc';
 import { requestedTimeZone } from '../../utils/timezone';
 import { route, validationEnvelope } from '../http';
 import { BCRYPT_COST } from './constants';
+import { codeHash, hashesEqual } from './email-code';
 import { emailRecoveryRouter } from './email-recovery';
 import { PasswordSchema } from './schemas';
 
@@ -39,6 +42,7 @@ const GoogleBodySchema = z
     timezone: z.string().optional(),
   })
   .strict();
+const EmailSignupCodeBodySchema = z.object({ email: z.string().trim().email().max(320) }).strict();
 const EmailRegisterBodySchema = z
   .object({
     email: z.string().trim().email().max(320),
@@ -47,6 +51,15 @@ const EmailRegisterBodySchema = z
     timezone: z.string().optional(),
   })
   .strict();
+const VerifiedEmailRegisterBodySchema = EmailRegisterBodySchema.extend({
+  code: z
+    .string()
+    .regex(/^\d{6}$/)
+    .optional(),
+});
+const LegacyEmailRegisterBodySchema = EmailRegisterBodySchema.extend({
+  code: z.unknown().optional(),
+});
 const EmailLoginBodySchema = z
   .object({
     email: z.string().trim().email().max(320),
@@ -56,6 +69,8 @@ const EmailLoginBodySchema = z
 
 type GlobalAuthConfig = Pick<
   Config,
+  | 'EMAIL_SIGNUP_VERIFICATION'
+  | 'MAIL_LOCALE'
   | 'SELF_SIGNUP_ROLES'
   | 'APPLE_CLIENT_ID'
   | 'GOOGLE_CLIENT_IDS'
@@ -99,6 +114,10 @@ interface GlobalUserRow {
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+async function lockSignupEmail(trx: Transaction<Database>, email: string): Promise<void> {
+  await sql`SELECT pg_advisory_xact_lock(hashtext(${email}))`.execute(trx);
 }
 
 function nonceHash(nonce: string): string {
@@ -389,6 +408,83 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
   );
 
   router.post(
+    '/email/register/code',
+    (req, res, next) => {
+      if (deps.config.EMAIL_SIGNUP_VERIFICATION !== 'required') {
+        next('router');
+        return;
+      }
+      if (selfSignupRoles(deps.config).size === 0) {
+        res.status(403).json({ error: 'AUTH_REGISTRATION_DISABLED' });
+        return;
+      }
+      next();
+    },
+    createSignupIpRateLimit(),
+    createSignupEmailRateLimit(),
+    route(async (req, res) => {
+      const body = EmailSignupCodeBodySchema.safeParse(req.body);
+      if (!body.success) {
+        res.status(400).json(validationEnvelope(body.error));
+        return;
+      }
+      const email = normalizeEmail(body.data.email);
+      const code = await deps.db.transaction().execute(async (trx) => {
+        // No user row exists yet: a transaction-scoped email lock serializes
+        // issuance with other issuances and verification across app instances.
+        await lockSignupEmail(trx, email);
+        const identity = await trx
+          .selectFrom('user_identities')
+          .select('user_id')
+          .where('provider', '=', 'email')
+          .where('provider_uid', '=', email)
+          .executeTakeFirst();
+        if (identity) return null;
+        await trx
+          .deleteFrom('email_signup_codes')
+          .where('email', '=', email)
+          .where('expires_at', '<=', sql<Date>`now()`)
+          .execute();
+        await trx
+          .updateTable('email_signup_codes')
+          .set({ used_at: sql<Date>`now()` })
+          .where('email', '=', email)
+          .where('used_at', 'is', null)
+          .execute();
+        const value = randomInt(0, 1_000_000).toString().padStart(6, '0');
+        await trx
+          .insertInto('email_signup_codes')
+          .values({
+            email,
+            code_hash: codeHash(value),
+            expires_at: new Date(Date.now() + 10 * 60 * 1000),
+          })
+          .execute();
+        return value;
+      });
+      if (deps.config.RESEND_API_KEY === undefined || deps.config.EMAIL_FROM === undefined) {
+        deps.logger.warn('signup_email_not_configured');
+      } else {
+        const input = {
+          apiKey: deps.config.RESEND_API_KEY,
+          from: deps.config.EMAIL_FROM,
+          to: email,
+          locale: deps.config.MAIL_LOCALE ?? 'en',
+        };
+        // As with forgot, delivery latency never delays the public response.
+        const delivery =
+          code === null
+            ? sendAlreadyRegisteredEmail(input, deps.fetch)
+            : sendSignupCodeEmail({ ...input, code }, deps.fetch);
+        void delivery.catch((error: unknown) => {
+          deps.logger.error({ err: error }, 'signup_email_failed');
+        });
+      }
+      res.status(204).end();
+    }),
+  );
+
+  router.post(
     '/email/register',
     route(async (req, res) => {
       const timezone = requestedTimeZone(req.body);
@@ -396,7 +492,10 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
         res.status(400).json({ error: 'INVALID_TIMEZONE' });
         return;
       }
-      const body = EmailRegisterBodySchema.safeParse(req.body);
+      const verificationRequired = deps.config.EMAIL_SIGNUP_VERIFICATION === 'required';
+      const body = (
+        verificationRequired ? VerifiedEmailRegisterBodySchema : LegacyEmailRegisterBodySchema
+      ).safeParse(req.body);
       if (!body.success) {
         res.status(400).json(validationEnvelope(body.error));
         return;
@@ -407,16 +506,58 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
         return;
       }
 
+      if (verificationRequired && body.data.code === undefined) {
+        res.status(401).json({ error: 'AUTH_INVALID_SIGNUP_CODE' });
+        return;
+      }
+
       const email = normalizeEmail(body.data.email);
       const passwordHash = await bcrypt.hash(body.data.password, BCRYPT_COST);
       try {
         const registration = await deps.db.transaction().execute(async (trx) => {
+          if (verificationRequired) {
+            if (typeof body.data.code !== 'string') return null;
+            await lockSignupEmail(trx, email);
+            const candidate = await trx
+              .selectFrom('email_signup_codes')
+              .select(['id', 'code_hash', 'attempts'])
+              .where('email', '=', email)
+              .where('used_at', 'is', null)
+              .where('expires_at', '>', sql<Date>`now()`)
+              .where('attempts', '<', 5)
+              .orderBy('created_at', 'desc')
+              .orderBy('id', 'desc')
+              .forUpdate()
+              .executeTakeFirst();
+            if (!candidate) return null;
+            const attempts = candidate.attempts + 1;
+            await trx
+              .updateTable('email_signup_codes')
+              .set({ attempts })
+              .where('id', '=', candidate.id)
+              .execute();
+            if (!hashesEqual(codeHash(body.data.code), candidate.code_hash)) {
+              if (attempts >= 5) {
+                await trx
+                  .updateTable('email_signup_codes')
+                  .set({ used_at: sql<Date>`now()` })
+                  .where('id', '=', candidate.id)
+                  .execute();
+              }
+              return null;
+            }
+            await trx
+              .updateTable('email_signup_codes')
+              .set({ used_at: sql<Date>`now()` })
+              .where('id', '=', candidate.id)
+              .execute();
+          }
           const user = await trx
             .insertInto('users')
             .values({
               phone: null,
               email,
-              email_verified_at: null,
+              email_verified_at: verificationRequired ? sql<Date>`now()` : null,
               password_hash: passwordHash,
               role: body.data.role,
               timezone,
@@ -437,6 +578,10 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
           return { user, jti };
         });
 
+        if (registration === null) {
+          res.status(401).json({ error: 'AUTH_INVALID_SIGNUP_CODE' });
+          return;
+        }
         const tokens = deps.issueTokens(
           registration.user.id,
           registration.user.role,
