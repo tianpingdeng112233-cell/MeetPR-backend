@@ -95,3 +95,25 @@ export function createResetEmailRateLimit(): RateLimitRequestHandler {
     validate: { ip: false },
   });
 }
+
+export function createSignupEmailRateLimit(): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: EMAIL_AUTH_RATE_LIMIT_WINDOW_MS,
+    limit: 5,
+    standardHeaders: false,
+    legacyHeaders: false,
+    keyGenerator: emailKey,
+    handler: silentNoContent,
+    validate: { ip: false },
+  });
+}
+
+export function createSignupIpRateLimit(): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: EMAIL_AUTH_RATE_LIMIT_WINDOW_MS,
+    limit: 30,
+    standardHeaders: false,
+    legacyHeaders: false,
+    handler: silentNoContent,
+  });
+}
