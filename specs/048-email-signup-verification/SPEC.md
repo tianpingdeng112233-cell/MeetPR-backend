@@ -1,6 +1,6 @@
 # Spec 048 · 邮箱注册验证码 + 国内部署接通发信
 
-- Status: Draft
+- Status: InProgress
 - 来源：David 2026-10-10 「以最新的 rn 安卓端为标准，出 CN 的双端版本」→ /grill 两轮，共识「App 端只用邮箱登录和注册」，最后一题（注册时要不要验证邮箱）答「B」＝要验证。
 - 级别／节奏：T2 / P1（新端点 + 一张新表 + 新 env）。合并与部署等 David「放行」。
 - 配套：安卓 `meetpr-rn` `specs/091-cn-android-first/SPEC.md`（客户端流程与屏幕）；iOS 交接见该目录 `IOS-HANDOFF.md`。
@@ -17,12 +17,12 @@
 
 ## 已拍板口径
 
-| 题 | 结论 |
-|---|---|
-| 注册要不要验证邮箱 | 要（B）。先验码、后建号 |
-| 作用范围 | 只在国内部署打开；Global 部署行为一行不变（我定的默认，David 未单独拍，可推翻） |
-| 手机号登录接口 | 保留不删，旧 iOS 包与测试号照常能登 |
-| 老账号 | 不要求补验证，登录永不以 `email_verified_at` 为闸 |
+| 题                 | 结论                                                                            |
+| ------------------ | ------------------------------------------------------------------------------- |
+| 注册要不要验证邮箱 | 要（B）。先验码、后建号                                                         |
+| 作用范围           | 只在国内部署打开；Global 部署行为一行不变（我定的默认，David 未单独拍，可推翻） |
+| 手机号登录接口     | 保留不删，旧 iOS 包与测试号照常能登                                             |
+| 老账号             | 不要求补验证，登录永不以 `email_verified_at` 为闸                               |
 
 ## §1 开关与配置
 
@@ -41,7 +41,8 @@
 
 入参 `{ email }`。
 
-- `EMAIL_SIGNUP_VERIFICATION=off` → `404`（Global 上不暴露多余的发信入口）。
+- `EMAIL_SIGNUP_VERIFICATION=off` → 交回应用统一的未知路由处理，响应与一条不存在的路径一致（`404`，body 里的 `path` 是各自的请求路径）。Global 上不暴露多余的发信入口。
+- `email` 不是合法邮箱 → `400`（校验信封，与其它端点一致）。
 - 自助注册整体关闭（`SELF_SIGNUP_ROLES` 为空）→ `403 AUTH_REGISTRATION_DISABLED`。
 - 其余一律 **`204`**，不暴露邮箱是否已注册：
   - 邮箱尚无 email 身份 → 作废该邮箱所有未用码 → 生成 6 位随机码（`randomInt`）→ 存 sha256 → 发「注册验证码」邮件。码 10 分钟有效。
@@ -57,7 +58,9 @@
 - `required`：
   - 校验顺序：body 校验 → `signupError` → 验码 → 建号。
   - 取该邮箱最新一条未用、未过期、`attempts < 5` 的码；`attempts+1` 先行落库；哈希常量时间比对。
-  - 缺 `code`／无码／过期／码错／超次 → 统一 `401 AUTH_INVALID_SIGNUP_CODE`。第 5 次错即作废该码。
+  - 缺 `code`／无码／过期／码错／超次 → 统一 `401 AUTH_INVALID_SIGNUP_CODE`。第 5 次错即作废该码。缺 `code` 时在密码哈希之前就返回。
+  - `code` 带了但不是 6 位数字 → `400`（校验信封）。
+  - 同一邮箱的签码与验码用事务级 advisory lock（`pg_advisory_xact_lock(hashtext(email))`）串行化，保证一个邮箱同时至多一个有效码。
   - 通过 → 与建号同一个事务里标记 `used_at`，`users.email_verified_at = now()`，其余（身份行、session、返回体）不变。
   - 并发下邮箱被别人抢注 → 沿用 `409 AUTH_EMAIL_TAKEN`。
 
@@ -65,7 +68,7 @@
 
 ## §3 数据
 
-新迁移（号取开工时 `staging` 最新号 +1，现场核实；046 已占 0071，047 可能占 0072）：
+新迁移 `db/migrations/0072-email-signup-codes.sql`：
 
 ```sql
 CREATE TABLE IF NOT EXISTS email_signup_codes (
@@ -80,7 +83,7 @@ CREATE TABLE IF NOT EXISTS email_signup_codes (
 CREATE INDEX IF NOT EXISTS email_signup_codes_email_idx ON email_signup_codes (email);
 ```
 
-- 纯新增表，不动存量列，可重入；回滚＝`DROP TABLE`。
+- 迁移号 `0072`（`0071` 属在途的 046）。纯新增表，不动存量列，可重入；回滚＝`DROP TABLE`。
 - 存量照护：现有账号 `email_verified_at` 保持原值，无回填。Global 存量用户不受任何影响。
 - 清理：每次给某邮箱签新码时顺手删掉该邮箱已过期的旧行，不另起定时任务。
 
@@ -88,11 +91,11 @@ CREATE INDEX IF NOT EXISTS email_signup_codes_email_idx ON email_signup_codes (e
 
 三封信各出 `en` / `zh` 两版，纯文本 + 简单 HTML 双份，按 `MAIL_LOCALE` 选：
 
-| 信 | zh 主题 | 正文要点 |
-|---|---|---|
-| 注册验证码 | MeetPR 注册验证码 | 码；10 分钟内有效；不是你本人操作可忽略 |
-| 该邮箱已注册 | 你已经有 MeetPR 账号了 | 这个邮箱已注册；请直接登录，忘了密码可在登录页找回；不是你本人操作可忽略 |
-| 重置密码验证码（已有，补 zh） | MeetPR 重置密码验证码 | 码；10 分钟内有效；不是你本人操作可忽略 |
+| 信                            | zh 主题                | 正文要点                                                                 |
+| ----------------------------- | ---------------------- | ------------------------------------------------------------------------ |
+| 注册验证码                    | MeetPR 注册验证码      | 码；10 分钟内有效；不是你本人操作可忽略                                  |
+| 该邮箱已注册                  | 你已经有 MeetPR 账号了 | 这个邮箱已注册；请直接登录，忘了密码可在登录页找回；不是你本人操作可忽略 |
+| 重置密码验证码（已有，补 zh） | MeetPR 重置密码验证码  | 码；10 分钟内有效；不是你本人操作可忽略                                  |
 
 英文版重置信文案不改。
 
@@ -131,6 +134,7 @@ CREATE INDEX IF NOT EXISTS email_signup_codes_email_idx ON email_signup_codes (e
 10. 迁移在干净库与重入两种情况下都通过。
 11. §6 两项探针在国内部署上有实测证据（日志或截图）。
 12. §5 执行后：两个老账号用邮箱 + 原密码登录成功，用手机号 + 原密码也仍然成功，登录后看到的训练数据与执行前一致。
+13. 部署 staging 前在真实 PostgreSQL 上实测两项（自动化测试用的是内存库加桩函数，覆盖不到）：迁移 0072 干净执行与重入；`pg_advisory_xact_lock(hashtext(...))` 语句可执行且事务结束即释放。
 
 ## 测试 seam
 
