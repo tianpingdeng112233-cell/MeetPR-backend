@@ -241,6 +241,10 @@ export interface PasswordResetCodesTable {
   created_at: Generated<Date>;
 }
 
+export interface EmailSignupCodesTable extends Omit<PasswordResetCodesTable, 'user_id'> {
+  email: string;
+}
+
 export interface SessionsTable {
   id: Generated<string>;
   user_id: string;
@@ -821,6 +825,7 @@ export interface Database {
   user_identities: UserIdentitiesTable;
   auth_challenges: AuthChallengesTable;
   password_reset_codes: PasswordResetCodesTable;
+  email_signup_codes: EmailSignupCodesTable;
   sessions: SessionsTable;
   exercises: ExercisesTable;
   plans: PlansTable;
