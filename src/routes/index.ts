@@ -6,9 +6,12 @@ import type { Database } from '../db/types';
 import type { Logger } from '../logger';
 import { createOptionalAuth } from '../middleware/auth';
 import type { RealtimeHub } from '../realtime/hub';
+import { publicRouter } from './public';
 import { adminRouter } from './admin';
 import { authRouter } from './auth';
 import { coachBindRequestsRouter, studentBindRequestsRouter } from './bind-requests';
+import { coachEnquiriesRouter } from './coach-enquiries';
+import { coachPageRouter } from './coach-page';
 import { coachRouter } from './coach';
 import { conversationsRouter } from './conversations';
 import { devicesRouter } from './devices';
@@ -46,8 +49,9 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
     res.status(200).json({ status: 'ok' });
   });
 
+  app.use('/public', publicRouter({ db: deps.db, config: deps.config, logger: deps.logger }));
   app.use('/auth', authRouter({ config: deps.config, db: deps.db, logger: deps.logger }));
-  app.use('/admin', deps.requireAuth, adminRouter({ db: deps.db }));
+  app.use('/admin', deps.requireAuth, adminRouter({ db: deps.db, config: deps.config }));
   app.use(
     '/plans',
     deps.requireAuth,
@@ -101,6 +105,8 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
       pushEnabled: deps.config.PUSH_ENABLED,
     }),
   );
+  app.use('/coach', deps.requireAuth, coachEnquiriesRouter({ db: deps.db }));
+  app.use('/coach', deps.requireAuth, coachPageRouter({ db: deps.db, config: deps.config }));
   app.use('/coach', deps.requireAuth, coachRouter({ db: deps.db, logger: deps.logger }));
   app.use('/coach', deps.requireAuth, coachExerciseStatsRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachFeedbackRouter({ db: deps.db }));

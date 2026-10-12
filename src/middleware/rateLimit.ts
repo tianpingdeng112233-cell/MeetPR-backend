@@ -17,7 +17,11 @@ export function createGlobalRateLimit(
     // count against the per-IP global bucket would let an analytics retry storm
     // 429 the real app (and eat the /auth + /sets quota). Exempt the whole
     // analytics surface (ingest + feedback + config read) from the global limiter.
-    skip: (req) => req.path === '/events' || req.path.startsWith('/events/'),
+    skip: (req) =>
+      req.path === '/events' ||
+      req.path.startsWith('/events/') ||
+      req.path === '/public' ||
+      req.path.startsWith('/public/'),
   });
 }
 
@@ -115,5 +119,16 @@ export function createSignupIpRateLimit(): RateLimitRequestHandler {
     standardHeaders: false,
     legacyHeaders: false,
     handler: silentNoContent,
+  });
+}
+
+/** Public traffic has its own per-source bucket, independent of authenticated tools. */
+export function createPublicRateLimit(): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: 60_000,
+    limit: 60,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'rate_limited' },
   });
 }

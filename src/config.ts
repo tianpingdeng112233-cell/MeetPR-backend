@@ -12,6 +12,8 @@ const HttpsUrlSchema = z
     message: 'must use https',
   });
 
+const DEFAULT_COACH_SITE_BASE_URL = 'https://meetpr.cn';
+
 const SelfSignupRolesSchema = z
   .string()
   .refine(
@@ -106,6 +108,7 @@ export const ConfigSchema = z
     // canonical external endpoint and makes an incomplete production setup fail
     // at boot instead of silently serving credentials over a raw IP/HTTP URL.
     PUBLIC_BASE_URL: HttpsUrlSchema.optional(),
+    COACH_SITE_BASE_URL: HttpsUrlSchema.default(DEFAULT_COACH_SITE_BASE_URL),
     // Selects the storage implementation without changing the legacy OSS default.
     STORAGE_BACKEND: z.enum(['oss', 's3']).default('oss'),
     // OSS credentials are optional: local dev runs without them and /uploads/* responds 503.
@@ -242,9 +245,11 @@ export type Config = Omit<
   | 'GOOGLE_CLIENT_IDS'
   | 'EMAIL_SIGNUP_VERIFICATION'
   | 'MAIL_LOCALE'
+  | 'COACH_SITE_BASE_URL'
 > & {
   EMAIL_SIGNUP_VERIFICATION?: ParsedConfig['EMAIL_SIGNUP_VERIFICATION'];
   MAIL_LOCALE?: ParsedConfig['MAIL_LOCALE'];
+  COACH_SITE_BASE_URL?: ParsedConfig['COACH_SITE_BASE_URL'];
   STORAGE_BACKEND?: ParsedConfig['STORAGE_BACKEND'];
   COACH_PLAN_SHIFT_ENABLED?: ParsedConfig['COACH_PLAN_SHIFT_ENABLED'];
   GOOGLE_CLIENT_IDS?: ParsedConfig['GOOGLE_CLIENT_IDS'];
@@ -302,4 +307,8 @@ export function selfSignupRoles(
 
 function hasRegistrationAllowlist(config: Pick<Config, 'REGISTRATION_ALLOWLIST'>): boolean {
   return registrationAllowlist(config).size > 0;
+}
+
+export function coachSiteBaseUrl(config: Pick<Config, 'COACH_SITE_BASE_URL'>): string {
+  return (config.COACH_SITE_BASE_URL ?? DEFAULT_COACH_SITE_BASE_URL).replace(/\/+$/, '');
 }

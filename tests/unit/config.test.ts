@@ -250,3 +250,14 @@ describe('email signup configuration', () => {
     expect(ConfigSchema.safeParse({ ...validEnv, MAIL_LOCALE: 'fr' }).success).toBe(false);
   });
 });
+
+it('R1.1 coach site config defaults to HTTPS and rejects insecure custom values', () => {
+  expect(loadConfig(validEnv).COACH_SITE_BASE_URL).toBe('https://meetpr.cn');
+  expect(
+    loadConfig({ ...validEnv, COACH_SITE_BASE_URL: 'https://preview.example.test/' })
+      .COACH_SITE_BASE_URL,
+  ).toBe('https://preview.example.test/');
+  expect(() =>
+    loadConfig({ ...validEnv, COACH_SITE_BASE_URL: 'http://preview.example.test' }),
+  ).toThrow();
+});
