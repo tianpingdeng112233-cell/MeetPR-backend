@@ -121,7 +121,7 @@ export interface ExerciseStatsCompetitionProfile {
   deadlift_style: DeadliftStyle | null;
 }
 
-async function fetchScopedLogs(
+export async function fetchScopedLogs(
   db: Kysely<Database>,
   coachId: string,
   studentId: string,
@@ -160,7 +160,7 @@ async function fetchScopedLogs(
   return query.orderBy('sl.logged_at', 'desc').execute();
 }
 
-async function onboardingSnapshot(db: Kysely<Database>, studentId: string) {
+export async function onboardingSnapshot(db: Kysely<Database>, studentId: string) {
   const row = await db
     .selectFrom('student_onboarding_profiles')
     .select(['squat_1rm_kg', 'bench_1rm_kg', 'deadlift_1rm_kg', 'squat_stance', 'deadlift_style'])
@@ -227,8 +227,10 @@ export function buildE1RMSeries(
   logs: ExerciseStatsAggregationLog[],
   onboarding: ExerciseStatsCompetitionProfile,
   endDate: string,
+  startDate?: string,
 ): E1RMSeries {
-  const chartStart = inclusiveWindowStart(endDate, EXERCISE_STATS_LIMITS.overviewWindowDays);
+  const chartStart =
+    startDate ?? inclusiveWindowStart(endDate, EXERCISE_STATS_LIMITS.overviewWindowDays);
   const currentStart = inclusiveWindowStart(endDate, E1RM_POLICY.rollingWindowDays);
   const previousEnd = shiftedDate(currentStart, -1);
   const previousStart = inclusiveWindowStart(previousEnd, E1RM_POLICY.rollingWindowDays);
