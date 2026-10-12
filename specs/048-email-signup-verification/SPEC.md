@@ -1,6 +1,6 @@
 # Spec 048 · 邮箱注册验证码 + 国内部署接通发信
 
-- Status: InProgress
+- Status: Done（#290 合并于 2026-10-10；国内 staging 2026-10-11 部署、2026-10-12 发信接通。验收第 11、13 条已实证，第 12 条即 §5 老账号补身份未做，见 `docs/deployment-048-2026-10-10.md`）
 - 来源：David 2026-10-10 「以最新的 rn 安卓端为标准，出 CN 的双端版本」→ /grill 两轮，共识「App 端只用邮箱登录和注册」，最后一题（注册时要不要验证邮箱）答「B」＝要验证。
 - 级别／节奏：T2 / P1（新端点 + 一张新表 + 新 env）。合并与部署等 David「放行」。
 - 配套：安卓 `meetpr-rn` `specs/091-cn-android-first/SPEC.md`（客户端流程与屏幕）；iOS 交接见该目录 `IOS-HANDOFF.md`。
