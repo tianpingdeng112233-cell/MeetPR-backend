@@ -404,7 +404,36 @@ export interface PlanSetsTable {
   created_at: TimestampColumn;
 }
 
+export type CoachPageStatus = 'draft' | 'pending' | 'published' | 'hidden' | 'suspended';
+export interface CoachPagesTable {
+  coach_id: string;
+  slug: NullableColumn<string>;
+  headline: Generated<string>;
+  bio: Generated<string>;
+  specialties: Generated<string[]>;
+  status: Generated<CoachPageStatus>;
+  listed_at: NullableColumn<Date>;
+  rejection_reason: NullableColumn<string>;
+  changes_pending_review: Generated<boolean>;
+  created_at: TimestampColumn;
+  updated_at: TimestampColumn;
+}
+export interface CoachEnquiriesTable {
+  id: Generated<string>;
+  coach_id: string;
+  name: string;
+  contact: string;
+  squat_kg: NullableNumericColumn;
+  bench_kg: NullableNumericColumn;
+  deadlift_kg: NullableNumericColumn;
+  goal: Generated<string>;
+  status: Generated<'new' | 'contacted' | 'closed'>;
+  source_hash: string;
+  created_at: TimestampColumn;
+}
+
 export interface CoachProfilesTable {
+  subscription_expires_at: NullableColumn<Date>;
   user_id: string;
   display_name: string;
   created_at: TimestampColumn;
@@ -837,6 +866,8 @@ export interface Database {
   plan_exercises: PlanExercisesTable;
   plan_sets: PlanSetsTable;
   coach_profiles: CoachProfilesTable;
+  coach_pages: CoachPagesTable;
+  coach_enquiries: CoachEnquiriesTable;
   student_profiles: StudentProfilesTable;
   bind_requests: BindRequestsTable;
   set_logs: SetLogsTable;

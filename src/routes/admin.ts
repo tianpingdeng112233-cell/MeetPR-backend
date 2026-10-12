@@ -2,6 +2,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
 
+import type { Config } from '../config';
 import type { Database } from '../db/types';
 import {
   getAdminOverview,
@@ -13,9 +14,11 @@ import {
   listAdminUsers,
 } from '../handlers/admin';
 import { requireRole } from '../middleware/auth';
+import { adminCoachPagesRouter } from './admin-coach-pages';
 import { route, validationEnvelope } from './http';
 
 interface AdminRouterDeps {
+  config: Config;
   db: Kysely<Database>;
 }
 
@@ -46,6 +49,8 @@ export function adminRouter(deps: AdminRouterDeps): ExpressRouter {
       next();
     })().catch(next);
   });
+
+  router.use(adminCoachPagesRouter(deps));
 
   router.get(
     '/exercise-usage',

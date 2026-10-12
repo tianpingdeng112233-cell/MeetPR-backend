@@ -96,3 +96,29 @@ async function sendMail(
     throw new Error(`Resend returned ${String(response.status)}`);
   }
 }
+
+export async function sendCoachEnquiryEmail(
+  input: MailInput & { webUrl?: string | undefined },
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const subject =
+    input.locale === 'zh' ? '你有一条新的招生申请' : 'You have a new coaching enquiry';
+  const message =
+    input.locale === 'zh'
+      ? '你有一条新的招生申请，请登录教练网页端查看'
+      : 'You have a new coaching enquiry. Please sign in to the coach web app to view it.';
+  const escapedUrl = input.webUrl
+    ?.replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+  return sendMail(
+    input,
+    {
+      subject,
+      text: input.webUrl ? `${message}\n${input.webUrl}` : message,
+      html: `<p>${message}</p>${escapedUrl ? `<p><a href="${escapedUrl}">${escapedUrl}</a></p>` : ''}`,
+    },
+    fetchImpl,
+  );
+}
