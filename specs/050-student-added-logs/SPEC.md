@@ -20,11 +20,11 @@
 
 `set_logs` 只加一列,其余不动:
 
-| 变更 | 内容 | 动机 |
-| --- | --- | --- |
-| 新增列 | `plan_day_id UUID NULL REFERENCES plan_days(id) ON DELETE SET NULL` | 自加动作的行归属哪个训练日。只有自加动作行非空 |
-| 新增约束 | `CHECK (plan_day_id IS NULL OR adhoc)` | 计划内行的训练日永远经 `plan_exercise_id` 推导,不允许两处真源 |
-| 新增索引 | `(plan_day_id) WHERE plan_day_id IS NOT NULL` | 教练按训练日读取 |
+| 变更     | 内容                                                                | 动机                                                          |
+| -------- | ------------------------------------------------------------------- | ------------------------------------------------------------- |
+| 新增列   | `plan_day_id UUID NULL REFERENCES plan_days(id) ON DELETE SET NULL` | 自加动作的行归属哪个训练日。只有自加动作行非空                |
+| 新增约束 | `CHECK (plan_day_id IS NULL OR adhoc)`                              | 计划内行的训练日永远经 `plan_exercise_id` 推导,不允许两处真源 |
+| 新增索引 | `(plan_day_id) WHERE plan_day_id IS NOT NULL`                       | 教练按训练日读取                                              |
 
 - 额外组**不需要任何模型变更**:就是 `plan_exercise_id` 非空、`set_index` ≥ 处方组数的普通行(现行唯一约束 `(student_id, plan_exercise_id, set_index)` 与 `set_index` 无上限已经支持)。
 - 自加动作行 = `adhoc = true` + `plan_exercise_id IS NULL` + `plan_day_id` 非空。现行 adhoc 唯一索引 `(student_id, exercise_id, logged_date, set_index) WHERE adhoc` **原样保留**,不新增第二个唯一索引(训练日被删时 `SET NULL` 不能因为撞键而失败)。
@@ -59,6 +59,7 @@
 - 角色:`coached_student` / `self_train_student`;只能删本人的行,查无或非本人 → 404 `SET_NOT_FOUND`。
 - 可删判定(否则 409 `SET_NOT_STUDENT_ADDED`):自加动作行(`adhoc` 且 `plan_day_id` 非空),或额外组(`plan_exercise_id` 非空且 `set_index` ≥ 该计划动作当前的处方组数)。处方内的组、导入的 assumed 行、自己练的纯 adhoc 行不在本接口范围。
 - 该行有视频附件(`attachments.set_log_id`)或被聊天的组卡片引用 → 409 `SET_HAS_ATTACHMENT`,不删(客户端提示先处理视频)。
+- 教练已经给该行填过教练 RPE(`coach_rpe` 非空)→ 409 `SET_HAS_COACH_FEEDBACK`,不删(2026-10-13 补:与「带视频不删」同一原则——教练已经在这条记录上留了东西,学员不能让它消失;客户端提示「教练已评过这一组,不能删除」)。
 - 该行触发过的 PR 等派生记录:与现有「取消这一组」(把行写回 `completed: false`)对同类派生记录的处理保持一致——实装前先查清现状并写进 JOURNAL;若现状是不清理,删除也不额外清理,但不得留下指向已删行的悬挂外键。
 - 成功 204;重复删除 404。
 
@@ -84,7 +85,7 @@
 1. 迁移在空库与带存量的库上都能应用;存量行 `plan_day_id` 全 NULL;删除一个带自加动作行的训练日后,该行保留且 `plan_day_id` 变 NULL。
 2. 带 `plan_day_id` 的 adhoc 写入:本人已发布计划的训练日 → 成功且读回带该 id;他人 / 草稿计划的训练日 → 400;同键不同训练日 → 409 且原行不变。
 3. 不带 `plan_day_id` 的 adhoc 与 coached 写入:既有测试断言一条不改而通过。
-4. 删除:额外组与自加动作行可删;处方内的组 409;他人的行 404;带视频的行 409 且行与附件都还在。
+4. 删除:额外组与自加动作行可删;处方内的组 409;他人的行 404;带视频的行 409 且行与附件都还在;教练已填教练 RPE 的行 409 且行不变。
 5. 教练 `GET /sets`:缺省与 `scope=plan` 的响应与改动前逐字节一致(只多 `plan_day_id` 字段);`scope=all` 多出自加动作行,且拿不到其他教练的学员、自己练的纯 adhoc 行。
 6. 额外组不顶替处方组:处方 3 组、提交第 1、2 组加 1 个额外组 → `plannedComplete` 为 false。
 7. 乱序结算与撤销的三步用例通过。
