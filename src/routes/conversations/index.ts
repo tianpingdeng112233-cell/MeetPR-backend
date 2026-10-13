@@ -804,6 +804,8 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
                   .select('id')
                   .where('id', '=', setRef.set_log_id)
                   .where('student_id', '=', user.id)
+                  // Serialize JSON references against student-added set deletion.
+                  .forKeyShare()
                   .executeTakeFirst();
                 if (!sourceSet) {
                   return {

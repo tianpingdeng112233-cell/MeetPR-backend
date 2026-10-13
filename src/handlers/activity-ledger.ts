@@ -149,7 +149,7 @@ export async function recordSetLogActivity(
     // overwrite the session with a stale snapshot of the day's logs.
     const logs = await trx
       .selectFrom('set_logs')
-      .select(['plan_exercise_id', 'completed', 'failed', 'logged_at'])
+      .select(['plan_exercise_id', 'set_index', 'completed', 'failed', 'logged_at'])
       .where('student_id', '=', studentId)
       .where('logged_date', '=', sessionDate)
       .where('assumed', '=', false)
@@ -270,7 +270,7 @@ export async function sweepTimedOutSessions(db: Kysely<Database>, now: Date): Pr
       const sessionDate = normalizeDateOnly(session.session_date);
       const logs = await trx
         .selectFrom('set_logs')
-        .select(['plan_exercise_id', 'completed', 'failed', 'logged_at'])
+        .select(['plan_exercise_id', 'set_index', 'completed', 'failed', 'logged_at'])
         .where('student_id', '=', session.student_id)
         .where('logged_date', '=', sessionDate)
         .where('assumed', '=', false)

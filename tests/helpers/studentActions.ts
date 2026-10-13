@@ -309,6 +309,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       plan_exercise_id UUID REFERENCES plan_exercises(id) ON DELETE RESTRICT,
+      plan_day_id UUID REFERENCES plan_days(id) ON DELETE SET NULL,
       exercise_id UUID NOT NULL REFERENCES exercises(id),
       set_index INT NOT NULL,
       weight_kg NUMERIC(6,2) NOT NULL,
@@ -323,6 +324,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       logged_date DATE NOT NULL,
       logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (student_id, plan_exercise_id, set_index),
+      CONSTRAINT set_logs_plan_day_adhoc_check CHECK (plan_day_id IS NULL OR adhoc),
       CONSTRAINT set_logs_adhoc_no_plan_check CHECK (NOT adhoc OR plan_exercise_id IS NULL)
     );
 

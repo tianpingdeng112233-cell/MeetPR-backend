@@ -174,3 +174,102 @@ tests/video-markers.test.ts
 - 定向命令：`pnpm exec vitest run tests/auth/email-signup-verification.test.ts tests/auth/global-identity.test.ts tests/auth/email-recovery.test.ts tests/services/mail.test.ts tests/unit/config.test.ts tests/migrations/0072-email-signup-codes.test.ts`。结果原文：`Test Files 6 passed (6)`；`Tests 106 passed (106)`；退出 0。
 - 改动的 TypeScript 文件通过 Prettier 检查；`git diff --check` 通过。本轮临时自检日志在摘录结果后删除。
 - 全量测试本轮未重跑：沙箱禁止监听端口的限制已知，由 Opus 在沙箱外重跑；本轮仅报告实际执行的 lint、typecheck 和指定六文件定向测试。
+
+## Spec 050 · 学员自加记录（2026-10-13）
+
+### 开工与范围
+
+- 首个命令在指定工作树试写并删除临时文件，退出 0。分支 `feat/050-student-added-logs`，初始工作区干净；按 CARD 不 commit/push/开 PR，不读环境文件、不连真实数据库、不加依赖。依赖已由派工方安装，未重装。已读 CONTEXT、AGENTS、CLAUDE、FOLLOWUPS、完整 SPEC/CARD、最近 15 条提交与本 JOURNAL；FOLLOWUPS 无本卡触发项。
+- GitHub CLI 原始阻断：`proxyconnect tcp: dial tcp 127.0.0.1:18083: connect: operation not permitted`。改用已连接 GitHub 的只读 API，确认 staging 为 `0c2304289f3e21eabe6868d6fd66bdca183b444a`，迁移最高 0072；20 个 open PR 的 files 列表全部少于 100 项，无遗漏分页、无 0074。占号：#294=0073、#289=0071、#267=0069、#110=0050、#95=0047、#79=0039/0043、#77=0043；其余 #288/#281/#280/#272/#227/#147/#138/#134/#131/#107/#106/#36/#15 无迁移。采用 0074。
+- 开工基线 lint/typecheck 通过。基线全量 `pnpm test`：`Test Files 51 failed | 104 passed (155)`，`Tests 553 failed | 640 passed (1193)`，`Errors 548 errors`；失败包含沙箱 `listen EPERM` 与监听失败派生的空 address.port。后续按 David 补充指令不再跑全量；本地验证不等同 CI、真实 PostgreSQL 或产品验收。
+- 开始时发现没有视频也可以填 coach_rpe，提出后暂停 DELETE 分支。Opus 裁决并提交 `555225f`，David 明确转达：非空 coach_rpe → `SET_HAS_COACH_FEEDBACK`，按 404 → 非自加 → 附件/聊天 → 教练反馈顺序。已重读更新 SPEC/CARD 与当前 diff；该问题已决，无待裁决产品问题。
+
+### 删除前 set_logs 引用清单
+
+| 谁引用它                                                                                                      | 删除时怎么处理                                                                                       | 依据                                                                                         |
+| ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `attachments.set_log_id`                                                                                      | 任意仍挂接的附件（含上传中、失败等状态）均拒绝，`SET_HAS_ATTACHMENT`；不依赖 FK 的 SET NULL 自动脱钩 | 0015 唯一指向 set_logs 的数据库 FK，ON DELETE SET NULL；uploads 写入路径                     |
+| `messages.set_ref.set_log_id`                                                                                 | JSON 组卡片引用拒绝，`SET_HAS_ATTACHMENT`；含已撤回但仍存快照的行；写聊天引用时锁源行，与删除锁互斥  | 0051、domain/set-ref.ts、conversations 路由；不是 FK，必须显式保护                           |
+| `feedback.video_id`、`video_markers.video_id` 与 marker 的 annotation `attachment_id`、视频 `coach_viewed_at` | 通过附件门统一 `SET_HAS_ATTACHMENT`；保留反馈、标记、截图和已看状态                                  | feedback-fetch 经附件 JOIN set_logs；0054/0055、uploads/videos 路由                          |
+| `set_logs.coach_rpe`                                                                                          | 非空（含 0）拒绝，`SET_HAS_COACH_FEEDBACK`；保留整行                                                 | 0052、updateCoachRpe；写 completed:false 不修改 coach_rpe；555225f 与 David 裁决             |
+| 动作级/日级 `feedback.plan_exercise_id` / `day_date`                                                          | 不指向特定组；删组不删除计划动作或训练日，反馈完整保留                                               | feedback-fetch/types/迁移；不存在另一个直接组级反馈外键                                      |
+| `student_events.payload.set_log_id`、PR dedup key；`student_signals.payload` 与推送派生快照                   | 保留历史事实快照，不清理 PR 事件/信号；无 set_logs FK                                                | detectSetLogPr：completed:false 直接返回，不撤销历史事件；0041 的 payload/dedup 为 JSON/文本 |
+| `training_sessions` / session 事件、日完成记录、session_reviews                                               | 保留已有结算/事件/时钟，不自行撤销；均按学员日期/训练日关联，没有组 FK                               | activity-ledger：completed 状态单调保留；plans 显式完成与撤销；0032/0041                     |
+| e1RM、历史、统计、追踪、摘要、missed-training                                                                 | 查询现存行或计划日完成事实，无组外键或必须删除的缓存；删除后实时聚合自然排除该行                     | exercise-stats、evaluation-summary、activity-settlement 与计划读取路径                       |
+
+结论：库内直接入向 FK 只有 attachments；聊天为必须保护的 JSON 逻辑引用。教练内容映射：附件/聊天/视频反馈/视频标记及截图 → `SET_HAS_ATTACHMENT`；直接组级 coach_rpe → `SET_HAS_COACH_FEEDBACK`。动作/日级反馈不附着于被删行，保留其父对象即可。PR 快照不是教练填写内容，依 SPEC 保留，不能把历史 JSON 快照误称数据库悬挂外键。
+
+### 实现与其余读取口径核对
+
+- `0074-student-added-logs.sql`：新增可空训练日 FK、`CHECK (plan_day_id IS NULL OR adhoc)` 和部分索引，原 adhoc 唯一索引不动；BEGIN/COMMIT 包住全部 DDL，尾注回滚不删组。为了原 SQL 可在 pg-mem 重入测试，列与 CHECK 分开声明，事务内 DROP IF EXISTS/ADD 同名 CHECK；曾试内联 CHECK，pg-mem 报 `Corrupted alias`，已调整 SQL，未跳过约束断言。
+- adhoc 写入：先验证本人 published 训练日；更新语句将 plan_day_id 纳入 WHERE，插入不改幂等键，23505 后仍走原回退更新，再辨认不匹配归属并返回 409。不包整条 upsert 为事务；不改 coached 写入。大小写 UUID 仍按数据库 UUID 语义比较。
+- 删除：事务内先锁本人 set row，按裁决顺序检查；成功只删除记录本身。聊天创建 logged 组卡片新增源行 `FOR KEY SHARE`，与 DELETE 的 `FOR UPDATE` 互斥，防止聊天 JSON 引用在检查后才落地；附件外键插入和已有 coach_rpe 写入也与此锁协调。此处为工程并发保护，不改变聊天 wire 契约。
+- 教练读取保留原 plan 查询，只有 scope=all 才并入本人发布计划训练日的 adhoc；两路径序列化均增加 nullable plan_day_id。没有新建 `/sets` GET 路由，沿用仓内真实路径 `GET /students/:id/sets`（SPEC 的 GET /sets 是简称）。
+- `sessionProgress` 是唯一处方完成口径；只累计 `set_index < 当前处方组数` 的有效提交，activity-ledger 两处调用方仅补 select 的 set_index。零处方既有语义及原断言不改。
+
+| 读取接口/逻辑                                          | 额外组核对结论                                                                                                                    | 依据与处理                                                                                                                    |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 学员/教练 sets 历史                                    | 按行返回 set_index，无处方数组定位；额外组保持可读                                                                                | sets-fetch；旧 6 条读取测试通过                                                                                               |
+| 教练 `/students/:id/exercise-stats?exercise_id=…` 明细 | recent_sessions 按实际 set_index 排序，by_set_count 按实际记录数分桶，不用序号索引处方                                            | exercise-stats 的 fetchExerciseStatsDetail/groupedSessions；无需改动                                                          |
+| 同接口不带 exercise_id 的统计概览、e1RM、追踪看板      | 重量/次数/RPE/容量遍历实际行；repDistribution 索引来自 reps 并有界，不来自 set_index；trained_days 按日期去重，与处方组完成无混用 | fetchExerciseStatsOverview/buildTrackingAggregates/buildE1RMSeries/buildWeeklyVolume；无需改动，不把新 adhoc 暴露扩到这些接口 |
+| 计划摘要/计划树                                        | 处方数量由 plan_sets 得到；没有拿实际记录的 set_index 去读取处方数组                                                              | plans/index 的摘要与树装配；无需改动                                                                                          |
+| evaluation-summary                                     | 读写独立评价与版本表，不按组索引；删除组不会移除评价内容                                                                          | evaluation-summary；无需改动                                                                                                  |
+| missed-training                                        | 按 logged_date 判断是否开始，assumed=false；既不以记录数充当处方完成，也不按 set_index 对齐                                       | activity-settlement 的 autoResolveCurrentDay/startedRows；原定向测试通过，无需改动                                            |
+| 活动台账/超时结算                                      | 处方完成统一调用 sessionProgress；原事件/时钟/显式完成语义保留                                                                    | 两个生产调用点已全部补 set_index；activity-ledger 14 条原测试通过                                                             |
+
+未发现上述其他接口需要修复的越界或错位，因此没有额外改动统计/看板产品口径。
+
+### 先红后绿证据
+
+全部新增行为沿 CARD 已批准的四类 seam 逐项推进，没有改既有测试断言。`sets-log`、`sets-fetch`、`chat-set-ref`、`activity-ledger`、`plans/sequence-progression` 五个旧路由测试文件仅把 supertest import 换成仓内已有 `inMemoryRequest`；仍走完整 Express HTTP 路由、认证及数据库，不监听端口。原 sessionProgress 测试只补必需的 set_index 输入。
+
+| 切片              | 红阶段原始摘要/原因                                                                                | 绿阶段                                                                                                                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 迁移              | `Tests 1 failed (1)`，0074 文件不存在（ENOENT）                                                    | `Tests 1 passed (1)`                                                                                                                                                           |
+| 处方完成          | `Tests 1 failed \| 5 passed (6)`，缺第三处方组却得到 true                                          | `Tests 6 passed (6)`                                                                                                                                                           |
+| 自加动作写入/读回 | `Tests 1 failed (1)`，新字段被拒 400 而预期 201                                                    | `Tests 1 passed (1)`                                                                                                                                                           |
+| 训练日权限        | `Tests 3 failed \| 1 passed (4)`，他人/草稿被接收，缺失日未映射业务码                              | `Tests 4 passed (4)`                                                                                                                                                           |
+| 幂等归属          | `Tests 4 failed \| 4 passed (8)`，不同归属请求未返回 409                                           | `Tests 8 passed (8)`                                                                                                                                                           |
+| 教练 all scope    | `Tests 1 failed \| 8 passed (9)`，缺自加动作行                                                     | `Tests 9 passed (9)`                                                                                                                                                           |
+| DELETE 主路径     | `Tests 2 failed \| 9 passed (11)`，尚无删除路由，预期 204 得 404                                   | `Tests 11 passed (11)`                                                                                                                                                         |
+| DELETE 可删类型   | `Tests 4 failed \| 12 passed (16)`，处方/assumed/纯 adhoc/脱钩行被删                               | `Tests 16 passed (16)`                                                                                                                                                         |
+| 教练内容保护      | `Tests 4 failed \| 17 passed (21)`；视频/两种教练 RPE 未拦截，聊天夹具另报不存在的 client_msg_id   | 修正新夹具为实际 client_id；单独移除聊天门验证 `protects chat` 红：`Tests 1 failed \| 20 skipped (21)`，错误码落到 SET_HAS_COACH_FEEDBACK；恢复聊天门后 `Tests 21 passed (21)` |
+| 既有行为回归      | 乱序结算无需改生产代码，新增回归首次即绿，不伪造红阶段；同样记录 self-train 删除和 PR 快照保持行为 | plans 文件 `Tests 18 passed (18)`；sets 新文件 `Tests 23 passed (23)`                                                                                                          |
+
+原始日志在本机 `/tmp/050-*-red.log` 与 `/tmp/050-*-green.log`；乱序 `/tmp/050-order.log`、派生记录 `/tmp/050-derived.log`。静态检查初次发现新增测试 fixture 类型/风格错误，已修复；不修改旧断言消除失败。
+
+### 验收清单到测试名
+
+| SPEC 项          | 测试文件与名称                                                                                                                                                                                                                                                                                                                                                                                                                                    | 本地结果/边界                                                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 1 迁移与存量     | `tests/migrations/0074-student-added-logs.test.ts`：`applies to empty and existing tables, is reentrant, and detaches deleted days`                                                                                                                                                                                                                                                                                                               | pg-mem 通过，涵盖空表/存量 NULL/重入/FK/CHECK/删除训练日脱钩；未连真实 PostgreSQL    |
+| 2 写入权限和冲突 | `tests/sets-student-added.test.ts`：`writes and reads an added exercise on the student published day`；`rejects a %s day without creating a log`（other student/draft/missing）；`rejects %s rebinding without changing the row`（day to day/day to null/null to day）；`keeps same-day replay idempotent and does not rebind racing inserts`                                                                                                     | 全部通过；Promise.all 验证内存环境并发请求，不代表 PostgreSQL 真实锁竞争实测         |
+| 3 老写入兼容     | `tests/sets-log.test.ts` 原 25 条，包括 `logs an adhoc set for a self-train student and upserts idempotently`、`preserves logged_date when an old-build coached upsert edits a historical set`                                                                                                                                                                                                                                                    | 原断言全部保留并通过                                                                 |
+| 4 删除           | sets 新文件：`deletes an owned %s and returns 404 on replay`；`rejects %s rows unchanged`；`checks ownership before eligibility and forbids coach deletion`；`protects %s with ordered errors and preserves related rows`（video/chat/coach rpe/zero coach rpe/prescribed with video）；`allows the self-train owner to delete an added exercise on their published plan`；`preserves PR event and signal snapshots like writing completed false` | 全部通过；覆盖附件、聊天、视频反馈/标记和 RPE 不变，含重复删除 404                   |
+| 5 读取兼容和隔离 | sets 新文件：`adds only own published-plan days under all and keeps default identical to plan`；`tests/sets-fetch.test.ts` 原 6 条                                                                                                                                                                                                                                                                                                                | 全部通过；默认与显式 plan 比较原始 response.text，相异教练/草稿/他人/纯 adhoc 不泄漏 |
+| 6 额外组不替处方 | `tests/sequence-progression-auto.test.ts`：`does not let an extra set replace a missing prescribed set`                                                                                                                                                                                                                                                                                                                                           | 3 处方提交 0/1/3 → false，0/1/2/3/4 → true；原 5 条也通过                            |
+| 7 乱序结算       | `tests/plans/sequence-progression.test.ts`：`settles D4 before D2, keeps the earliest unfinished cursor, and only undoes the latest completion`                                                                                                                                                                                                                                                                                                   | 通过；各步按 API 返回训练日计算最早未完成日，无新增服务端游标实现                    |
+| 8 gates          | lint/typecheck/format 与下述 12 文件定向命令                                                                                                                                                                                                                                                                                                                                                                                                      | 本地自检见末表；全量测试按沙箱限制不重跑，不能宣布本项完整验收通过                   |
+
+### 独立审查与验证边界
+
+- code-review 两个只读子代理，以未提交 diff 相对 `HEAD=555225f` 加新增文件审查。Standards：0 确定代码问题；Spec：0 确定实现问题。Standards 指出的本节信号表名笔误已更正为 student_signals。review 不等于 Opus 收货终审。
+- 已直接给定 SPEC/CARD，不依赖缺失的 `docs/agents/issue-tracker.md`；本卡没有启用 tracker 工作流，也没有私建配置。
+- 未运行真实数据库迁移/锁竞争、真实部署、iOS 1.0(23) 教练/学员 demo；这些不能由 pg-mem 或代码审查代替。全量 suite 在开工时因沙箱监听被阻断，收到续行约束后未再运行。未 commit/push/开 PR，SPEC/CONTEXT/MIGRATIONS-APPLIED 未编辑。产品裁决全部已落实，无仍待决定事项。
+- 定向命令（退出 0）：
+
+```sh
+pnpm exec vitest run tests/migrations/0074-student-added-logs.test.ts tests/migrations/0031-adhoc-set-logs.test.ts tests/sets-student-added.test.ts tests/sets-log.test.ts tests/sets-fetch.test.ts tests/sequence-progression-auto.test.ts tests/plans/sequence-progression.test.ts tests/activity-ledger.test.ts tests/chat-set-ref.test.ts tests/pr-detection.test.ts tests/activity-settlement.test.ts tests/sequence-progression-backfill.test.ts
+```
+
+- 定向原始结果：`Test Files 12 passed (12)`；`Tests 142 passed (142)`。最后非空结果行：`Duration  2.80s (transform 627ms, setup 80ms, collect 6.34s, tests 12.32s, environment 1ms, prepare 583ms)`。日志 `/tmp/050-final-targeted.log`。
+
+最终静态自检（均退出 0，原始最后非空结果行）：
+
+| 命令                | 最后结果行                                   |
+| ------------------- | -------------------------------------------- |
+| `pnpm lint`         | `> eslint .`                                 |
+| `pnpm typecheck`    | `> tsc --noEmit`                             |
+| `pnpm format:check` | `All matched files use Prettier code style!` |
+
+`git diff --check` 通过。额外逐字核对：JOURNAL 原有前缀完整保留，只新增本卡一个节；SPEC、CONTEXT、MIGRATIONS-APPLIED 相对 HEAD 无 diff。未提交文件就是本卡交付，全部留在指定工作树内。

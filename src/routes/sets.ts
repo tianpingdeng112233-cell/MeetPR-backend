@@ -4,8 +4,11 @@ import { z } from 'zod';
 
 import type { Database } from '../db/types';
 import { recordSetLogActivity } from '../handlers/activity-ledger';
+import { deleteStudentAddedSetLog } from '../handlers/sets-delete';
 import { fetchCoachSetLogs, fetchOwnSetLogs } from '../handlers/sets-fetch';
 import {
+  AdhocDayConflictError,
+  canLogPlanDay,
   exerciseExists,
   resolvePlanExercise,
   upsertAdhocSetLog,
@@ -79,6 +82,7 @@ const CoachedSetLogBodySchema = z
 const AdhocSetLogBodySchema = z
   .object({
     exercise_id: UuidSchema,
+    plan_day_id: UuidSchema.optional(),
     logged_date: DateSchema,
     ...SetLogCommonFields,
   })
@@ -163,22 +167,40 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
         return;
       }
 
+      if (
+        body.data.plan_day_id !== undefined &&
+        !(await canLogPlanDay(deps.db, body.data.plan_day_id, req.user.id))
+      ) {
+        res.status(400).json({ error: 'SETS_PLAN_DAY_NOT_PUBLISHED' });
+        return;
+      }
+
       const known = await exerciseExists(deps.db, body.data.exercise_id);
       if (!known) {
         res.status(400).json({ error: 'SETS_EXERCISE_NOT_FOUND' });
         return;
       }
 
-      const result = await upsertAdhocSetLog(deps.db, req.user.id, {
-        exercise_id: body.data.exercise_id,
-        logged_date: body.data.logged_date,
-        set_index: body.data.set_index,
-        weight_kg: body.data.weight_kg,
-        reps: body.data.reps,
-        rpe: body.data.rpe,
-        completed: body.data.completed,
-        failed: body.data.failed,
-      });
+      let result;
+      try {
+        result = await upsertAdhocSetLog(deps.db, req.user.id, {
+          exercise_id: body.data.exercise_id,
+          plan_day_id: body.data.plan_day_id ?? null,
+          logged_date: body.data.logged_date,
+          set_index: body.data.set_index,
+          weight_kg: body.data.weight_kg,
+          reps: body.data.reps,
+          rpe: body.data.rpe,
+          completed: body.data.completed,
+          failed: body.data.failed,
+        });
+      } catch (error: unknown) {
+        if (error instanceof AdhocDayConflictError) {
+          res.status(409).json({ error: 'SETS_ADHOC_DAY_CONFLICT' });
+          return;
+        }
+        throw error;
+      }
       try {
         await recordSetLogActivity(deps.db, req.user.id, result.id, new Date(), {
           enabled: deps.pushEnabled === true,
@@ -191,6 +213,28 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
         );
       }
       res.status(201).json(result);
+    }),
+  );
+
+  router.delete(
+    '/:id',
+    requireRole('coached_student', 'self_train_student'),
+    route(async (req, res) => {
+      if (!req.user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      const params = StudentIdParamSchema.safeParse(req.params);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+      const error = await deleteStudentAddedSetLog(deps.db, req.user.id, params.data.id);
+      if (error !== null) {
+        res.status(error === 'SET_NOT_FOUND' ? 404 : 409).json({ error });
+        return;
+      }
+      res.status(204).send();
     }),
   );
 
@@ -242,6 +286,7 @@ export function studentSetsRouter(deps: SetsRouterDeps): ExpressRouter {
         params.data.id,
         query.data.from,
         query.data.to,
+        query.data.scope,
       );
       res.status(200).json({ logs });
     }),

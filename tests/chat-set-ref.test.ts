@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import pino from 'pino';
-import request from 'supertest';
+import { request } from './helpers/inMemoryRequest';
 import { describe, expect, it } from 'vitest';
 
 import { formatSetRefFirstLine, type SetRefV1 } from '../src/domain/set-ref';

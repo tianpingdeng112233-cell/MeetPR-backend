@@ -1,4 +1,4 @@
-import request from 'supertest';
+import { request } from './helpers/inMemoryRequest';
 import { describe, expect, it } from 'vitest';
 
 import { fetchCoachSetLogs } from '../src/handlers/sets-fetch';
