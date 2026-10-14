@@ -6,6 +6,7 @@ type DbExecutor = Kysely<Database> | Transaction<Database>;
 
 export interface SessionProgressLog {
   plan_exercise_id: string | null;
+  set_index: number;
   completed: boolean;
   failed: boolean;
 }
@@ -93,7 +94,12 @@ export async function sessionProgress(
 
   const submittedByExercise = new Map<string, number>();
   for (const log of logs) {
-    if (log.plan_exercise_id === null || (!log.completed && !log.failed)) continue;
+    if (
+      log.plan_exercise_id === null ||
+      (!log.completed && !log.failed) ||
+      log.set_index >= (prescribedByExercise.get(log.plan_exercise_id) ?? 0)
+    )
+      continue;
     submittedByExercise.set(
       log.plan_exercise_id,
       (submittedByExercise.get(log.plan_exercise_id) ?? 0) + 1,

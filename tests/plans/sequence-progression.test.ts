@@ -1,4 +1,4 @@
-import request from 'supertest';
+import { request } from '../helpers/inMemoryRequest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { TestContext } from '../helpers/studentActions';
@@ -427,5 +427,75 @@ describe('sequence progression backfill and serialization', () => {
       id: plan.planId,
       published_at: republished.body.published_at,
     });
+  });
+});
+
+describe('out-of-order student settlement', () => {
+  it('settles D4 before D2, keeps the earliest unfinished cursor, and only undoes the latest completion', async () => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-13T12:00:00Z') });
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    await ctx.db
+      .updateTable('plan_days')
+      .set({ day_of_week: 2 })
+      .where('id', '=', plan.dayId)
+      .execute();
+    const d3 = await addPlanDay(ctx, plan.planId, { dayOfWeek: 3 });
+    const d4 = await addPlanDay(ctx, plan.planId, { dayOfWeek: 4 });
+    const expectCursor = async (dayId: string) => {
+      const detail = await request(ctx.app)
+        .get(`/plans/${plan.planId}`)
+        .set(auth(ctx.traineeToken));
+      expect(detail.status).toBe(200);
+      const days = detail.body.days as {
+        id: string;
+        week_number: number;
+        day_of_week: number;
+        completed_at: string | null;
+      }[];
+      // Spec 035 defines the cursor as the earliest unfinished day in plan order.
+      const unfinished = days
+        .filter((day) => day.completed_at === null)
+        .sort(
+          (left, right) =>
+            left.week_number - right.week_number || left.day_of_week - right.day_of_week,
+        );
+      expect(unfinished[0]?.id).toBe(dayId);
+    };
+    await expectCursor(plan.dayId);
+    const d4Log = await request(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.traineeToken))
+      .send(coachedLog(d4.planExerciseId, 0));
+    expect(d4Log.status).toBe(201);
+    const d4Completed = await request(ctx.app)
+      .post(`/plans/days/${d4.dayId}/complete`)
+      .set(auth(ctx.traineeToken))
+      .send({});
+    expect(d4Completed.status).toBe(200);
+    await expectCursor(plan.dayId);
+    vi.setSystemTime(new Date('2026-10-13T12:01:00Z'));
+    const d2Log = await request(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.traineeToken))
+      .send(coachedLog(plan.planExerciseId, 0));
+    expect(d2Log.status).toBe(201);
+    const d2Completed = await request(ctx.app)
+      .post(`/plans/days/${plan.dayId}/complete`)
+      .set(auth(ctx.traineeToken))
+      .send({});
+    expect(d2Completed.status).toBe(200);
+    await expectCursor(d3.dayId);
+    const refuseD4 = await request(ctx.app)
+      .delete(`/plans/days/${d4.dayId}/complete`)
+      .set(auth(ctx.traineeToken));
+    expect(refuseD4.status).toBe(409);
+    expect(refuseD4.body).toEqual({ error: 'NOT_LATEST_COMPLETION' });
+    await expectCursor(d3.dayId);
+    const undoD2 = await request(ctx.app)
+      .delete(`/plans/days/${plan.dayId}/complete`)
+      .set(auth(ctx.traineeToken));
+    expect(undoD2.status).toBe(204);
+    await expectCursor(plan.dayId);
   });
 });

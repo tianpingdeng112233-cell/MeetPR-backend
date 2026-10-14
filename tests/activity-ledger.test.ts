@@ -1,4 +1,4 @@
-import request from 'supertest';
+import { request } from './helpers/inMemoryRequest';
 import { sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
 

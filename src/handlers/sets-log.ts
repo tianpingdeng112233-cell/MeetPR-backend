@@ -2,6 +2,7 @@ import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 
 import type { Database } from '../db/types';
+import { uuidEquals } from '../utils/uuid';
 import { timestamp } from './serialization';
 
 export interface SetLogInput {
@@ -25,6 +26,7 @@ export interface SetLogInput {
 }
 
 export interface AdhocSetLogInput {
+  plan_day_id?: string | null;
   exercise_id: string;
   logged_date: string;
   set_index: number;
@@ -79,6 +81,22 @@ export async function resolvePlanExercise(
         planId: row.plan_id,
         timezone: row.timezone,
       };
+}
+
+export async function canLogPlanDay(
+  db: Kysely<Database>,
+  planDayId: string,
+  studentId: string,
+): Promise<boolean> {
+  const day = await db
+    .selectFrom('plan_days as pd')
+    .innerJoin('plans as p', 'p.id', 'pd.plan_id')
+    .select('pd.id')
+    .where('pd.id', '=', planDayId)
+    .where('p.trainee_id', '=', studentId)
+    .where('p.status', '=', 'published')
+    .executeTakeFirst();
+  return day !== undefined;
 }
 
 export async function exerciseExists(db: Kysely<Database>, exerciseId: string): Promise<boolean> {
@@ -151,6 +169,8 @@ export async function upsertSetLog(
   };
 }
 
+export class AdhocDayConflictError extends Error {}
+
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
 }
@@ -176,6 +196,7 @@ async function updateAdhocSetLog(
     .where('logged_date', '=', input.logged_date)
     .where('set_index', '=', input.set_index)
     .where('adhoc', '=', true)
+    .where('plan_day_id', input.plan_day_id == null ? 'is' : '=', input.plan_day_id ?? null)
     .returning(['id', 'logged_at'])
     .executeTakeFirst();
 
@@ -208,6 +229,7 @@ export async function upsertAdhocSetLog(
       .values({
         student_id: studentId,
         plan_exercise_id: null,
+        plan_day_id: input.plan_day_id ?? null,
         exercise_id: input.exercise_id,
         logged_date: input.logged_date,
         adhoc: true,
@@ -229,6 +251,22 @@ export async function upsertAdhocSetLog(
     }
     const raced = await updateAdhocSetLog(db, studentId, input);
     if (raced === null) {
+      const existing = await db
+        .selectFrom('set_logs')
+        .select('plan_day_id')
+        .where('student_id', '=', studentId)
+        .where('exercise_id', '=', input.exercise_id)
+        .where('logged_date', '=', input.logged_date)
+        .where('set_index', '=', input.set_index)
+        .where('adhoc', '=', true)
+        .executeTakeFirst();
+      if (
+        existing &&
+        !(existing.plan_day_id === null && input.plan_day_id == null) &&
+        !uuidEquals(existing.plan_day_id, input.plan_day_id)
+      ) {
+        throw new AdhocDayConflictError('SETS_ADHOC_DAY_CONFLICT');
+      }
       throw error;
     }
     return raced;

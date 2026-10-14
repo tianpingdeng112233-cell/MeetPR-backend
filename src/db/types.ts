@@ -521,6 +521,7 @@ export interface OnboardingUploadsTable {
 export interface SetLogsTable {
   id: Generated<string>;
   student_id: string;
+  plan_day_id: NullableColumn<string>;
   plan_exercise_id: NullableColumn<string>;
   exercise_id: string;
   set_index: number;
