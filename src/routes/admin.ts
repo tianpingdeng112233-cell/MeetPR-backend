@@ -13,10 +13,13 @@ import {
   listAdminUsers,
 } from '../handlers/admin';
 import { requireRole } from '../middleware/auth';
+import { adminCoachApplicationsRouter } from './admin-coach-applications';
+import type { CoachApplicationDeps } from './coach-applications';
 import { route, validationEnvelope } from './http';
 
 interface AdminRouterDeps {
   db: Kysely<Database>;
+  onboarding?: CoachApplicationDeps;
 }
 
 const IdParamSchema = z.object({ id: z.string().uuid() });
@@ -46,6 +49,10 @@ export function adminRouter(deps: AdminRouterDeps): ExpressRouter {
       next();
     })().catch(next);
   });
+
+  if (deps.onboarding?.config.COACH_ONBOARDING_ENABLED === true) {
+    router.use('/coach-applications', adminCoachApplicationsRouter(deps.onboarding));
+  }
 
   router.get(
     '/exercise-usage',

@@ -1,0 +1,268 @@
+
+> meetpr-backend@0.0.1 test /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+> vitest run
+
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+
+ ✓ tests/admin.test.ts (25 tests) 1871ms
+   ✓ admin read-only API > queries every admin read model from the seeded fixtures without N+1 lookups 378ms
+ ✓ tests/chat-set-ref.test.ts (11 tests) 1989ms
+   ✓ POST /conversations/:id/messages set_ref > stores the frozen snapshot/body verbatim and enforces student-only direction 439ms
+   ✓ POST /conversations/:id/messages set_ref > locks and validates a ready same-set video, signs it, and rejects every mismatch 302ms
+ ✓ tests/plans/plan-day-shifts.test.ts (32 tests) 2476ms
+   ✓ coached student whole-plan shifts > serializes per-day overrides and both plan shift summary fields on detail and list GETs 301ms
+ ✓ tests/exercise-stats.test.ts (15 tests) 2619ms
+   ✓ GET /coach/students/:id/exercise-stats > anchors rolling and weekly windows on the Asia/Shanghai gym day 529ms
+   ✓ GET /coach/students/:id/exercise-stats > resolves e1RM and references from the student competition stance 873ms
+ ✓ tests/video-markers.test.ts (32 tests) 2682ms
+   ✓ shared set-video access gate > returns 409 for a visible uploading video and 404 for the wrong attachment kind 424ms
+ ✓ tests/coach-applications.test.ts (16 tests | 1 skipped) 3203ms
+   ✓ coach applications > sets the password from the welcome link, verifies email, logs in, and rejects replay 781ms
+   ✓ coach applications > receives existing student applications but refuses conversion, and allows rejection 329ms
+   ✓ coach applications > keeps setup links usable when a legacy six-digit attempt is wrong 858ms
+ ✓ tests/plans/plans.test.ts (53 tests) 3451ms
+   ✓ coach planning CRUD > POST /plans creates a draft plan for a student-role trainee 337ms
+ ✓ tests/auth/global-identity.test.ts (45 tests) 3652ms
+   ✓ POST /auth/google configured audiences > accepts aud=ios-id with GOOGLE_CLIENT_ID="ios-id, android-id" 366ms
+   ✓ POST /auth/apple > creates once, signs standard tokens, and logs the existing identity back in 361ms
+ ✓ tests/activity-settlement.test.ts (12 tests) 1409ms
+   ✓ daily activity settlement > settles only students in the requested timezone bucket 336ms
+ ✓ tests/plans/plans-batch.test.ts (15 tests) 1546ms
+   ✓ POST /plans/:id/days/batch > enqueues plan_updated and bumps updated_at for a published plan tree change 327ms
+ ✓ tests/auth/auth.test.ts (32 tests) 4501ms
+   ✓ auth endpoints > registers a user and returns the public user plus tokens 502ms
+   ✓ auth endpoints > rejects duplicate phone registration with AUTH_PHONE_TAKEN 438ms
+   ✓ auth endpoints > logs in with a valid phone and password 322ms
+   ✓ auth endpoints > keeps two device sessions independent while each rotates 371ms
+   ✓ auth endpoints > caps active sessions at five and revokes the least recently used 828ms
+   ✓ auth endpoints > retries the previous jti idempotently in grace, then revokes only that session outside it 313ms
+ ✓ tests/plans/plan-intensity-api.test.ts (8 tests) 1414ms
+   ✓ spec 034 plan intensity API > round-trips every pct anchor through create, patch, batch, and tree reads 547ms
+ ✓ tests/pr-detection.test.ts (19 tests) 1734ms
+   ✓ detectSetLogPr > uses max(registered 1RM, historical actual weight) and rolls a hit into the baseline 366ms
+ ✓ tests/activity-ledger.test.ts (14 tests) 2098ms
+   ✓ activity ledger session state machine > replays a completed set-log upsert without duplicating its fact event 402ms
+ ✓ tests/signals-api.test.ts (18 tests) 1463ms
+   ✓ GET /coach/signals > returns only the coach open signals in severity then newest-first order 432ms
+ ✓ tests/jobs/scheduler.test.ts (19 tests) 845ms
+   ✓ timezone bucket scheduler > recovers multi-day settlement and digest gaps, then stays idempotent 551ms
+ ✓ tests/plans/sequence-progression.test.ts (18 tests) 2544ms
+   ✓ sequence progression settlement > does not auto-complete a fully logged prescribed day 436ms
+ ✓ tests/plans/plan-exercise-mutability.test.ts (9 tests) 1362ms
+   ✓ spec 016 plan tree mutability > allows every mutation class on a published exercise with no logs 456ms
+ ✓ tests/plans/plan-pending-revision.test.ts (6 tests) 680ms
+   ✓ plan pending revision > upserts last-writer-wins and GET returns opaque content unchanged 396ms
+ ✓ tests/sets-student-added.test.ts (23 tests) 2789ms
+   ✓ student-added set logs > writes and reads an added exercise on the student published day 350ms
+   ✓ coach student-added scope > adds only own published-plan days under all and keeps default identical to plan 371ms
+ ✓ tests/jobs/daily-digest.test.ts (12 tests) 1831ms
+   ✓ runDailyDigest > writes only coaches in the requested timezone bucket 446ms
+   ✓ runDailyDigest > does not repeat or omit New York student days across unsynchronised US and UK DST changes 726ms
+ ✓ tests/chat-messages.test.ts (8 tests) 1466ms
+   ✓ POST /conversations/:id/messages text > enqueues one idempotent chat_message push for the conversation peer 610ms
+ ✓ tests/events.test.ts (20 tests) 1356ms
+   ✓ POST /events > partial-accepts: keeps valid events, skips invalid ones, returns 204 359ms
+ ✓ tests/jobs/push-consumer.test.ts (14 tests) 1139ms
+   ✓ consumePushOutbox > localizes copy by the recipient track: phone set → Chinese, phone NULL → English 420ms
+ ✓ tests/uploads-complete.test.ts (10 tests) 995ms
+   ✓ POST /uploads/:attachmentId/complete > enqueues video_pending for a linked set_video on complete 383ms
+ ✓ tests/sets-log.test.ts (25 tests) 3112ms
+   ✓ POST /sets/log > logs a set for a published plan exercise owned by the student 433ms
+ ✓ tests/conversations.test.ts (7 tests) 869ms
+   ✓ POST /conversations > derives the canonical pair, creates once, and returns the full wrapped wire object 427ms
+ ✓ tests/scripts/backup-db.test.ts (13 tests) 57ms
+ ✓ tests/auth/email-signup-verification.test.ts (19 tests) 4506ms
+   ✓ email signup verification > keeps legacy registration unverified and ignores code when off; code endpoint is 404 358ms
+   ✓ email signup verification > issues a hashed ten-minute code, verifies registration and permits immediate login 439ms
+   ✓ email signup verification > invalidates the previous code on reissue and deletes expired rows 341ms
+   ✓ email signup verification > persists wrong attempts and invalidates the code after five failures 806ms
+   ✓ email signup verification > silently limits an IP to thirty sends per hour 338ms
+   ✓ signup compatibility and conflicts > allows the correct code on the fifth attempt 784ms
+ ✓ tests/chat-uploads.test.ts (8 tests) 1263ms
+   ✓ chat_image messages and URL authorization > lets both members read through messages but keeps the generic URL owner-only 486ms
+ ✓ tests/plans/imported-history.test.ts (7 tests) 1080ms
+   ✓ POST /plans/:id/imported-history > requires confirmation and reports idempotent created/existing counts 381ms
+ ✓ tests/onboarding.test.ts (11 tests) 1005ms
+   ✓ student onboarding profile > upserts step by step and merges partial submissions 318ms
+ ✓ tests/unit/config.test.ts (25 tests) 14ms
+ ✓ tests/coach-bind-requests.test.ts (10 tests) 940ms
+   ✓ coach bind request queue > lists pending requests with an empty backward-compatible onboarding summary 394ms
+ ✓ tests/migrations/0041-init-activity-ledger.test.ts (4 tests) 347ms
+ ✓ tests/bind-requests.test.ts (10 tests) 1071ms
+   ✓ student bind requests > enqueues bind_request for the invite-code coach after creation 311ms
+ ✓ tests/jobs/push-payloads.test.ts (6 tests) 9ms
+ ✓ tests/unit/exercise-stats-aggregates.test.ts (10 tests) 64ms
+ ✓ tests/exercise-crud.test.ts (13 tests) 1984ms
+   ✓ custom exercise CRUD > POST /exercises stores trimmed name_en when supplied 607ms
+ ✓ tests/student-videos.test.ts (9 tests) 2325ms
+   ✓ POST /uploads/initiate set_log_id linkage (spec 007) > links a set_video to the uploader own set log and serializes it 645ms
+   ✓ GET /students/:id/videos (spec 007) > scopes a bonded coach to videos from their own plans plus unlinked ones 408ms
+ ✓ tests/auth/email-recovery.test.ts (8 tests) 4993ms
+   ✓ email password recovery > resets the password, consumes the code, and revokes every old session 1055ms
+   ✓ email password recovery > persists every attempt first and invalidates a code after five wrong tries 1042ms
+   ✓ email password recovery > rejects expired codes with the same reset error 408ms
+   ✓ email password recovery > keeps forgot at 204 when Resend fails or is not configured 339ms
+   ✓ email password recovery > enforces the reset per-email limit after ten attempts 1673ms
+ ✓ tests/readiness.test.ts (27 tests) 2992ms
+   ✓ POST /students/me/readiness > creates a check-in and returns 201 with the full check-in row 601ms
+ ✓ tests/realtime-chat.test.ts (3 tests) 1099ms
+   ✓ conversation realtime publishing > publishes a new student message to both participants within 1s and skips an idempotent replay 784ms
+ ✓ tests/unit/oidc.test.ts (17 tests) 198ms
+ ✓ tests/sets-fetch.test.ts (6 tests) 1361ms
+   ✓ GET /students/:id/sets > fetchCoachSetLogs windows plan scope on logged_date, not replay time 761ms
+ ✓ tests/uploads-initiate.test.ts (12 tests) 2040ms
+   ✓ POST /uploads/initiate > initiates a set_video upload and returns one presigned URL per part 744ms
+   ✓ POST /uploads/initiate > enforces the per-owner active-upload quota before signing more parts 309ms
+ ✓ tests/evaluations.test.ts (12 tests) 1764ms
+   ✓ evaluation periods > returns the active evaluation from both coach and student views 615ms
+ ✓ tests/migrations/0059-backfill-sequence-completions.test.ts (6 tests) 611ms
+ ✓ tests/migrations/0033-algo-foundation-schema.test.ts (2 tests) 494ms
+   ✓ migration 0033 algo foundation schema > adds nullable legacy columns without mutating existing rows 303ms
+ ✓ tests/services/apns.test.ts (8 tests) 61ms
+ ✓ tests/unit/s3-storage.test.ts (7 tests) 14ms
+ ✓ tests/feedback-fetch.test.ts (6 tests) 1314ms
+   ✓ GET /students/:id/feedback > returns all own feedback ordered by posted_at descending 587ms
+ ✓ tests/migrations/0070-plan-shift-batches.test.ts (4 tests) 336ms
+ ✓ tests/plans/plan-intensity-domain.test.ts (30 tests) 12ms
+ ✓ tests/scripts/delete-test-accounts.test.ts (7 tests) 9ms
+ ✓ tests/migrations/0026-dedup-duplicate-name-en.test.ts (3 tests) 457ms
+   ✓ migration 0025 duplicate-nameEn dedup > removes the 10 merged-away duplicates and keeps every survivor 339ms
+ ✓ tests/feedback-post.test.ts (11 tests) 1466ms
+   ✓ POST /coach/feedback > creates trimmed feedback for an owned published plan exercise 649ms
+ ✓ tests/coach-students.test.ts (9 tests) 935ms
+   ✓ GET /coach/students > returns accepted bonded students with snake_case profile fields 450ms
+ ✓ tests/migrations/0019-plan-coverage-exercises.test.ts (4 tests) 313ms
+ ✓ tests/training-streak-api.test.ts (10 tests) 1067ms
+   ✓ GET /students/me/streak > returns the exact empty shape and defaults as_of to the current Shanghai gym-day 452ms
+ ✓ tests/unit/oss.test.ts (3 tests) 30ms
+ ✓ src/realtime/upgrade.test.ts (3 tests) 183ms
+ ✓ tests/domain/training-streak.test.ts (12 tests) 6ms
+ ✓ tests/migrations/0023-sync-squat-rdl-rename.test.ts (3 tests) 590ms
+   ✓ migration 0023 squat add + RDL rename > inserts the two low-bar squat variations with the expected metadata 394ms
+ ✓ tests/migrations/0051-add-message-set-ref.test.ts (3 tests) 452ms
+ ✓ tests/evaluation-summary.test.ts (7 tests) 1002ms
+   ✓ evaluation summaries > first save records first_saved_at, links the evaluation period, and writes a notified version row 309ms
+ ✓ tests/migrations/0031-adhoc-set-logs.test.ts (5 tests) 666ms
+   ✓ migration 0031 adhoc set logs > backfills exercise_id and Shanghai-local logged_date for existing rows 421ms
+ ✓ tests/response-compression.test.ts (5 tests) 1411ms
+   ✓ response compression > compresses a sizeable catalogue response for a client that accepts gzip 557ms
+   ✓ response compression > negotiates brotli when the client prefers it 362ms
+ ✓ tests/me.test.ts (4 tests) 2005ms
+   ✓ DELETE /me (spec 011 §1) > deletes a student account and cascades their data 325ms
+   ✓ PUT /me/password (spec 011 §2) > rotates the password and revokes refresh tokens 1095ms
+   ✓ PUT /me/password (spec 011 §2) > kills pre-migration legacy refresh tokens on password change 542ms
+ ✓ tests/migrations/0056-promote-barbell-bench-main-lift-variation.test.ts (4 tests) 268ms
+ ✓ tests/uploads-abort.test.ts (5 tests) 1191ms
+   ✓ POST /uploads/:attachmentId/abort > aborts an uploading attachment and is idempotent on re-abort 638ms
+ ✓ tests/sequence-progression-auto.test.ts (6 tests) 949ms
+   ✓ sequence progression settlement > does not auto-complete after the failed final prescribed set 488ms
+ ✓ tests/smoke/routes.test.ts (10 tests) 226ms
+ ✓ tests/invite-codes.test.ts (6 tests) 888ms
+   ✓ coach invite codes > creates a personal permanent code and auto-revokes the previous active one 519ms
+ ✓ tests/plan-day-completions.test.ts (7 tests) 1063ms
+   ✓ plan-day manual completion transaction > is idempotent and permits a day with zero prescribed sets 575ms
+ ✓ tests/uploads-url.test.ts (8 tests) 1313ms
+   ✓ GET /uploads/:attachmentId/url > returns a 15min presigned GET URL to the owner 742ms
+ ✓ tests/devices-api.test.ts (11 tests) 1209ms
+   ✓ POST /devices/token > upserts the same token idempotently for the same user 669ms
+ ✓ tests/coach-rpe.test.ts (5 tests) 839ms
+   ✓ PATCH /coach/set-logs/:id/coach-rpe > lets a bonded coach write and clear calibration without changing student RPE 548ms
+ ✓ tests/create-admin.test.ts (4 tests) 912ms
+   ✓ create-admin provisioning > promotes an existing phone, replaces its password, and revokes every live session 462ms
+ ✓ tests/services/mail.test.ts (8 tests) 23ms
+ ✓ tests/domain/missed-training.test.ts (10 tests) 5ms
+ ✓ tests/migrations/0045-init-chat.test.ts (3 tests) 197ms
+ ✓ tests/unit/e1rm.test.ts (24 tests) 6ms
+ ✓ tests/migrations/0062-video-coach-viewed.test.ts (2 tests) 90ms
+ ✓ tests/plans/plan-set-schemas.test.ts (14 tests) 12ms
+ ✓ tests/migrations/0064-global-identity.test.ts (3 tests) 135ms
+ ✓ tests/migrations/0057-sequence-progression.test.ts (3 tests) 188ms
+ ✓ tests/set-ref-domain.test.ts (32 tests) 13ms
+ ✓ tests/migrations/0022-sync-coach-import-exercises.test.ts (2 tests) 163ms
+ ✓ tests/migrations/0020-relax-plan-weeks.test.ts (2 tests) 96ms
+ ✓ tests/sequence-progression-backfill.test.ts (2 tests) 611ms
+   ✓ sequence progression imported history backfill > writes one UTC-midnight completion per assumed day without double-writing 410ms
+ ✓ tests/events-feedback.test.ts (11 tests) 874ms
+   ✓ POST /events/feedback > derives user_id from the JWT and ignores a forged client value 366ms
+ ✓ tests/migrations/0065-email-channel.test.ts (2 tests) 103ms
+ ✓ tests/reviews.test.ts (4 tests) 543ms
+   ✓ PUT /students/me/reviews/:date > upserts by day and overwrites on rewrite 370ms
+ ✓ tests/migrations/0054-video-markers.test.ts (3 tests) 132ms
+ ✓ tests/exercise-usage.test.ts (4 tests) 748ms
+   ✓ GET /exercises/usage-stats > aggregates every plan status and repeated row for only the current coach 356ms
+ ✓ tests/unit/app.test.ts (6 tests) 167ms
+ ✓ tests/services/apple.test.ts (3 tests) 13ms
+ ✓ tests/domain/plan-calendar.test.ts (4 tests) 6ms
+ ✓ tests/unit/oss-sign-options.test.ts (6 tests) 8ms
+ ✓ tests/migrations/0024-fix-single-leg-rdl-muscle-group.test.ts (3 tests) 168ms
+ ✓ tests/uploads-delete.test.ts (4 tests) 704ms
+   ✓ DELETE /uploads/:attachmentId > allows only the owner to delete the OSS object and local metadata 437ms
+ ✓ tests/migrations/0038-whole-plan-shift.test.ts (1 test) 111ms
+ ✓ tests/migrations/0042-init-device-tokens.test.ts (3 tests) 120ms
+ ✓ tests/migrations/0068-plan-pending-revisions.test.ts (2 tests) 157ms
+ ✓ tests/migrations/0055-marker-annotation-attachment.test.ts (3 tests) 162ms
+ ✓ tests/chat-bonds.test.ts (3 tests) 421ms
+   ✓ resolveCanonicalAcceptedBond > orders responded_at DESC NULLS LAST before submitted_at and id fallbacks 326ms
+ ✓ tests/migrations/0011-evaluation-periods.test.ts (1 test) 142ms
+ ✓ tests/migrations/0007-attachments.test.ts (1 test) 135ms
+ ✓ tests/user-timezone.test.ts (2 tests) 586ms
+   ✓ PATCH /me/timezone > changes only future gym-day writes and emits one audit log 533ms
+ ✓ tests/migrations/0014-readiness-checkins.test.ts (2 tests) 146ms
+ ✓ tests/migrations/0030-analytics-feedback.test.ts (3 tests) 105ms
+ ✓ tests/migrations/0029-events.test.ts (3 tests) 159ms
+ ✓ tests/feedback-mark-read.test.ts (3 tests) 440ms
+   ✓ PATCH /feedback/:id/read > allows coached_student self mark and is idempotent without overwriting read_at 310ms
+ ✓ tests/migrations/0034-imported-history-assumed.test.ts (2 tests) 176ms
+ ✓ tests/migrations/0018-plan-set-rest-seconds.test.ts (1 test) 179ms
+ ✓ tests/unit/storage-selector.test.ts (3 tests) 54ms
+ ✓ tests/migrations/0012-student-evaluations.test.ts (1 test) 261ms
+ ✓ tests/migrations/0013-onboarding-profiles.test.ts (1 test) 217ms
+ ✓ tests/dto/snake-case-validation.test.ts (2 tests) 561ms
+   ✓ student action DTO snake_case wire shape > rejects camelCase set-log request fields and emits snake_case set responses 468ms
+ ✓ tests/migrations/0008-invite-codes.test.ts (1 test) 197ms
+ ✓ tests/migrations/0058-intensity-system.test.ts (2 tests) 188ms
+ ✓ tests/utils/date.test.ts (15 tests) 43ms
+ ✓ tests/migrations/0039-multi-device-sessions.test.ts (2 tests) 239ms
+ ✓ tests/migrations/0040-exercise-competition-stance.test.ts (1 test) 116ms
+ ✓ tests/migrations/0074-student-added-logs.test.ts (1 test) 107ms
+ ✓ tests/migrations/0049-users-is-test.test.ts (2 tests) 121ms
+ ✓ tests/migrations/0063-pct-anchor.test.ts (2 tests) 121ms
+ ✓ tests/migrations/0067-digest-watermarks.test.ts (1 test) 215ms
+ ✓ tests/migrations/0010-plan-kind.test.ts (1 test) 256ms
+ ✓ tests/migrations/0021-plan-set-coach-note.test.ts (1 test) 240ms
+ ✓ tests/migrations/0005-set-logs.test.ts (1 test) 178ms
+ ✓ tests/unit/oss-config.test.ts (8 tests) 60ms
+ ✓ tests/migrations/0052-set-log-coach-rpe.test.ts (2 tests) 168ms
+ ✓ tests/unit/in-memory-request.test.ts (2 tests) 41ms
+ ✓ tests/migrations/0009-extend-bind-requests.test.ts (1 test) 218ms
+ ✓ tests/migrations/0044-add-admin-role.test.ts (2 tests) 188ms
+ ✓ tests/migrations/0037-plan-day-shifts.test.ts (1 test) 189ms
+ ✓ tests/migrations/0006-feedback.test.ts (1 test) 115ms
+ ✓ tests/migrations/0017-set-log-failed.test.ts (1 test) 170ms
+ ✓ tests/migrations/0003.6-bind-requests.test.ts (1 test) 141ms
+ ✓ tests/unit/s3-checksum.test.ts (1 test) 28ms
+ ✓ tests/migrations/0060-plan-anchor-weekday.test.ts (2 tests) 86ms
+ ✓ tests/push-outbox.test.ts (2 tests) 411ms
+ ✓ tests/migrations/0072-email-signup-codes.test.ts (1 test) 190ms
+ ✓ tests/migrations/0046-add-feedback-video-id.test.ts (1 test) 199ms
+ ✓ tests/uploads-not-configured.test.ts (2 tests) 614ms
+   ✓ /uploads without OSS configuration > answers 503 UPLOADS_NOT_CONFIGURED on every endpoint 519ms
+ ✓ tests/migrations/0032-session-reviews.test.ts (1 test) 268ms
+ ✓ tests/migrations/0035-attachment-lifecycle.test.ts (1 test) 6ms
+ ✓ tests/unit/pool-ssl.test.ts (2 tests) 4ms
+ ✓ tests/config-analytics.test.ts (3 tests) 9ms
+ ✓ tests/unit/s3-storage-config.test.ts (6 tests) 18ms
+ ✓ tests/unit/training-max.test.ts (3 tests) 4ms
+ ✓ tests/migrations/0061-plan-exercise-target.test.ts (1 test) 135ms
+ ✓ tests/migrations/0036-notification-outbox.test.ts (1 test) 3ms
+ ✓ tests/migrations/0066-add-user-timezone.test.ts (1 test) 61ms
+ ✓ tests/migrations/0003.5-profile-tables.test.ts (1 test) 84ms
+ ✓ tests/migrations/0004-seed.test.ts (1 test) 101ms
+
+ Test Files  158 passed (158)
+      Tests  1236 passed | 1 skipped (1237)
+   Start at  00:22:01
+   Duration  30.05s (transform 2.04s, setup 874ms, collect 70.28s, tests 121.17s, environment 70ms, prepare 16.04s)
+

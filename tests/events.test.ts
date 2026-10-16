@@ -64,6 +64,33 @@ describe('POST /events', () => {
     expect(rows).toEqual([{ platform: 'android' }]);
   });
 
+  it('accepts the web onboarding funnel and drops free-text props', async () => {
+    const ctx = await makeContext();
+    const names = [
+      'coach_application_submitted',
+      'coach_application_approved',
+      'coach_password_set',
+    ];
+    const res = await request(ctx.app)
+      .post('/events')
+      .send(
+        batch(
+          [
+            ...names.map((name) => evt({ name, props: {} })),
+            evt({ name: 'invite_landing_open', props: { device: 'iphone', in_wechat: false } }),
+            evt({ name: 'install_clicked', props: { device: 'android' } }),
+            evt({
+              name: 'install_clicked',
+              props: { device: 'android', email: 'private@example.com' },
+            }),
+          ],
+          { platform: 'web' },
+        ),
+      );
+    expect(res.status).toBe(204);
+    expect(await countEvents(ctx.db)).toBe(5);
+  });
+
   it('returns 204 with 0 rows when every event is invalid', async () => {
     const ctx = await makeContext();
 

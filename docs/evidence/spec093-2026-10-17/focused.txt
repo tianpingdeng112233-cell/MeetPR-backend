@@ -1,0 +1,23 @@
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+
+ ✓ tests/admin.test.ts (25 tests) 1390ms
+   ✓ admin read-only API > queries every admin read model from the seeded fixtures without N+1 lookups 381ms
+ ✓ tests/events.test.ts (20 tests) 1440ms
+   ✓ POST /events > partial-accepts: keeps valid events, skips invalid ones, returns 204 309ms
+ ✓ tests/coach-applications.test.ts (16 tests | 1 skipped) 2725ms
+   ✓ coach applications > accepts an application and sends the Chinese receipt without duplicate pending rows 319ms
+   ✓ coach applications > sets the password from the welcome link, verifies email, logs in, and rejects replay 509ms
+   ✓ coach applications > receives existing student applications but refuses conversion, and allows rejection 404ms
+   ✓ coach applications > keeps setup links usable when a legacy six-digit attempt is wrong 735ms
+ ✓ tests/auth/email-recovery.test.ts (8 tests) 4325ms
+   ✓ email password recovery > resets the password, consumes the code, and revokes every old session 1154ms
+   ✓ email password recovery > persists every attempt first and invalidates a code after five wrong tries 996ms
+   ✓ email password recovery > enforces the reset per-email limit after ten attempts 1285ms
+
+ Test Files  4 passed (4)
+      Tests  68 passed | 1 skipped (69)
+   Start at  00:21:25
+   Duration  6.32s (transform 785ms, setup 45ms, collect 5.89s, tests 9.88s, environment 1ms, prepare 769ms)
+

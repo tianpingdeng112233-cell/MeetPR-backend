@@ -1,0 +1,6 @@
+
+> meetpr-backend@0.0.1 format:check /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+> prettier --check .
+
+Checking formatting...
+All matched files use Prettier code style!

@@ -1,0 +1,4 @@
+
+> meetpr-backend@0.0.1 build /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+> tsc -p tsconfig.build.json
+

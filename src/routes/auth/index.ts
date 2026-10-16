@@ -51,6 +51,7 @@ export type AuthConfig = Pick<
   | 'SELF_SIGNUP_ROLES'
   | 'APPLE_CLIENT_ID'
   | 'GOOGLE_CLIENT_IDS'
+  | 'COACH_ONBOARDING_ENABLED'
   | 'RESEND_API_KEY'
   | 'EMAIL_FROM'
   | 'SIWA_KEY_ID'
