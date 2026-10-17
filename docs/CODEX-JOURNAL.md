@@ -333,3 +333,12 @@ pnpm exec vitest run tests/migrations/0074-student-added-logs.test.ts tests/migr
 David 直驱：新增公开 API 回归，申请并审批成功后，邮箱登录返回 401 / AUTH_INVALID_CREDENTIALS；通过欢迎信令牌设置密码后，同一凭证登录成功且用户 ID 与审批回包一致。使用真实 bcrypt，邮件只走本地 mock。临时移除密码比较后新测试以「expected 200 to be 401」失败，恢复源码后定向 16 passed / 1 skipped；生产代码无变化。
 
 安装依赖、typecheck、lint、format:check、build 通过。初次基线全量有既有 plan exercise 删除 400/204 失败，独立重跑通过；增量全量在并行负载下有 3 条 5000ms 超时，单 worker 重跑为 158 文件 / 1237 passed / 1 skipped。skip 为既有真实 PostgreSQL 专用事务用例，本次未重复启动真实 PG。完整原始证据在本机 `/Users/david/Projects/scratch/spec093-closeout-20261017/`。独立 review-loop：Standards 0、Spec 0。未合并、未迁移、未部署、未触碰真实账号。
+
+## 2026-10-17 — spec 093 B0：两个老账号补邮箱身份
+
+- 交付范围：spec 048 §5 数据操作；本分支从 `origin/staging@9f0e735` 建独立 worktree，仅补执行事实记录。用户批准之前未对国内库执行写入。
+- 先由 David 在 DMS 运行只读查询：目标身份对应两个非测试老账号；目标邮箱占用查询为 0 行。备份含两行 users、0 行 user_identities。用户提供的完整备份已存仓库外私有目录（目录 0700、文件 0600）；脚本、备份和截图均不入公开仓。
+- 用户审阅脚本/备份并明确回复“同意”后，David 在 DMS 执行原子写入脚本。后验截图确认两条 email 身份与 verified=true，原手机号尾号保持不变。随后用户确认两个账号的邮箱登录、手机号登录和原数据均通过。
+- 写入脚本仅新增 email 身份、更新邮箱及验证时间，事务内对比其余 users 字段。备份哈希与完整验证边界见 [048 部署记录](deployment-048-2026-10-10.md)。本卡无代码、schema、构建产物、环境或 Global 部署改动。
+- 预执行保护与回滚在 PGlite 合成数据上验证；国内 RDS 未做回滚演练、未独立实测锁竞争。真实登录验证来源为 David，不声称代理自行验证。B0 完成不等于 B/W0/R-verify/W 或功能终审完成。
+- 本地交付检查：`pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm build` 均退出 0；全量复跑 157 文件 / 1219 测试通过。首次全量中既有 `tests/bind-requests.test.ts` 过期码断言失败（1218/1219），未改任何代码或测试；定向复跑 10/10、随后全量 1219/1219。未定位首次偶发失败根因，不声明已修复。原始日志 `/tmp/spec093-b0-test.log`、`/tmp/spec093-b0-bind-recheck.log`、`/tmp/spec093-b0-test-rerun.log`。
