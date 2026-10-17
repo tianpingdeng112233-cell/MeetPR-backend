@@ -352,3 +352,7 @@ David 已批准本轮国内 staging 的新全库备份、0075、两项 COACH_ONB
 本轮 web build、backend typecheck、format:check、build 通过；coach-applications 定向 16 passed / 1 skipped，skip 为既有真实 PG 专用事务测试。未改后端源码或迁移。OSS HTTPS HEAD 校验返回 200、no-cache、65281488 字节；David 确认测试机卸载旧签名包后新包装好、TestFlight 上限已改 200。这些仅证明下载安装与控制台配置，不代表业务全链路验收。
 
 浏览器控制连接两次超时，新的全库备份、DMS 0075 和 SAE 配置需 David 在控制台操作并提供结果；确认备份完成和迁移核对通过后才触发镜像部署。未向学员外发链接，未上传 iOS 包。
+
+## 2026-10-17 · Bundle iPhone TestFlight guidance
+
+David explicitly approved merge and CN staging deployment of plan-web #111. Bundle from merged web main a5611bb, built with empty VITE_API_BASE and approved CN TestFlight/Android URLs. Only generated web assets change; no new migration or environment change. Existing 0075 was verified in DMS (11 columns, 3 indexes, purpose NOT NULL default password_reset), and previous deployment 973f224 was verified by online bundle hash. Previous image is the rollback candidate for this asset-only update. Web regression 51 tests and build passed; independent Standards/Spec reviews both zero findings. Deployment verification will follow.
