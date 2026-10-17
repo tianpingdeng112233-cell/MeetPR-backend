@@ -273,3 +273,12 @@ pnpm exec vitest run tests/migrations/0074-student-added-logs.test.ts tests/migr
 | `pnpm format:check` | `All matched files use Prettier code style!` |
 
 `git diff --check` 通过。额外逐字核对：JOURNAL 原有前缀完整保留，只新增本卡一个节；SPEC、CONTEXT、MIGRATIONS-APPLIED 相对 HEAD 无 diff。未提交文件就是本卡交付，全部留在指定工作树内。
+
+## 2026-10-17 — spec 093 B0：两个老账号补邮箱身份
+
+- 交付范围：spec 048 §5 数据操作；本分支从 `origin/staging@9f0e735` 建独立 worktree，仅补执行事实记录。用户批准之前未对国内库执行写入。
+- 先由 David 在 DMS 运行只读查询：目标身份对应两个非测试老账号；目标邮箱占用查询为 0 行。备份含两行 users、0 行 user_identities。用户提供的完整备份已存仓库外私有目录（目录 0700、文件 0600）；脚本、备份和截图均不入公开仓。
+- 用户审阅脚本/备份并明确回复“同意”后，David 在 DMS 执行原子写入脚本。后验截图确认两条 email 身份与 verified=true，原手机号尾号保持不变。随后用户确认两个账号的邮箱登录、手机号登录和原数据均通过。
+- 写入脚本仅新增 email 身份、更新邮箱及验证时间，事务内对比其余 users 字段。备份哈希与完整验证边界见 [048 部署记录](deployment-048-2026-10-10.md)。本卡无代码、schema、构建产物、环境或 Global 部署改动。
+- 预执行保护与回滚在 PGlite 合成数据上验证；国内 RDS 未做回滚演练、未独立实测锁竞争。真实登录验证来源为 David，不声称代理自行验证。B0 完成不等于 B/W0/R-verify/W 或功能终审完成。
+- 本地交付检查：`pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm build` 均退出 0；全量复跑 157 文件 / 1219 测试通过。首次全量中既有 `tests/bind-requests.test.ts` 过期码断言失败（1218/1219），未改任何代码或测试；定向复跑 10/10、随后全量 1219/1219。未定位首次偶发失败根因，不声明已修复。原始日志 `/tmp/spec093-b0-test.log`、`/tmp/spec093-b0-bind-recheck.log`、`/tmp/spec093-b0-test-rerun.log`。
