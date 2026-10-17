@@ -342,3 +342,13 @@ David 直驱：新增公开 API 回归，申请并审批成功后，邮箱登录
 - 写入脚本仅新增 email 身份、更新邮箱及验证时间，事务内对比其余 users 字段。备份哈希与完整验证边界见 [048 部署记录](deployment-048-2026-10-10.md)。本卡无代码、schema、构建产物、环境或 Global 部署改动。
 - 预执行保护与回滚在 PGlite 合成数据上验证；国内 RDS 未做回滚演练、未独立实测锁竞争。真实登录验证来源为 David，不声称代理自行验证。B0 完成不等于 B/W0/R-verify/W 或功能终审完成。
 - 本地交付检查：`pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm build` 均退出 0；全量复跑 157 文件 / 1219 测试通过。首次全量中既有 `tests/bind-requests.test.ts` 过期码断言失败（1218/1219），未改任何代码或测试；定向复跑 10/10、随后全量 1219/1219。未定位首次偶发失败根因，不声明已修复。原始日志 `/tmp/spec093-b0-test.log`、`/tmp/spec093-b0-bind-recheck.log`、`/tmp/spec093-b0-test-rerun.log`。
+
+## 2026-10-17 · Spec 093 CN 网页下载地址发布产物（部署待执行）
+
+David 已批准本轮国内 staging 的新全库备份、0075、两项 COACH_ONBOARDING 配置、网页换装和镜像部署。六个业务 PR 已依次合并；本提交仅将已审网页代码的部署产物换入后端，不执行数据库或 SAE 操作。
+
+源代码：plan-web main `5c04ba442078cdc0e2bf59a93f6798753e7c2221`；与构建工作树 HEAD `fc58647` 的完整树无差异。构建环境为 `VITE_API_BASE=''`、`VITE_CN_TESTFLIGHT_URL=https://testflight.apple.com/join/aKmSgx4b`、`VITE_CN_ANDROID_URL=https://dl.meetpr.cn/android/meetpr-cn.apk`。入口 `assets/index-CO-K36rW.js`，SHA-256 `bcc89e16e5cba66d0723e99ec993515c281ac875e2377c84983380dcc9bdef49`；dist/web 全部文件哈希一致，同源 API 标记、两条安装地址与「粘贴邀请码」文案检查通过。此前同一入口构建已完成本地浏览器截图验证。
+
+本轮 web build、backend typecheck、format:check、build 通过；coach-applications 定向 16 passed / 1 skipped，skip 为既有真实 PG 专用事务测试。未改后端源码或迁移。OSS HTTPS HEAD 校验返回 200、no-cache、65281488 字节；David 确认测试机卸载旧签名包后新包装好、TestFlight 上限已改 200。这些仅证明下载安装与控制台配置，不代表业务全链路验收。
+
+浏览器控制连接两次超时，新的全库备份、DMS 0075 和 SAE 配置需 David 在控制台操作并提供结果；确认备份完成和迁移核对通过后才触发镜像部署。未向学员外发链接，未上传 iOS 包。
