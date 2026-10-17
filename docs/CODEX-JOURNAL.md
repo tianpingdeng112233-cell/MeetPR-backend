@@ -327,3 +327,9 @@ pnpm exec vitest run tests/migrations/0074-student-added-logs.test.ts tests/migr
 将 plan-web `594c9201fceb45e563f1a33ce77f8699819095d1`（W PR #110，含 W0 #109）以 `VITE_API_BASE='' VITE_CN_TESTFLIGHT_URL='' VITE_CN_ANDROID_URL='' npm run build` 构建，换入本分支 `web/`。入口 `assets/index-DcBIb7BC.js`；SHA-256 `94f403464b053e1352dcf464278aa37c7a8176f32e5a94a26f53c3ace6c7386c`。静态产物均与源 dist 逐文件哈希一致，空同源 base 标记通过、未带 localhost fixture 安装地址。安装配置尚空，页面显示安装未开放；不能把此候选当成真实下载开放。
 
 定向 `pnpm exec vitest run tests/coach-applications.test.ts`：15 passed / 1 skipped，含三条教练 HTML SPA fallback；真实 PG 事务用例此前独立 16/16。本次只换已审 W/W0 的构建产物，无后端源码变更。原始构建清单和本轮日志在仓外部署审查目录。0075、新镜像与 SAE 配置均未执行；等待全部代码完成后的统一批准，PR 不合并。
+
+## 2026-10-17 · Spec 093 合并前未设密登录回归
+
+David 直驱：新增公开 API 回归，申请并审批成功后，邮箱登录返回 401 / AUTH_INVALID_CREDENTIALS；通过欢迎信令牌设置密码后，同一凭证登录成功且用户 ID 与审批回包一致。使用真实 bcrypt，邮件只走本地 mock。临时移除密码比较后新测试以「expected 200 to be 401」失败，恢复源码后定向 16 passed / 1 skipped；生产代码无变化。
+
+安装依赖、typecheck、lint、format:check、build 通过。初次基线全量有既有 plan exercise 删除 400/204 失败，独立重跑通过；增量全量在并行负载下有 3 条 5000ms 超时，单 worker 重跑为 158 文件 / 1237 passed / 1 skipped。skip 为既有真实 PostgreSQL 专用事务用例，本次未重复启动真实 PG。完整原始证据在本机 `/Users/david/Projects/scratch/spec093-closeout-20261017/`。独立 review-loop：Standards 0、Spec 0。未合并、未迁移、未部署、未触碰真实账号。

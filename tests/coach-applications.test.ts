@@ -128,6 +128,39 @@ describe('coach applications', () => {
     ).toBe('COACH_APPLICATION_REVIEWED');
   });
 
+  it('rejects email login for an approved coach until the welcome-link password is set', async () => {
+    const { app, db, mail, adminId, auth } = await context();
+    await db
+      .insertInto('users')
+      .values({ id: adminId, role: 'admin', phone: null, password_hash: 'disabled-test-password' })
+      .execute();
+    const submitted = await request(app).post('/coach-applications').send(applicant);
+    expect(submitted.status).toBe(201);
+    const approved = await request(app)
+      .post(`/admin/coach-applications/${submitted.body.id as string}/approve`)
+      .set(auth);
+    expect(approved.status).toBe(200);
+    expect(approved.body.status).toBe('approved');
+
+    const credentials = { email: applicant.email, password: 'synthetic-coach-password' };
+    const rejected = await request(app).post('/auth/email/login').send(credentials);
+    expect(rejected.status).toBe(401);
+    expect(rejected.body).toEqual({ error: 'AUTH_INVALID_CREDENTIALS' });
+
+    const link = firstLink(mailContent(mail, 1).text);
+    const reset = await request(app)
+      .post('/auth/email/reset')
+      .send({
+        email: applicant.email,
+        token: new URLSearchParams(link.hash.slice(1)).get('token'),
+        newPassword: credentials.password,
+      });
+    expect(reset.status).toBe(204);
+    const accepted = await request(app).post('/auth/email/login').send(credentials);
+    expect(accepted.status).toBe(200);
+    expect(accepted.body.user.id).toBe(approved.body.user_id);
+  });
+
   it('sets the password from the welcome link, verifies email, logs in, and rejects replay', async () => {
     const { app, db, mail, adminId, auth } = await context();
     await db
