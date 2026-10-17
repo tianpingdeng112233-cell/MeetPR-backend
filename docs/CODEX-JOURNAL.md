@@ -274,6 +274,66 @@ pnpm exec vitest run tests/migrations/0074-student-added-logs.test.ts tests/migr
 
 `git diff --check` 通过。额外逐字核对：JOURNAL 原有前缀完整保留，只新增本卡一个节；SPEC、CONTEXT、MIGRATIONS-APPLIED 相对 HEAD 无 diff。未提交文件就是本卡交付，全部留在指定工作树内。
 
+## 2026-10-17 · Spec 093 卡 B（本地自检与独立审查完成，国内部署待执行）
+
+### 范围与现场
+
+- 按 David 提供的 CARDS/SPEC 开发，SPEC 为完整口径；IOS-HANDOFF 未使用。唯一写者在 `feat/093-coach-onboarding`，base `9f0e735`（现场 origin/staging），没有合并/commit/push/部署。
+- 开工检查 worktree/status/log、仓规/CONTEXT/FOLLOWUPS、engineering-workflow、impl-wave、tdd。基线 typecheck/lint/test 通过，157 文件/1219 测试。已核对 open PR：0071（#289）、0073（#294）已被占，staging 最新 0074，本卡取 0075。
+- B0 运维由主会话记录；本卡不读取或保存真实账号、邮箱、电话、备份或凭证。
+
+### 实装
+
+- B1：`coach_applications` + 公开申请，姓名/邮箱/可选联系方式/人数/设备校验；IP 30 次/小时、规范化邮箱 5 次/小时；中文确认信。按 SPEC §3.1 全状态同邮箱唯一（CARDS 的 pending-only 描述更窄），重复返回 `COACH_APPLICATION_EXISTS`，不再生成第二条。
+- B2：live admin 角色复核后的列表/通过/拒绝/重发。通过时在同一 DB 事务创建用户、邮箱身份、显示名、永久邀请码、7 天 setup token 与审批记录。现有用户表密码 NOT NULL，因此用不可供 bcrypt 登录的标记表示尚未设置密码，不改用户表。已注册学员返回 `COACH_APPLICATION_EMAIL_IS_STUDENT`，其余已占用账号返回 `COACH_APPLICATION_EMAIL_EXISTS`，不转角色、不覆盖原账号。
+- 邮件在 DB 提交后发送：网络副作用无法加入 PG 事务。返回 `receipt_email_sent`/`welcome_email_sent`/`result_email_sent=false` 明示投递失败；管理员和公开重发可以恢复。欢迎信严格按「设置密码 → 安装 App → 邀请学员」排列，后两项指向欢迎页锚点；拒绝结果也发邮件。未调用真实邮件服务。
+- B3：复用 `password_reset_codes`、`/auth/email/reset` 与原密码/会话撤销函数，0075 加 `purpose`，旧行默认 `password_reset`。setup token 为 256-bit 随机值、只存摘要、7 天有效、单次使用；旧六位码输入保持兼容且不会消耗 setup token。密码设置完成撤销全部未用 reset/setup 令牌；锁顺序统一为 user → code，避免重发/设密倒序锁。
+- B4：`GET /public/invites/:code` 限速 60 次/分钟、不消费次数，只返回 `{valid,coach_display_name}`；被撤销/过期/用尽/不存在均 false/null。只认仍为 coach 的拥有者。
+- B5：events 接受 `platform=web` 及五种入驻漏斗事件；属性仍严格枚举，不收自由文本。W0：admin users/list/detail 加 `email:string|null`，原 phone 可 null；搜索仍在前端。
+- 新功能只在 `COACH_ONBOARDING_ENABLED=true` 时启用。仅精确三个 HTML SPA 入口 `/coach`、`/coach/set-password`、`/coach/welcome` 绕过 coach API 认证；JSON 请求及其余 coach API 不绕过。欢迎信凭据放 URL fragment，不进入浏览器 HTTP 请求和访问日志。
+
+### 给 W 的 API 契约
+
+- `POST /coach-applications`：`{name,email,contact?,student_count,device}`；device 为 `iphone|android|both`，人数整数 0–100000。201 `{id,status:'pending',receipt_email_sent}`；重复 409 `COACH_APPLICATION_EXISTS`；校验 400；限速 429。
+- `GET /admin/coach-applications`：`{applications:[{id,name,email,contact,student_count,device,status,user_id,reviewed_by,reviewed_at,created_at}]}`。管理员 `POST /:id/approve|reject|resend` 挂在此路径下。approve 返回 `{id,status,user_id,welcome_email_sent}`；reject 返回 `{id,status,result_email_sent}`；resend 返回对应邮件的 sent 布尔字段。已审批状态再次审批返回 409 `COACH_APPLICATION_REVIEWED`；设置完成后重发返回 409 `COACH_SETUP_COMPLETE`。
+- `POST /coach-applications/resend {email}`：统一 204，按邮箱/IP 限速且超限静默；pending 重发确认信，rejected 重发结果，approved 且未设密码重发欢迎信。不存在/已完成不发送。
+- 欢迎信 `/coach/set-password#email=...&token=...`；页面读取 fragment 后 `POST /auth/email/reset {email,token,newPassword}`。成功 204，随后调用既有 email/login 获取会话。过期/无效 401 `AUTH_INVALID_RESET_CODE`；密码沿用 8 字符至 72 UTF-8 字节规则。
+- 欢迎页 `/coach/welcome#install` 与 `#invite`；当前永久码用已有认证 `GET /coach/invite-codes`，避免返回旧码。
+- events 新 name：`coach_application_submitted`、`coach_application_approved`、`coach_password_set`（props 空对象）；`invite_landing_open` 的 props `{device:iphone|android|desktop,in_wechat:boolean}`；`install_clicked` 的 props `{device:iphone|android}`。沿用已有 batch envelope。
+
+### 验证、红绿与边界
+
+- API/邮件边界定向测试：4 文件，68 passed / 1 skipped。全量：158 文件，1236 passed / 1 skipped。skip 是仅真实 PG 启用的事务竞争/回滚用例，不是未验证。
+- 本地独立 Docker PostgreSQL 18（仅 loopback、合成数据）跑同一 API suite：16/16 通过；每例从空 schema 建立依赖迁移，0075 连续执行两次，覆盖干净执行与重入。真实 PG 额外验证双审批竞争只成功一次、在创建账号后注入 DB 异常整笔回滚、移除故障后可重新通过。并非 RDS 实测。
+- 红阶段原始日志见 evidence：申请入口 404→201；setup 输入拒绝→成功登录；公开重发/查码缺入口；web platform 拒绝及 admin 无 email；旧六位码耗尽 setup token；确认信失败无法重发；拒绝后重复创建；拒绝无邮件；HTML `/coach` 被认证拦截。审批测试最初因错误的 NULL 密码 fixture 先失败，修正夹具时该切片实现已存在，所以不将其声称为有效的 API 先红证据。新增只验证既有能力的回归有首次即绿的情况。
+- typecheck、lint、format:check、build 均通过；lint 初次发现本卡 non-null assertion/格式问题，已修复，随后重跑 auth/onboarding 定向与真实 PG。完整原始输出在 `docs/evidence/spec093-2026-10-17/`。
+- 未验：国内 RDS 0075、staging 镜像部署、真实发信收信、真实浏览器新 W 页面、国内完整 curl 入驻链路、Global 实际部署。没有运行这些步骤，也没有宣布功能验收通过。
+
+### 部署交接（未执行）
+
+1. 按既有 runbook 备份国内库，执行 0075（包含 public search_path）；不得跳过数据操作授权。
+2. 部署本卡镜像，保持 Global 不动。CN 增加 `COACH_ONBOARDING_ENABLED=true` 与 `COACH_ONBOARDING_URL`（当前站点 origin）；沿用已配置 Resend 发件人/API key。loadConfig 在开启 gate 时要求这三项齐备。
+3. W 发布后由主会话用授权真实邮箱走申请→审批→收信→设密→登录→公开查码，留 RDS/部署/HTTP/收信证据。外部用户入驻放行仍受 SPEC 的 iOS CN 邮箱包前置约束。
+4. 回退关闭 gate/回退镜像，保留新增表、申请、邮箱身份与邀请数据；不删表或回滚用户数据。完整收货与合并由 David/Opus 决定。
+
+### 主代理独立复审
+
+- 固定基线 `9f0e735`，两名只读 reviewer 分别审 Standards 与 Spec，独立上下文、未交换结论，执行时间有重叠。Standards：0 finding；Spec：0 阻断 finding，一轮无代码返修。
+- 主代理亲读全部新增源码、迁移、测试及最终 diff，核对原始门禁和真实本地 PG 输出。邮件在提交后发送并保留可重发结果；0075 为新增表/列，回退保留数据。
+- 国内库未执行 0075，PR 等 David 合并；合并后还需备份、迁移、镜像与配置核验、真实链路证据。B0 的补邮箱批准与执行记录属于单独卡，不冒充本次 0075 已获批或已应用。W 仍按用户顺序等待 B 部署后开工。
+
+## 2026-10-17 · Spec 093 同源网页部署候选（未部署）
+
+将 plan-web `594c9201fceb45e563f1a33ce77f8699819095d1`（W PR #110，含 W0 #109）以 `VITE_API_BASE='' VITE_CN_TESTFLIGHT_URL='' VITE_CN_ANDROID_URL='' npm run build` 构建，换入本分支 `web/`。入口 `assets/index-DcBIb7BC.js`；SHA-256 `94f403464b053e1352dcf464278aa37c7a8176f32e5a94a26f53c3ace6c7386c`。静态产物均与源 dist 逐文件哈希一致，空同源 base 标记通过、未带 localhost fixture 安装地址。安装配置尚空，页面显示安装未开放；不能把此候选当成真实下载开放。
+
+定向 `pnpm exec vitest run tests/coach-applications.test.ts`：15 passed / 1 skipped，含三条教练 HTML SPA fallback；真实 PG 事务用例此前独立 16/16。本次只换已审 W/W0 的构建产物，无后端源码变更。原始构建清单和本轮日志在仓外部署审查目录。0075、新镜像与 SAE 配置均未执行；等待全部代码完成后的统一批准，PR 不合并。
+
+## 2026-10-17 · Spec 093 合并前未设密登录回归
+
+David 直驱：新增公开 API 回归，申请并审批成功后，邮箱登录返回 401 / AUTH_INVALID_CREDENTIALS；通过欢迎信令牌设置密码后，同一凭证登录成功且用户 ID 与审批回包一致。使用真实 bcrypt，邮件只走本地 mock。临时移除密码比较后新测试以「expected 200 to be 401」失败，恢复源码后定向 16 passed / 1 skipped；生产代码无变化。
+
+安装依赖、typecheck、lint、format:check、build 通过。初次基线全量有既有 plan exercise 删除 400/204 失败，独立重跑通过；增量全量在并行负载下有 3 条 5000ms 超时，单 worker 重跑为 158 文件 / 1237 passed / 1 skipped。skip 为既有真实 PostgreSQL 专用事务用例，本次未重复启动真实 PG。完整原始证据在本机 `/Users/david/Projects/scratch/spec093-closeout-20261017/`。独立 review-loop：Standards 0、Spec 0。未合并、未迁移、未部署、未触碰真实账号。
+
 ## 2026-10-17 — spec 093 B0：两个老账号补邮箱身份
 
 - 交付范围：spec 048 §5 数据操作；本分支从 `origin/staging@9f0e735` 建独立 worktree，仅补执行事实记录。用户批准之前未对国内库执行写入。

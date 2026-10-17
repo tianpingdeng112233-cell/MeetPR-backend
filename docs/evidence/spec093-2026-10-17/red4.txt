@@ -1,0 +1,62 @@
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+
+ ❯ tests/coach-applications.test.ts (5 tests | 2 failed) 4434ms
+   ✓ coach applications > accepts an application and sends the Chinese receipt without duplicate pending rows 1443ms
+   ✓ coach applications > lets only a live admin approve once and delivers a seven-day setup link 539ms
+   ✓ coach applications > sets the password from the welcome link, verifies email, logs in, and rejects replay 1856ms
+   × coach applications > resends an approved incomplete setup and invalidates the previous link 290ms
+     → expected 404 to be 204 // Object.is equality
+   × coach applications > exposes only invite validity and coach name without consuming a use 304ms
+     → expected { error: 'not_found', …(1) } to deeply equal { valid: true, …(1) }
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/coach-applications.test.ts > coach applications > resends an approved incomplete setup and invalidates the previous link
+AssertionError: expected 404 to be 204 // Object.is equality
+
+- Expected
++ Received
+
+- 204
++ 404
+
+ ❯ tests/coach-applications.test.ts:78:109
+     76|     const oldText = JSON.parse(mail.mock.calls[1]![1]!.body as string)…
+     77|     const oldToken = new URL(/http:\/\/localhost:3000\/\S+/.exec(oldTe…
+     78|     expect((await request(app).post('/coach-applications/resend').send…
+       |                                                                                                             ^
+     79|     expect(mail.mock.calls).toHaveLength(3);
+     80|     expect((await request(app).post('/auth/email/reset').send({ email:…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/coach-applications.test.ts > coach applications > exposes only invite validity and coach name without consuming a use
+AssertionError: expected { error: 'not_found', …(1) } to deeply equal { valid: true, …(1) }
+
+- Expected
++ Received
+
+  Object {
+-   "coach_display_name": "示例教练",
+-   "valid": true,
++   "error": "not_found",
++   "path": "/public/invites/abcdefghjk",
+  }
+
+ ❯ tests/coach-applications.test.ts:90:101
+     88|     await db.insertInto('coach_profiles').values({ user_id: user.id, d…
+     89|     await db.insertInto('invite_codes').values({ coach_id: user.id, co…
+     90|     for (let i = 0; i < 2; i++) expect((await request(app).get('/publi…
+       |                                                                                                     ^
+     91|     await db.updateTable('invite_codes').set({ revoked_at: new Date() …
+     92|     expect((await request(app).get('/public/invites/ABCDEFGHJK')).body…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 3 passed (5)
+   Start at  00:14:28
+   Duration  8.86s (transform 1.09s, setup 149ms, collect 2.87s, tests 4.43s, environment 3ms, prepare 311ms)
+

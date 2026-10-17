@@ -140,7 +140,7 @@ export const VIDEO_MARKER_LEVELS = ['info', 'warn', 'bad'] as const;
 // Analytics event platform. The column is text for forward-compat; this const
 // is the current closed set (SPEC 008 §6). 'android' added 2026-07-19 for the
 // RN Android client (meetpr-rn W0).
-export const EVENT_PLATFORMS = ['ios', 'android'] as const;
+export const EVENT_PLATFORMS = ['ios', 'android', 'web'] as const;
 export const SESSION_STATUSES = ['in_progress', 'completed', 'partial'] as const;
 export const STUDENT_EVENT_TYPES = ['session_completed', 'session_partial', 'pr_e1rm'] as const;
 export const SIGNAL_TYPES = ['missed_training', 'pr_congrats'] as const;
@@ -231,7 +231,22 @@ export interface AuthChallengesTable {
   issued_at: Generated<Date>;
 }
 
+export interface CoachApplicationsTable {
+  id: Generated<string>;
+  name: string;
+  email: string;
+  contact: NullableColumn<string>;
+  student_count: number;
+  device: 'iphone' | 'android' | 'both';
+  status: Generated<'pending' | 'approved' | 'rejected'>;
+  user_id: NullableColumn<string>;
+  reviewed_by: NullableColumn<string>;
+  reviewed_at: NullableColumn<Date>;
+  created_at: Generated<Date>;
+}
+
 export interface PasswordResetCodesTable {
+  purpose: Generated<'password_reset' | 'coach_setup'>;
   id: Generated<string>;
   user_id: string;
   code_hash: string;
@@ -241,7 +256,10 @@ export interface PasswordResetCodesTable {
   created_at: Generated<Date>;
 }
 
-export interface EmailSignupCodesTable extends Omit<PasswordResetCodesTable, 'user_id'> {
+export interface EmailSignupCodesTable extends Omit<
+  PasswordResetCodesTable,
+  'user_id' | 'purpose'
+> {
   email: string;
 }
 
@@ -825,6 +843,7 @@ export interface Database {
   users: UsersTable;
   user_identities: UserIdentitiesTable;
   auth_challenges: AuthChallengesTable;
+  coach_applications: CoachApplicationsTable;
   password_reset_codes: PasswordResetCodesTable;
   email_signup_codes: EmailSignupCodesTable;
   sessions: SessionsTable;

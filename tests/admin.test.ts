@@ -95,6 +95,7 @@ function makeContext(): TestContext {
   });
   mem.public.none(fs.readFileSync('db/migrations/0001-init-users.sql', 'utf8'));
   mem.public.none(fs.readFileSync('db/migrations/0044-add-admin-role.sql', 'utf8'));
+  mem.public.none(fs.readFileSync('db/migrations/0064-global-identity.sql', 'utf8'));
   mem.public.none(`
     CREATE TABLE coach_profiles (
       user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -659,5 +660,26 @@ describe('admin read-only API', () => {
     });
     expectNoSensitiveFields(adminResponse.body);
     await ctx.db.destroy();
+  });
+});
+
+describe('admin email visibility', () => {
+  it('returns email for client-side search and preserves a null phone', async () => {
+    const ctx = makeContext();
+    await ctx.db
+      .updateTable('users')
+      .set({ email: 'searchable@example.com', phone: null })
+      .where('id', '=', ids.coach)
+      .execute();
+    const list = await request(ctx.app).get('/admin/users').set(auth(ctx.tokens.admin));
+    expect(list.status).toBe(200);
+    expect(list.body.users.find((u: { id: string }) => u.id === ids.coach)).toMatchObject({
+      email: 'searchable@example.com',
+      phone: null,
+    });
+    const detail = await request(ctx.app)
+      .get(`/admin/users/${ids.coach}`)
+      .set(auth(ctx.tokens.admin));
+    expect(detail.body.user.email).toBe('searchable@example.com');
   });
 });

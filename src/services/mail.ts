@@ -96,3 +96,52 @@ async function sendMail(
     throw new Error(`Resend returned ${String(response.status)}`);
   }
 }
+
+export async function sendCoachApplicationReceipt(
+  input: MailInput,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  return sendMail(
+    input,
+    {
+      subject: 'MeetPR 已收到你的教练申请',
+      text: '已收到你的教练申请，通常 1 个工作日内处理，结果会发到这个邮箱。',
+      html: '<p>已收到你的教练申请，通常 1 个工作日内处理，结果会发到这个邮箱。</p>',
+    },
+    fetchImpl,
+  );
+}
+
+export async function sendCoachWelcomeEmail(
+  input: MailInput & { url: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  const escape = (value: string) =>
+    value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const installUrl = new URL('/coach/welcome#install', input.url).toString();
+  const inviteUrl = new URL('/coach/welcome#invite', input.url).toString();
+  return sendMail(
+    input,
+    {
+      subject: '欢迎加入 MeetPR 内测',
+      text: `你的教练申请已通过。\n设置密码：${input.url}\n链接 7 天内有效。\n安装 App：${installUrl}\n邀请学员：${inviteUrl}\n在 App 里选「登录」，用此邮箱和新密码。不要选「注册」。`,
+      html: `<p>你的教练申请已通过。</p><p><a href="${escape(input.url)}">设置密码</a></p><p>链接 7 天内有效。</p><p><a href="${escape(installUrl)}">安装 App</a></p><p><a href="${escape(inviteUrl)}">邀请学员</a></p><p><strong>在 App 里选「登录」，用此邮箱和新密码。不要选「注册」。</strong></p>`,
+    },
+    fetchImpl,
+  );
+}
+
+export async function sendCoachRejectionEmail(
+  input: MailInput,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  return sendMail(
+    input,
+    {
+      subject: 'MeetPR 教练申请结果',
+      text: '你的本次 MeetPR 教练申请未通过。如有疑问，请联系邀请你参与内测的负责人。',
+      html: '<p>你的本次 MeetPR 教练申请未通过。如有疑问，请联系邀请你参与内测的负责人。</p>',
+    },
+    fetchImpl,
+  );
+}

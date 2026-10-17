@@ -79,6 +79,14 @@ function ev<N extends string, T extends z.ZodRawShape>(name: N, props: z.ZodObje
 // name enum allowlist + per-event strict props (SPEC §8). props are ids/int/bool/
 // enum ONLY — never free text or measured values.
 export const EventSchema = z.discriminatedUnion('name', [
+  ev('coach_application_submitted', z.object({})),
+  ev('coach_application_approved', z.object({})),
+  ev('coach_password_set', z.object({})),
+  ev(
+    'invite_landing_open',
+    z.object({ device: z.enum(['iphone', 'android', 'desktop']), in_wechat: bool }),
+  ),
+  ev('install_clicked', z.object({ device: z.enum(['iphone', 'android']) })),
   ev('app_open', z.object({ cold: bool })),
   ev('screen_view', z.object({ screen: z.enum(SCREENS) })),
   ev(

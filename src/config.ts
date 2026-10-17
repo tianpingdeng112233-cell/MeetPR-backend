@@ -92,6 +92,8 @@ export const ConfigSchema = z
     APPLE_CLIENT_ID: z.string().min(1).optional(),
     GOOGLE_CLIENT_ID: z.string().optional(),
     EMAIL_SIGNUP_VERIFICATION: z.enum(['off', 'required']).default('off'),
+    COACH_ONBOARDING_ENABLED: BooleanEnvSchema,
+    COACH_ONBOARDING_URL: z.string().url().optional(),
     MAIL_LOCALE: z.enum(['en', 'zh']).default('en'),
     RESEND_API_KEY: z.string().min(1).optional(),
     EMAIL_FROM: z.string().min(1).optional(),
@@ -153,6 +155,16 @@ export const ConfigSchema = z
       }
     }
 
+    if (config.COACH_ONBOARDING_ENABLED === true) {
+      for (const field of ['RESEND_API_KEY', 'EMAIL_FROM', 'COACH_ONBOARDING_URL'] as const) {
+        if (!config[field])
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: `${field} is required when coach onboarding is enabled`,
+          });
+      }
+    }
     if (config.EMAIL_SIGNUP_VERIFICATION === 'required') {
       for (const field of ['RESEND_API_KEY', 'EMAIL_FROM'] as const) {
         if (config[field] === undefined) {

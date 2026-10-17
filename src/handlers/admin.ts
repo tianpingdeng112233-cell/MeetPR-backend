@@ -12,6 +12,7 @@ interface SafeUserRow {
   display_name: string | null;
   role: UserRole;
   phone: string | null;
+  email: string | null;
   created_at: Date;
 }
 
@@ -37,6 +38,7 @@ export interface AdminUser {
   displayName: string | null;
   role: UserRole;
   phone: string | null;
+  email: string | null;
   createdAt: string;
   relation: AdminUserRelation;
 }
@@ -62,6 +64,7 @@ function safeUsersQuery(db: Kysely<Database>) {
       'u.id as id',
       'u.role as role',
       'u.phone as phone',
+      'u.email as email',
       'u.created_at as created_at',
       sql<string | null>`coalesce(cp.display_name, sp.display_name)`.as('display_name'),
     ]);
@@ -131,6 +134,7 @@ function toAdminUser(row: SafeUserRow, bonds: BondIndex): AdminUser {
     displayName: row.display_name,
     role: row.role,
     phone: row.phone,
+    email: row.email,
     createdAt: timestamp(row.created_at),
     relation: userRelation(row, bonds),
   };

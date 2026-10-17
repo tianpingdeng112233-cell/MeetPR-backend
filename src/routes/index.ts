@@ -7,6 +7,9 @@ import type { Logger } from '../logger';
 import { createOptionalAuth } from '../middleware/auth';
 import type { RealtimeHub } from '../realtime/hub';
 import { adminRouter } from './admin';
+import { coachOnboardingPagesRouter } from './coach-onboarding-pages';
+import { publicInvitesRouter } from './public-invites';
+import { coachApplicationsRouter } from './coach-applications';
 import { authRouter } from './auth';
 import { coachBindRequestsRouter, studentBindRequestsRouter } from './bind-requests';
 import { coachRouter } from './coach';
@@ -46,8 +49,13 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
     res.status(200).json({ status: 'ok' });
   });
 
+  if (deps.config.COACH_ONBOARDING_ENABLED === true) {
+    app.use(coachOnboardingPagesRouter());
+    app.use('/coach-applications', coachApplicationsRouter(deps));
+    app.use('/public/invites', publicInvitesRouter(deps.db));
+  }
   app.use('/auth', authRouter({ config: deps.config, db: deps.db, logger: deps.logger }));
-  app.use('/admin', deps.requireAuth, adminRouter({ db: deps.db }));
+  app.use('/admin', deps.requireAuth, adminRouter({ db: deps.db, onboarding: deps }));
   app.use(
     '/plans',
     deps.requireAuth,
