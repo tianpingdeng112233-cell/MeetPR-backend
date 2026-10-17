@@ -321,3 +321,9 @@ pnpm exec vitest run tests/migrations/0074-student-added-logs.test.ts tests/migr
 - 固定基线 `9f0e735`，两名只读 reviewer 分别审 Standards 与 Spec，独立上下文、未交换结论，执行时间有重叠。Standards：0 finding；Spec：0 阻断 finding，一轮无代码返修。
 - 主代理亲读全部新增源码、迁移、测试及最终 diff，核对原始门禁和真实本地 PG 输出。邮件在提交后发送并保留可重发结果；0075 为新增表/列，回退保留数据。
 - 国内库未执行 0075，PR 等 David 合并；合并后还需备份、迁移、镜像与配置核验、真实链路证据。B0 的补邮箱批准与执行记录属于单独卡，不冒充本次 0075 已获批或已应用。W 仍按用户顺序等待 B 部署后开工。
+
+## 2026-10-17 · Spec 093 同源网页部署候选（未部署）
+
+将 plan-web `594c9201fceb45e563f1a33ce77f8699819095d1`（W PR #110，含 W0 #109）以 `VITE_API_BASE='' VITE_CN_TESTFLIGHT_URL='' VITE_CN_ANDROID_URL='' npm run build` 构建，换入本分支 `web/`。入口 `assets/index-DcBIb7BC.js`；SHA-256 `94f403464b053e1352dcf464278aa37c7a8176f32e5a94a26f53c3ace6c7386c`。静态产物均与源 dist 逐文件哈希一致，空同源 base 标记通过、未带 localhost fixture 安装地址。安装配置尚空，页面显示安装未开放；不能把此候选当成真实下载开放。
+
+定向 `pnpm exec vitest run tests/coach-applications.test.ts`：15 passed / 1 skipped，含三条教练 HTML SPA fallback；真实 PG 事务用例此前独立 16/16。本次只换已审 W/W0 的构建产物，无后端源码变更。原始构建清单和本轮日志在仓外部署审查目录。0075、新镜像与 SAE 配置均未执行；等待全部代码完成后的统一批准，PR 不合并。
