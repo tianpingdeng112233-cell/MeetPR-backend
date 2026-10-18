@@ -491,7 +491,7 @@ describe('coach applications', () => {
   });
   it('serves public coach page navigations while keeping coach APIs authenticated', async () => {
     const { app } = await context();
-    for (const path of ['/coach', '/coach/set-password', '/coach/welcome']) {
+    for (const path of ['/coach', '/coach/set-password', '/coach/welcome', '/coach/login']) {
       const response = await request(app).get(path).set('Accept', 'text/html');
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toContain('text/html');
@@ -500,5 +500,9 @@ describe('coach applications', () => {
       401,
     );
     expect((await request(app).get('/coach').set('Accept', 'application/json')).status).toBe(401);
+    expect((await request(app).get('/coach/login').set('Accept', 'application/json')).status).toBe(
+      401,
+    );
+    expect((await request(app).get('/coach/login')).status).toBe(401);
   });
 });

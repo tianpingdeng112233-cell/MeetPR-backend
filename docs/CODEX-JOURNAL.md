@@ -364,3 +364,5 @@ David 现场要求欢迎页直接进入教练网页登录，并重写欢迎邮�
 同时换装 plan-web #112（源码 `3388783`，合并 `dc6dec9`）产物，确保新登录路由与邮件同时生效。构建使用同源 API、既有 CN TestFlight/APK 链接；入口 `assets/index-CWxslhdL.js` SHA-256 `f8627d92270ea73755c96250b3b4f7452a0fa72f6cb406c53e5a5d50fdbe1632`。无迁移或环境变量修改，Global 不部署。
 
 验证：邮件回归先红后绿；backend typecheck/lint/format:check/build 通过，158 文件 / 1238 tests passed / 1 skipped；web 93 文件 / 921 tests 通过与生产构建通过。亲看浏览器登录页面和合成邮件 HTML 预览，截图 `scratch/coach-login-mail-20261018/`；未发真实测试邮件。独立 Standards / Spec 两轴均 0 findings。旧邮箱内已发送邮件内容不会随模板更新。
+
+部署前联调发现 backend 的 `/coach` API 认证会拦住新增的 `/coach/login` 浏览器导航。已将该精确路径加入既有 onboarding 网页 router（仍受 COACH_ONBOARDING_ENABLED 门控）；回归先红 401→预期 200，修复后 HTML 导航 200、JSON/默认 Accept 401，教练数据 API 仍 401。最终全量 1238 pass / 1 skip 及 typecheck/lint/format/build 再次通过。
