@@ -120,12 +120,47 @@ export async function sendCoachWelcomeEmail(
     value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   const installUrl = new URL('/coach/welcome#install', input.url).toString();
   const inviteUrl = new URL('/coach/welcome#invite', input.url).toString();
+  const loginUrl = new URL('/coach/login', input.url).toString();
+  const intro = `你的教练申请已通过，账号已开通。登录邮箱：${input.to}。请按以下顺序开始使用。`;
+  const steps = [
+    {
+      title: '1. 设置密码',
+      description:
+        '先为教练账号设置密码。设置密码链接 7 天内有效。之后在 App 和网页都使用这个邮箱和同一密码登录。',
+      label: '设置我的密码',
+      url: input.url,
+    },
+    {
+      title: '2. 安装 App 并登录',
+      description:
+        '用手机打开安装指南，按页面提示安装 MeetPR 国内版。\niPhone：先从 App Store 下载 TestFlight，再回到指南打开测试邀请，安装 MeetPR。\n安卓：按指南下载安装包；首次安装按系统提示允许安装。\n装好后选择「登录」，输入申请内测时的邮箱和刚设置的密码。不要选「注册」，注册入口是给学员使用的。',
+      label: '打开 App 安装指南',
+      url: installUrl,
+    },
+    {
+      title: '3. 登录教练网页',
+      description:
+        '需要在电脑上管理学员、编辑和发布训练计划时，打开下面的登录页，使用同一个邮箱和密码登录。',
+      label: '登录教练网页',
+      url: loginUrl,
+    },
+    {
+      title: '4. 邀请学员',
+      description:
+        '打开入驻指南，在「邀请学员」中点击「复制邀请消息」，把整段消息发给学员。如果页面要求登录，仍使用同一个邮箱和密码。\n学员按消息安装 App、注册并提交邀请码后，你在 App「接收」里确认绑定。',
+      label: '打开我的邀请指南',
+      url: inviteUrl,
+    },
+  ];
   return sendMail(
     input,
     {
       subject: '欢迎加入 MeetPR 内测',
-      text: `你的教练申请已通过。\n设置密码：${input.url}\n链接 7 天内有效。\n安装 App：${installUrl}\n邀请学员：${inviteUrl}\n在 App 里选「登录」，用此邮箱和新密码。不要选「注册」。`,
-      html: `<p>你的教练申请已通过。</p><p><a href="${escape(input.url)}">设置密码</a></p><p>链接 7 天内有效。</p><p><a href="${escape(installUrl)}">安装 App</a></p><p><a href="${escape(inviteUrl)}">邀请学员</a></p><p><strong>在 App 里选「登录」，用此邮箱和新密码。不要选「注册」。</strong></p>`,
+      text: [
+        intro,
+        ...steps.map((step) => `${step.title}\n${step.description}\n${step.label}：${step.url}`),
+      ].join('\n\n'),
+      html: `<p>${escape(intro)}</p>${steps.map((step) => `<h2>${escape(step.title)}</h2><p>${escape(step.description).replace(/\n/g, '<br>')}</p><p><a href="${escape(step.url)}">${escape(step.label)}</a></p>`).join('')}`,
     },
     fetchImpl,
   );

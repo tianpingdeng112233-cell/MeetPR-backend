@@ -4,6 +4,7 @@ import {
   sendPasswordResetEmail,
   sendSignupCodeEmail,
   sendAlreadyRegisteredEmail,
+  sendCoachWelcomeEmail,
 } from '../../src/services/mail';
 
 describe('Resend mail service', () => {
@@ -121,5 +122,41 @@ describe('localized email content', () => {
       expect(body).toContain('ignore');
       expect(body).toContain(send === sendAlreadyRegisteredEmail ? 'password' : '10 minutes');
     }
+  });
+});
+
+describe('coach welcome guide', () => {
+  it('gives ordered setup steps and a token-free coach login link in both formats', async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response(null, { status: 202 })),
+    );
+    await sendCoachWelcomeEmail(
+      {
+        apiKey: 'test-key',
+        from: 'test@example.com',
+        to: 'coach@example.com',
+        url: 'https://meetpr.example/coach/set-password?token=synthetic&email=coach%40example.com',
+      },
+      fetchMock,
+    );
+    const payload = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as {
+      text: string;
+      html: string;
+    };
+    for (const body of [payload.text, payload.html]) {
+      expect(body.indexOf('1. 设置密码')).toBeLessThan(body.indexOf('2. 安装 App 并登录'));
+      expect(body.indexOf('2. 安装 App 并登录')).toBeLessThan(body.indexOf('3. 登录教练网页'));
+      expect(body.indexOf('3. 登录教练网页')).toBeLessThan(body.indexOf('4. 邀请学员'));
+      expect(body).toContain('coach@example.com');
+      expect(body).toContain('App Store');
+      expect(body).toContain('TestFlight');
+      expect(body).toContain('7 天');
+      expect(body).toContain('https://meetpr.example/coach/login');
+      expect(body).toContain('复制邀请消息');
+      expect(body).toContain('「接收」');
+    }
+    expect(payload.html).toContain('href="https://meetpr.example/coach/login"');
+    expect(payload.html).toContain('token=synthetic&amp;email=');
+    expect(payload.html).not.toContain('/coach/login?');
   });
 });
