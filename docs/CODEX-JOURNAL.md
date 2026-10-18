@@ -356,3 +356,11 @@ David 已批准本轮国内 staging 的新全库备份、0075、两项 COACH_ONB
 ## 2026-10-17 · Bundle iPhone TestFlight guidance
 
 David explicitly approved merge and CN staging deployment of plan-web #111. Bundle from merged web main a5611bb, built with empty VITE_API_BASE and approved CN TestFlight/Android URLs. Only generated web assets change; no new migration or environment change. Existing 0075 was verified in DMS (11 columns, 3 indexes, purpose NOT NULL default password_reset), and previous deployment 973f224 was verified by online bundle hash. Previous image is the rollback candidate for this asset-only update. Web regression 51 tests and build passed; independent Standards/Spec reviews both zero findings. Deployment verification will follow.
+
+## 2026-10-18 · Coach welcome email and web login correction
+
+David 现场要求欢迎页直接进入教练网页登录，并重写欢迎邮件以明确流程。邮件现在按设置密码、安装并登录 App、登录教练网页、邀请学员四步说明；保留 7 天设密有效期，提示 App/网页共用申请邮箱与密码、教练不要注册、iPhone 先装 TestFlight、学员提交后在 App「接收」确认。HTML/纯文本共用步骤内容，网页登录链接为 `/coach/login`，不附带设密 token。
+
+同时换装 plan-web #112（源码 `3388783`，合并 `dc6dec9`）产物，确保新登录路由与邮件同时生效。构建使用同源 API、既有 CN TestFlight/APK 链接；入口 `assets/index-CWxslhdL.js` SHA-256 `f8627d92270ea73755c96250b3b4f7452a0fa72f6cb406c53e5a5d50fdbe1632`。无迁移或环境变量修改，Global 不部署。
+
+验证：邮件回归先红后绿；backend typecheck/lint/format:check/build 通过，158 文件 / 1238 tests passed / 1 skipped；web 93 文件 / 921 tests 通过与生产构建通过。亲看浏览器登录页面和合成邮件 HTML 预览，截图 `scratch/coach-login-mail-20261018/`；未发真实测试邮件。独立 Standards / Spec 两轴均 0 findings。旧邮箱内已发送邮件内容不会随模板更新。
