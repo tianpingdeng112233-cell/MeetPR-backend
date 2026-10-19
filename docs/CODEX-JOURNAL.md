@@ -366,3 +366,22 @@ David 现场要求欢迎页直接进入教练网页登录，并重写欢迎邮�
 验证：邮件回归先红后绿；backend typecheck/lint/format:check/build 通过，158 文件 / 1238 tests passed / 1 skipped；web 93 文件 / 921 tests 通过与生产构建通过。亲看浏览器登录页面和合成邮件 HTML 预览，截图 `scratch/coach-login-mail-20261018/`；未发真实测试邮件。独立 Standards / Spec 两轴均 0 findings。旧邮箱内已发送邮件内容不会随模板更新。
 
 部署前联调发现 backend 的 `/coach` API 认证会拦住新增的 `/coach/login` 浏览器导航。已将该精确路径加入既有 onboarding 网页 router（仍受 COACH_ONBOARDING_ENABLED 门控）；回归先红 401→预期 200，修复后 HTML 导航 200、JSON/默认 Accept 401，教练数据 API 仍 401。最终全量 1238 pass / 1 skip 及 typecheck/lint/format/build 再次通过。
+
+## 2026-10-19 · Spec 051：HTTP 验收测试已补，业务红绿受沙箱阻塞
+
+- 工作位置固定为 `MeetPR-backend-wt-051`，分支 `feat/051-exercise-stats-filtered-history`，基线 `cd9241e`。临时文件创建、删除成功；未在主仓或其他目录施工。SPEC 仍标为 Draft，与仓规要求 InProgress 不一致；本次用户明确给出实施卡，未擅改 SPEC 状态。
+- 本轮仅在 `tests/exercise-stats.test.ts` 新增 21 个 HTTP 用例，按 SPEC 验收 1–7 覆盖：完整旧响应加 video_id、最新且归属正确的 ready set_video、同日顶组/退让行区分、混合处方次数、按 logged_date 最近五条、额外组与视频、reps 单独传入及非法/边界参数。原有 15 个测试及断言未修改；不新增测试 seam。生产 handler 和 route 尚未实现。
+- 环境差异：现场没有 node_modules，首次 npm test/typecheck 分别报 vitest/tsc command not found；npm ci 又报 package.json 与 package-lock.json 不同步。将本机 pnpm 缓存复制到当前 worktree 后，使用 `pnpm install --offline --frozen-lockfile --ignore-scripts --store-dir .spec051-pnpm-store` 恢复锁定依赖，478 个包全部来自缓存。未修改任何依赖清单/锁文件，未运行会写共享 Git hooks 的安装脚本。临时缓存已删除。
+- 实际执行证据：恢复依赖后的基线 `npm test` 为 736 passed / 502 failed / 1 skipped（158 文件）；新增用例后的 `npm test -- tests/exercise-stats.test.ts` 为 0 passed / 36 failed / 36 unhandled errors；最终 `npm test` 为 736 passed / 523 failed / 1 skipped（112 文件通过、46 文件失败）。HTTP 监听被当前沙箱拒绝，原始错误 `Error: listen EPERM: operation not permitted 0.0.0.0`，部分既有测试也报 127.0.0.1；Supertest 随后因 server.address() 为 null 报 reading 'port'。这些失败没有到达接口业务断言，不能作为业务红测或功能缺陷证据。
+- 定向首次运行另发现新 fixture 重复使用同一处方行的 set_index 违反既有唯一约束，已改为跨日期使用不同 set_index；再次运行全部 36 条仅剩监听权限阻塞。没有为了绕过沙箱改动测试基础设施或 seam。
+- `npm run typecheck`、`npm run lint`、定向 ESLint/Prettier、`git diff --check` 均通过；最终测试版本再次 typecheck 通过。独立只读 code-review：Standards 0 findings、Spec 0 findings，仅证明测试静态审查，不代表验收通过。
+- 原始输出保留在当前 worktree 的忽略文件 `.spec051-baseline-test.log`、`.spec051-red-test.log`、`.spec051-final-test.log`。没有业务 red/green 证据，因此遵守“先确认业务红测再实现”的要求，停在测试阶段；验收 1–8 未通过，功能未完成。续作需要允许 HTTP 测试监听本地端口的执行环境：先运行已有新增测试确认预期业务失败，再在本卡 handler/route 范围实现，最后跑定向、全量测试与 typecheck。未 commit、push、开 PR、部署或改迁移。
+
+## 2026-10-19 · Spec 051：接续外部红测完成实现，HTTP 绿测待 Claude 外跑
+
+- 红测来源：David 本轮转述 Claude 已在沙箱外执行 `npx vitest run tests/exercise-stats.test.ts`，结果 36 条中 9 failed / 27 passed；失败是带 sets/reps 被旧校验返回 400，以及缺少 filtered_sessions/video_id 等业务断言。按本轮明确授权采用该证据进入实现，不重复造红测；这不是 Codex 本地实测结果。
+- 本轮修改文件：`src/handlers/exercise-stats.ts`、`src/routes/exercise-stats.ts`、`docs/CODEX-JOURNAL.md`。handler 为组返回最新本人 ready set_video 的 video_id，并由其是否为空计算 has_video；两个历史列表共用组序列化。仅在 sets 有值时查询处方，按 plan_exercise_id + logged_date 形成记录，以 plan_sets 行数及全部相同的 target_reps 匹配，保留额外组，组内 set_index 升序、记录日期倒序最多五条；无匹配为空数组，无 sets 时不新增 filtered_sessions。共享日志查询只额外选出已连接的 plan_exercise_id，原统计及 overview 响应不变。
+- route 对 detail 接受 sets 1–20、reps 1–50 的整数字符串，非法参数沿用 validationEnvelope 返回 400；有效 reps 单独传入只校验、不筛选。overview 保持原有严格查询校验，鉴权及归属校验不改。视频“最新”按 created_at 倒序，时间相同时用 id 倒序稳定选取。
+- 测试文件本轮没有修改；36 条用例原样交接。SHA-256：`f34fbf40c1e6ec69d29e397def309818018f7f2fc7123b1cf3d6f555b32e24e9`。没有锁文件、依赖清单、迁移或其他端点改动。
+- 本地验证：初次 typecheck/lint 发现路由两种 Zod 校验结果合并后过滤字段类型丢失，已显式声明校验结果的可选字段类型；修正后 `npm run typecheck` 退出 0、`npm run lint` 退出 0。两个生产文件的 Prettier check 及 `git diff --check` 均通过。独立静态 code-review：Standards 0 findings、Spec 0 findings。
+- 与 SPEC 行为契约无已知出入。SPEC 文件仍为 Draft，未擅自更新状态；此前阻塞记录中的“尚未实现”已由本节取代。按本轮分工没有在沙箱重复运行 HTTP/全量测试；36 条是否全绿及 SPEC 验收 8 的全量测试仍需 Claude 在沙箱外给出实际输出，不把静态检查当作绿测或功能验收。未 commit、push、开 PR 或部署。
