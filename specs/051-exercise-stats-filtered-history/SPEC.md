@@ -8,6 +8,7 @@
 ## 现状
 
 `GET /coach/students/:studentId/exercise-stats?exercise_id=X`(`src/handlers/exercise-stats.ts` `fetchExerciseStatsDetail`):
+
 - `recent_sessions`:按 `logged_date` 分组的最近 5 次,每组带 `has_video`(布尔,没有 id,前端播不了)。
 - `by_set_count`:按「当天该动作记了几组」分桶,每桶最多 3 次,只给最好重量与总次数,没有逐组明细。
 - 没有按次数筛选。日志经 `plan_exercises` 内连接取得(只含计划内记录)。
@@ -15,9 +16,11 @@
 ## 变更
 
 ### 1. 每组补 `video_id`
+
 `recent_sessions[].sets[]` 增加 `video_id: string | null`:该组 `status='ready'`、`kind='set_video'` 的附件 id(多个取最新)。`has_video` 保留,值 = `video_id !== null`。前端用现有 `GET /uploads/:id/url` 播放。
 
 ### 2. 可选查询参数 `sets`、`reps` → 新字段 `filtered_sessions`
+
 - `sets`:正整数 1–20;`reps`:正整数 1–50;`reps` 只在给了 `sets` 时生效。非法值 → 400(沿用本 handler 现有的参数校验风格)。
 - 不传 `sets` 时**响应与今天逐字段一致**(不出现 `filtered_sessions`)。
 - **记录单位 = 一次处方行**:同一 `plan_exercise_id` 在同一 `logged_date` 的所有记录。(按日期合并会把同一天的顶组行和退让组行混成一次,组次就对不上了。)
@@ -39,10 +42,12 @@
   }
 ]
 ```
+
 - `sets[]` 的字段与 `recent_sessions[].sets[]` 完全相同(含额外组,即 `set_index` ≥ 处方组数的记录也列出,按 `set_index` 排序)。
 - 没有匹配:`filtered_sessions: []`。
 
 ### 3. 不变的
+
 `rep_prs`、`by_set_count`、`e1rm`、`one_rm_reference`、overview 接口、鉴权与教练-学员归属校验全部不动。无迁移。
 
 ## 兼容
