@@ -1,6 +1,6 @@
 # 051 — 动作历史按「组 / 组×次」筛选 + 组视频 id(教练网页历史栏)
 
-- **状态**: InProgress
+- **状态**: Done（2026-10-19 #304 合并并部署 staging `668552b`）
 - **来源**: David 2026-10-19 /grill「教练网页端编写计划」(逐题记录 `~/Projects/scratch/plan-block-grill-20261019.md`),共识「确认」。历史栏要逐级收窄:选定动作看该动作近 5 次;填了组数看「该动作 × 该组数」近 5 次;再填次数看「该动作 × 组 × 次」近 5 次;有视频的组能在编辑器里直接播。
 - **产品正典**: `meetpr-plan-web` 仓 `specs/011-block-editor/SPEC.md` §3。本 spec 只定 wire 契约。
 - **级别 / 节奏**: T1 / P1(单 handler、纯读、无迁移)。分支 `feat/051-exercise-stats-filtered-history` → `staging`。
