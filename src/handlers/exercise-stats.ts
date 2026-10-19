@@ -135,6 +135,7 @@ async function fetchScopedLogs(
     .innerJoin('exercises as e', 'e.id', 'sl.exercise_id')
     .select([
       'sl.id as id',
+      'pe.id as plan_exercise_id',
       'sl.exercise_id as exercise_id',
       'e.name as exercise_name',
       'e.main_lift_family as main_lift_family',
@@ -620,11 +621,85 @@ function currentE1rm(logs: ScopedLog[], family: LiftFamily | null) {
   return { value: winner.value.toFixed(2), computed_at: timestamp(winner.computedAt) };
 }
 
+interface ExerciseHistoryFilter {
+  sets: number;
+  reps: number | undefined;
+}
+
+function sessionSets(logs: ScopedLog[], videoIds: Map<string, string>) {
+  return [...logs]
+    .sort((left, right) => left.set_index - right.set_index)
+    .map((log) => {
+      const videoId = videoIds.get(log.id) ?? null;
+      return {
+        set_index: log.set_index,
+        weight_kg: Number(log.weight_kg).toFixed(2),
+        reps: log.reps,
+        rpe: log.rpe === null ? null : Number(log.rpe).toFixed(1),
+        completed: log.completed,
+        failed: log.failed,
+        assumed: log.assumed,
+        has_video: videoId !== null,
+        video_id: videoId,
+      };
+    });
+}
+
+async function filteredSessions(
+  db: Kysely<Database>,
+  logs: ScopedLog[],
+  filter: ExerciseHistoryFilter,
+  videoIds: Map<string, string>,
+) {
+  if (logs.length === 0) return [];
+  const byPlanExercise = new Map<string, ScopedLog[]>();
+  for (const log of logs) {
+    const rows = byPlanExercise.get(log.plan_exercise_id) ?? [];
+    rows.push(log);
+    byPlanExercise.set(log.plan_exercise_id, rows);
+  }
+  const planSets = await db
+    .selectFrom('plan_sets')
+    .select(['plan_exercise_id', 'target_reps'])
+    .where('plan_exercise_id', 'in', [...byPlanExercise.keys()])
+    .execute();
+  const prescriptions = new Map<string, { sets: number; reps: number | null }>();
+  for (const set of planSets) {
+    const prescribed = prescriptions.get(set.plan_exercise_id);
+    if (prescribed) {
+      prescribed.sets += 1;
+      if (prescribed.reps !== set.target_reps) prescribed.reps = null;
+    } else {
+      prescriptions.set(set.plan_exercise_id, { sets: 1, reps: set.target_reps });
+    }
+  }
+
+  return [...byPlanExercise.entries()]
+    .flatMap(([planExerciseId, rows]) => {
+      const prescribed = prescriptions.get(planExerciseId);
+      if (
+        prescribed?.sets !== filter.sets ||
+        (filter.reps !== undefined && prescribed.reps !== filter.reps)
+      ) {
+        return [];
+      }
+      return groupedSessions(rows).map((session) => ({
+        date: session.date,
+        plan_exercise_id: planExerciseId,
+        prescribed,
+        sets: sessionSets(session.rows, videoIds),
+      }));
+    })
+    .sort((left, right) => right.date.localeCompare(left.date))
+    .slice(0, EXERCISE_STATS_LIMITS.recentSessions);
+}
+
 export async function fetchExerciseStatsDetail(
   db: Kysely<Database>,
   coachId: string,
   studentId: string,
   exerciseId: string,
+  filter?: ExerciseHistoryFilter,
 ) {
   const [logs, onboarding, exercise] = await Promise.all([
     fetchScopedLogs(db, coachId, studentId, exerciseId),
@@ -641,28 +716,24 @@ export async function fetchExerciseStatsDetail(
       ? []
       : await db
           .selectFrom('attachments')
-          .select('set_log_id')
+          .select(['id', 'set_log_id'])
           .where('owner_id', '=', studentId)
           .where('kind', '=', 'set_video')
           .where('status', '=', 'ready')
           .where('set_log_id', 'in', logIds)
+          .orderBy('created_at', 'desc')
+          .orderBy('id', 'desc')
           .execute();
-  const videoLogIds = new Set(videoRows.flatMap((row) => (row.set_log_id ? [row.set_log_id] : [])));
+  const videoIds = new Map<string, string>();
+  for (const row of videoRows) {
+    if (row.set_log_id !== null && !videoIds.has(row.set_log_id)) {
+      videoIds.set(row.set_log_id, row.id);
+    }
+  }
   const sessions = groupedSessions(logs);
   const recentSessions = sessions.slice(0, EXERCISE_STATS_LIMITS.recentSessions).map((session) => ({
     date: session.date,
-    sets: [...session.rows]
-      .sort((left, right) => left.set_index - right.set_index)
-      .map((log) => ({
-        set_index: log.set_index,
-        weight_kg: Number(log.weight_kg).toFixed(2),
-        reps: log.reps,
-        rpe: log.rpe === null ? null : Number(log.rpe).toFixed(1),
-        completed: log.completed,
-        failed: log.failed,
-        assumed: log.assumed,
-        has_video: videoLogIds.has(log.id),
-      })),
+    sets: sessionSets(session.rows, videoIds),
   }));
 
   const bySetCount: Record<
@@ -705,5 +776,8 @@ export async function fetchExerciseStatsDetail(
     by_set_count: bySetCount,
     e1rm: currentE1rm(logs, family),
     one_rm_reference: family === null ? null : onboarding.oneRm[family],
+    ...(filter === undefined
+      ? {}
+      : { filtered_sessions: await filteredSessions(db, logs, filter, videoIds) }),
   };
 }

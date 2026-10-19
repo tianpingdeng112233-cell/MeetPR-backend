@@ -928,3 +928,346 @@ describe('GET /coach/students/:id/exercise-stats', () => {
     });
   });
 });
+
+// Spec 051 keeps the existing HTTP seam and the legacy assertions above unchanged.
+describe('spec 051 exercise history detail', () => {
+  async function historyFixture() {
+    const ctx = await makeContext();
+    await addExercise(ctx, COMPETITION_SQUAT_ID, '竞技深蹲', 'squat');
+    const planExerciseIds = await addPlanExercise(ctx, COMPETITION_SQUAT_ID);
+    const detail = (query: Record<string, string | number> = {}) =>
+      request(ctx.app)
+        .get(`/coach/students/${ids.trainee}/exercise-stats`)
+        .query({ exercise_id: COMPETITION_SQUAT_ID, ...query })
+        .set(auth(ctx.coachToken));
+    return { ctx, planExerciseIds, detail };
+  }
+
+  async function prescribe(ctx: TestContext, planExerciseId: string, reps: number[]) {
+    await ctx.db
+      .insertInto('plan_sets')
+      .values(
+        reps.map((targetReps, index) => ({
+          plan_exercise_id: planExerciseId,
+          set_number: index + 1,
+          target_reps: targetReps,
+          intensity_mode: 'weight' as const,
+          target_value: '100.00',
+          set_type: 'working' as const,
+          rest_seconds: null,
+        })),
+      )
+      .execute();
+  }
+
+  async function record(
+    ctx: TestContext,
+    planExerciseId: string,
+    date: string,
+    indices = [0],
+    assumed = false,
+  ) {
+    return ctx.db
+      .insertInto('set_logs')
+      .values(
+        indices.map((setIndex) => ({
+          student_id: ids.trainee,
+          plan_exercise_id: planExerciseId,
+          exercise_id: COMPETITION_SQUAT_ID,
+          logged_date: date,
+          set_index: setIndex,
+          weight_kg: '100.00',
+          // Actual reps deliberately differ from the 3-rep prescription.
+          reps: 2,
+          rpe: '8.0',
+          completed: true,
+          failed: false,
+          assumed,
+          logged_at: atTenUtc(date, setIndex),
+        })),
+      )
+      .returning(['id', 'set_index'])
+      .execute();
+  }
+
+  const expectedSet = (setIndex: number, videoId: string | null = null) => ({
+    set_index: setIndex,
+    weight_kg: '100.00',
+    reps: 2,
+    rpe: '8.0',
+    completed: true,
+    failed: false,
+    assumed: false,
+    has_video: videoId !== null,
+    video_id: videoId,
+  });
+
+  it('preserves the complete legacy detail response except for video_id without sets', async () => {
+    const { ctx, planExerciseIds, detail } = await historyFixture();
+    await record(ctx, itemAt(planExerciseIds, 0), '2026-10-16', [0], true);
+
+    const response = await detail();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      rep_prs: [
+        {
+          reps: 2,
+          weight_kg: '100.00',
+          logged_at: '2026-10-16T10:00:00.000Z',
+          source: 'imported',
+        },
+      ],
+      recent_sessions: [{ date: '2026-10-16', sets: [{ ...expectedSet(0), assumed: true }] }],
+      by_set_count: {
+        '1': [
+          {
+            date: '2026-10-16',
+            set_count: 1,
+            best_weight_kg: '100.00',
+            total_reps: 2,
+            completed_sets: 1,
+          },
+        ],
+      },
+      e1rm: null,
+      one_rm_reference: null,
+    });
+  });
+
+  it('returns only the latest owned ready set video and null for other attachments', async () => {
+    const { ctx, planExerciseIds, detail } = await historyFixture();
+    const rows = await record(ctx, itemAt(planExerciseIds, 0), '2026-10-16', [0, 1, 2, 3, 4]);
+    const attachments = await ctx.db
+      .insertInto('attachments')
+      .values(
+        [
+          { index: 0, owner: ids.trainee, kind: 'set_video', status: 'ready', day: 17 },
+          { index: 0, owner: ids.trainee, kind: 'set_video', status: 'ready', day: 16 },
+          { index: 0, owner: ids.trainee, kind: 'set_video', status: 'uploading', day: 18 },
+          { index: 1, owner: ids.otherStudent, kind: 'set_video', status: 'ready', day: 18 },
+          { index: 2, owner: ids.trainee, kind: 'set_video', status: 'uploading', day: 18 },
+          { index: 3, owner: ids.trainee, kind: 'chat_image', status: 'ready', day: 18 },
+        ].map((value, index) => ({
+          owner_id: value.owner,
+          kind: value.kind as 'set_video' | 'chat_image',
+          status: value.status as 'ready' | 'uploading',
+          set_log_id: itemAt(rows, value.index).id,
+          source_coach_id: ids.coach,
+          oss_key: `spec051/video-${String(index)}`,
+          content_type: value.kind === 'chat_image' ? 'image/jpeg' : 'video/mp4',
+          size_bytes: 100,
+          part_count: 1,
+          created_at: atTenUtc(`2026-10-${String(value.day)}`),
+        })),
+      )
+      .returning('id')
+      .execute();
+
+    const response = await detail();
+
+    expect(response.status).toBe(200);
+    expect(response.body.recent_sessions).toEqual([
+      {
+        date: '2026-10-16',
+        sets: [
+          expectedSet(0, itemAt(attachments, 0).id),
+          expectedSet(1),
+          expectedSet(2),
+          expectedSet(3),
+          expectedSet(4),
+        ],
+      },
+    ]);
+  });
+
+  it('separates same-day top and backoff rows by prescribed sets and reps', async () => {
+    const { ctx, planExerciseIds, detail } = await historyFixture();
+    const top = itemAt(planExerciseIds, 0);
+    const backoff = itemAt(planExerciseIds, 1);
+    const topRow = await ctx.db
+      .selectFrom('plan_exercises')
+      .select('plan_day_id')
+      .where('id', '=', top)
+      .executeTakeFirstOrThrow();
+    await ctx.db
+      .updateTable('plan_exercises')
+      .set({ plan_day_id: topRow.plan_day_id, sort_order: 1 })
+      .where('id', '=', backoff)
+      .execute();
+    await prescribe(ctx, top, [3]);
+    await prescribe(ctx, backoff, [3, 3, 3]);
+    await record(ctx, top, '2026-10-16');
+    await record(ctx, backoff, '2026-10-16', [2, 0]);
+
+    const backoffResponse = await detail({ sets: 3, reps: 3 });
+    const topResponse = await detail({ sets: 1 });
+
+    expect(backoffResponse.status).toBe(200);
+    expect(topResponse.status).toBe(200);
+    expect(backoffResponse.body.filtered_sessions).toEqual([
+      {
+        date: '2026-10-16',
+        plan_exercise_id: backoff,
+        prescribed: { sets: 3, reps: 3 },
+        sets: [expectedSet(0), expectedSet(2)],
+      },
+    ]);
+    expect(topResponse.body.filtered_sessions).toEqual([
+      {
+        date: '2026-10-16',
+        plan_exercise_id: top,
+        prescribed: { sets: 1, reps: 3 },
+        sets: [expectedSet(0)],
+      },
+    ]);
+    const { filtered_sessions: filtered, ...legacyFields } = backoffResponse.body;
+    expect(filtered).toHaveLength(1);
+    expect(legacyFields).toEqual((await detail()).body);
+  });
+
+  it('matches mixed prescribed reps by sets alone and returns no match with reps', async () => {
+    const { ctx, planExerciseIds, detail } = await historyFixture();
+    const planExerciseId = itemAt(planExerciseIds, 0);
+    await prescribe(ctx, planExerciseId, [5, 3, 1]);
+    await record(ctx, planExerciseId, '2026-10-16');
+
+    const bySets = await detail({ sets: 3 });
+    const bySetsAndReps = await detail({ sets: 3, reps: 3 });
+
+    expect(bySets.status).toBe(200);
+    expect(bySets.body.filtered_sessions).toEqual([
+      {
+        date: '2026-10-16',
+        plan_exercise_id: planExerciseId,
+        prescribed: { sets: 3, reps: null },
+        sets: [expectedSet(0)],
+      },
+    ]);
+    expect(bySetsAndReps.status).toBe(200);
+    expect(bySetsAndReps.body.filtered_sessions).toEqual([]);
+  });
+
+  it('returns the newest five matching row-date records ordered by logged_date', async () => {
+    const { ctx, planExerciseIds, detail } = await historyFixture();
+    const planExerciseId = itemAt(planExerciseIds, 0);
+    await prescribe(ctx, planExerciseId, [3, 3, 3]);
+    const dates = [
+      '2026-10-14',
+      '2026-10-11',
+      '2026-10-16',
+      '2026-10-12',
+      '2026-10-15',
+      '2026-10-13',
+    ];
+    // The same prescription row can have different sets logged on different dates.
+    for (const [setIndex, date] of dates.entries()) {
+      await record(ctx, planExerciseId, date, [setIndex]);
+    }
+    // A backdated log is uploaded last; ordering must use the training date.
+    await ctx.db
+      .updateTable('set_logs')
+      .set({ logged_at: atTenUtc('2026-10-19') })
+      .where('logged_date', '=', '2026-10-11')
+      .execute();
+
+    const response = await detail({ sets: 3, reps: 3 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.filtered_sessions).toEqual(
+      [
+        { date: '2026-10-16', setIndex: 2 },
+        { date: '2026-10-15', setIndex: 4 },
+        { date: '2026-10-14', setIndex: 0 },
+        { date: '2026-10-13', setIndex: 5 },
+        { date: '2026-10-12', setIndex: 3 },
+      ].map(({ date, setIndex }) => ({
+        date,
+        plan_exercise_id: planExerciseId,
+        prescribed: { sets: 3, reps: 3 },
+        sets: [expectedSet(setIndex)],
+      })),
+    );
+  });
+
+  it('includes extra sets and their videos without changing the prescribed count', async () => {
+    const { ctx, planExerciseIds, detail } = await historyFixture();
+    const planExerciseId = itemAt(planExerciseIds, 0);
+    await prescribe(ctx, planExerciseId, [3, 3, 3]);
+    const rows = await record(ctx, planExerciseId, '2026-10-16', [3, 1, 0, 2]);
+    const video = await ctx.db
+      .insertInto('attachments')
+      .values({
+        owner_id: ids.trainee,
+        kind: 'set_video',
+        status: 'ready',
+        set_log_id: itemAt(rows, 0).id,
+        source_coach_id: ids.coach,
+        oss_key: 'spec051/extra-set.mp4',
+        content_type: 'video/mp4',
+        size_bytes: 100,
+        part_count: 1,
+      })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+
+    const response = await detail({ sets: 3, reps: 3 });
+
+    expect(response.status).toBe(200);
+    expect(response.body.filtered_sessions).toEqual([
+      {
+        date: '2026-10-16',
+        plan_exercise_id: planExerciseId,
+        prescribed: { sets: 3, reps: 3 },
+        sets: [expectedSet(0), expectedSet(1), expectedSet(2), expectedSet(3, video.id)],
+      },
+    ]);
+    expect(response.body.filtered_sessions[0].sets).toEqual(response.body.recent_sessions[0].sets);
+    const noMatch = await detail({ sets: 4 });
+    expect(noMatch.status).toBe(200);
+    expect(noMatch.body.filtered_sessions).toEqual([]);
+  });
+
+  it('ignores valid reps without sets and omits filtered_sessions', async () => {
+    const { ctx, planExerciseIds, detail } = await historyFixture();
+    await record(ctx, itemAt(planExerciseIds, 0), '2026-10-16');
+    const withoutFilters = await detail();
+    const withReps = await detail({ reps: 3 });
+
+    expect(withReps.status).toBe(200);
+    expect(withReps.body).toEqual(withoutFilters.body);
+    expect(withReps.body).not.toHaveProperty('filtered_sessions');
+  });
+
+  it.each([
+    { sets: 0 },
+    { sets: 'abc' },
+    { sets: 21 },
+    { sets: -1 },
+    { sets: 1.5 },
+    { sets: '' },
+    { reps: 999 },
+    { sets: 3, reps: 999 },
+    { sets: 3, reps: 0 },
+    { sets: 3, reps: 1.5 },
+    { sets: 3, reps: 'abc' },
+    { sets: 3, reps: '' },
+  ])('rejects invalid filters %j with 400', async (query) => {
+    const { detail } = await historyFixture();
+    const response = await detail(query);
+    expect(response.status).toBe(400);
+  });
+
+  it.each([
+    { sets: 1, reps: 1 },
+    { sets: 20, reps: 50 },
+  ])(
+    'accepts inclusive filter boundaries %j and returns an empty list without logs',
+    async (query) => {
+      const { detail } = await historyFixture();
+      const response = await detail(query);
+      expect(response.status).toBe(200);
+      expect(response.body.filtered_sessions).toEqual([]);
+    },
+  );
+});
