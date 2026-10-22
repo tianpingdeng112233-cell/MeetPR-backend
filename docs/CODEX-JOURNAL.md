@@ -443,3 +443,12 @@ David 现场要求欢迎页直接进入教练网页登录，并重写欢迎邮�
 - pg-mem 不支持 IS DISTINCT FROM（最小 SELECT 也解析失败）。沿用 studentActions 既有 SQL 适配边界，针对非 NULL locale 参数等价改写为 IS NULL OR !=；生产 SQL 不退化。路由测试检查适配前原 SQL、单条 UPDATE、无 SELECT、受影响行数 1/0/1。另用既有临时 PGlite 0.5.11（PostgreSQL 18.6 WASM）直接执行同一原始 SQL，验证 NULL、重复、变化、其他用户及不存在用户，`/tmp/052-header-postgres.log` 通过；未增加仓依赖。
 - 最终静态门禁：pnpm lint、pnpm typecheck、pnpm build、pnpm format:check 均退出 0；日志 `/tmp/052-header-{lint,typecheck,build,format}.log`。**全量未绿，不能声明验收通过**：基线 812 passed / 554 failed / 1 skipped；返修后 `pnpm test -- --maxWorkers=2 --minWorkers=2 --testTimeout=15000` 为 822 passed / 554 failed / 1 skipped（162 文件，116 passed / 46 failed）。两次 554 个失败用例名称集合完全相同，无新增失败；549 个未处理错误均为监听 0.0.0.0 EPERM，另有 127.0.0.1 监听拒绝及其后续 port=null 错误。原始日志 `/tmp/052-header-baseline-test.log`、`/tmp/052-header-full-test.log`；仍需在允许监听的环境跑全量，未为消除环境失败改测试入口或减少全量范围。
 - `review-loop` 独立只读审查，以开工快照差分 `/tmp/052-header-review.diff` 为范围：Standards 0 findings；Spec 0 findings。仓内缺 `docs/agents/issue-tracker.md`，正式 Matt tracker 流程仍需 David 使用 `$setup-matt-pocock-skills`；本轮用不依赖 tracker 的本地双轴审查，未私建配置。审查后仅整理 lint 要求的测试回调与结果判空；本记录属于实现自测/自审，Opus 功能收货和全量环境验证仍未完成。
+
+### v2.2（2026-10-22）
+
+- 按 David 明确指令与 `specs/052-zh-hant/AMEND-v22.md` 在 Opus 提交 `d44d658` 上返修。开工临时文件试写成功，保留既有 GLOSSARY 两条新增及未跟踪的返修卡；未改 specs 原稿、暂存区或 HEAD，未 commit、push、部署。SPEC 仍为 Ready，沿用本轮明确执行授权，不修改 Opus 状态。
+- 沿用现有生成器读取术语表并重生成 `src/i18n/zh-Hant.generated.json`：新增发布→發布、获取→取得，实际推送文案由「教練釋出了新課表」改为「教練發布了新課表」。生成脚本无需改动。测试沿用 `copy` 公开 seam 与 `buildPushPayload`，更新两条术语断言及计划发布推送断言；既有简体/英文快照原样通过。网页 title 条款不属后端仓范围。
+- 先红后绿：生成校验先因 Stale artifact 失败（`/tmp/052-v22-generation-red.log`）；定向测试先为 3 failed / 50 passed（`/tmp/052-v22-red.log`），生成后推送、邮件、日报、consumer 与产物共 6 文件 / 101 passed（`/tmp/052-v22-green.log`）。生成及 `--check` 均为 1,377 translations、simplified-only hits 0（`/tmp/052-v22-generate.log`）。
+- `pnpm typecheck`、`pnpm lint`、`pnpm build`、`pnpm format:check` 均退出 0，日志 `/tmp/052-v22-{typecheck,lint,build,format}.log`；`git diff --check` 通过。依赖离线安装确认齐备，prepare 仍提示共享 `.git/config` 写入被沙箱拒绝；既有 `core.hooksPath=.husky/_` 与 pre-commit hook 存在，未绕过 hooks。
+- 开工全量基线 `pnpm test -- --maxWorkers=2 --minWorkers=2 --testTimeout=15000` 为 822 passed / 554 failed / 1 skipped（162 文件，549 个未处理错误），数量与上一轮一致，日志含监听 127.0.0.1/0.0.0.0 EPERM 及 port=null 后续错误，原始证据 `/tmp/052-v22-baseline-test.log`。本轮按返修卡完成定向验证，未再次跑全量；不声明全量或功能验收通过，允许监听环境的全量验证仍待完成。
+- `code-review` 对 HEAD 之上的 v2.2 生成物、测试及术语差异做独立只读双轴审查：Standards 0 findings；Spec 0 findings。仓内仍缺 tracker 配置，本轮使用用户给定返修卡，不依赖 tracker；正式流程配置仍需 David 调用 `$setup-matt-pocock-skills`。本记录仅为实现、自测和自审，Opus 按返修卡收货。

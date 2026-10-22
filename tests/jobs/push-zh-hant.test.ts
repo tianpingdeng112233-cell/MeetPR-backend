@@ -67,7 +67,7 @@ const cases: [RegisteredPushEventType, object, string, string][] = [
   [
     'plan_published',
     { trainee_id: id, plan_id: id },
-    '教練釋出了新課表',
+    '教練發布了新課表',
     '新的訓練週期已經準備好，開啟看看',
   ],
   [
