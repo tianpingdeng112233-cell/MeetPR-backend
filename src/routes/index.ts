@@ -25,6 +25,8 @@ import { meRouter } from './me';
 import { coachOneRmRouter, studentOnboardingRouter } from './onboarding';
 import { studentVideosRouter } from './videos';
 import { plansRouter, studentPlansRouter } from './plans';
+import { planImportsRouter } from './plan-imports';
+import type { PlanImportModel } from '../services/plan-import/model';
 import { studentReadinessRouter } from './readiness';
 import { studentReviewsRouter } from './reviews';
 import { setsRouter, studentSetsRouter } from './sets';
@@ -36,6 +38,7 @@ import { videoMarkersRouter } from './video-markers';
 import type { OssService } from '../services/oss';
 
 interface RouteDeps {
+  planImportModel?: PlanImportModel | undefined;
   config: Config;
   db: Kysely<Database>;
   logger: Logger;
@@ -110,6 +113,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
     }),
   );
   app.use('/coach', deps.requireAuth, coachRouter({ db: deps.db, logger: deps.logger }));
+  app.use('/coach/plan-imports', deps.requireAuth, planImportsRouter(deps));
   app.use('/coach', deps.requireAuth, coachExerciseStatsRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachFeedbackRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachInviteCodesRouter({ db: deps.db }));

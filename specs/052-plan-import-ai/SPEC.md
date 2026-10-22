@@ -51,6 +51,7 @@
 ```
 
 - 识别不出任何周 → 422 `{ error: 'NO_TRAINING_WEEKS' }`（不扣次数）。
+- 模型识别失败 → 502 `{ error: 'PARSE_FAILED', reason }`（不扣次数）；`reason` 沿用 §2.3 的 `MODEL_BUSY` / `OUTPUT_TOO_LONG` / `BAD_OUTPUT`，此步不会出现 `REGION_SUSPECT`。
 - **扣次数在这一步**：成功返回才记一次（Q9：单个学员每天 3 次；「天」按 Asia/Shanghai 自然日；按 教练×学员 计）。用完 → 429 `{ error: 'IMPORT_DAILY_LIMIT', remaining_today: 0 }`。
 
 ### 2.3 `POST /coach/plan-imports/:import_id/weeks` — 第二步：逐周识别内容
