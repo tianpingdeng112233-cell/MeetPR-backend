@@ -13,6 +13,7 @@ import {
   listAdminUsers,
 } from '../handlers/admin';
 import { requireRole } from '../middleware/auth';
+import { adminCustomExercisesRouter } from './admin-custom-exercises';
 import { adminCoachApplicationsRouter } from './admin-coach-applications';
 import type { CoachApplicationDeps } from './coach-applications';
 import { route, validationEnvelope } from './http';
@@ -49,6 +50,8 @@ export function adminRouter(deps: AdminRouterDeps): ExpressRouter {
       next();
     })().catch(next);
   });
+
+  router.use('/custom-exercises', adminCustomExercisesRouter(deps.db));
 
   if (deps.onboarding?.config.COACH_ONBOARDING_ENABLED === true) {
     router.use('/coach-applications', adminCoachApplicationsRouter(deps.onboarding));

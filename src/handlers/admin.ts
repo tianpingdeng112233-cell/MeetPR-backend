@@ -359,22 +359,29 @@ export async function listAdminPlans(db: Kysely<Database>) {
 }
 
 export async function listAdminExerciseUsage(db: Kysely<Database>, locale?: PreferredLocale) {
+  const exerciseId = sql<string>`coalesce(official.id, member.id)`;
+  const name = sql<string>`coalesce(official.name, member.name)`;
+  const type = sql<string>`coalesce(official.exercise_type, member.exercise_type)`;
+  const owner = sql<
+    string | null
+  >`case when official.id is not null then official.created_by_coach_id else member.created_by_coach_id end`;
   const rows = await db
-    .selectFrom('exercises as e')
-    .leftJoin('plan_exercises as pe', 'pe.exercise_id', 'e.id')
+    .selectFrom('exercises as member')
+    .leftJoin('exercises as official', 'official.id', 'member.canonical_exercise_id')
+    .leftJoin('plan_exercises as pe', 'pe.exercise_id', 'member.id')
     .leftJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
     .leftJoin('plans as p', 'p.id', 'pd.plan_id')
     .select([
-      'e.id as exercise_id',
-      'e.name as name',
-      'e.created_by_coach_id as exercise_owner',
-      'e.exercise_type as exercise_type',
+      exerciseId.as('exercise_id'),
+      name.as('name'),
+      type.as('exercise_type'),
+      owner.as('exercise_owner'),
       sql<string>`count(pe.id)`.as('plan_count'),
       sql<string>`count(distinct p.coach_id)`.as('coach_count'),
     ])
-    .groupBy(['e.id', 'e.name', 'e.exercise_type', 'e.created_by_coach_id'])
+    .groupBy([exerciseId, name, type, owner])
     .orderBy('plan_count', 'desc')
-    .orderBy('e.name', 'asc')
+    .orderBy(name, 'asc')
     .execute();
 
   return {

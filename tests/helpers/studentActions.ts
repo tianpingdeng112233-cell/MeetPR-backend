@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import type { Kysely } from 'kysely';
@@ -652,6 +654,7 @@ export async function makeContext(
       return client;
     };
   }
+  mem.public.none(fs.readFileSync('db/migrations/0078-exercise-adoption.sql', 'utf8'));
   const db = createDb(pool);
 
   await db

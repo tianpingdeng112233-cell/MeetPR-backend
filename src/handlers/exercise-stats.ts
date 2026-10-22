@@ -1,6 +1,7 @@
+import { sql, type Kysely } from 'kysely';
+
 import { catalogName } from '../i18n/copy';
 import type { PreferredLocale } from '../i18n/locale';
-import type { Kysely } from 'kysely';
 
 import { E1RM_POLICY, calculateEligibleE1RM, resolveCompetitionFamily } from '../domain/e1rm';
 import {
@@ -135,15 +136,26 @@ async function fetchScopedLogs(
     .innerJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
     .innerJoin('plans as p', 'p.id', 'pd.plan_id')
     .innerJoin('exercises as e', 'e.id', 'sl.exercise_id')
+    .leftJoin('exercises as canonical', 'canonical.id', 'e.canonical_exercise_id')
     .select([
       'sl.id as id',
       'pe.id as plan_exercise_id',
-      'sl.exercise_id as exercise_id',
-      'e.name as exercise_name',
-      'e.created_by_coach_id as exercise_owner',
-      'e.main_lift_family as main_lift_family',
-      'e.is_competition_lift as is_competition_lift',
-      'e.competition_stance as competition_stance',
+      sql<string>`coalesce(e.canonical_exercise_id, e.id)`.as('exercise_id'),
+      sql<string>`coalesce(canonical.name, e.name)`.as('exercise_name'),
+      sql<
+        string | null
+      >`case when canonical.id is not null then canonical.created_by_coach_id else e.created_by_coach_id end`.as(
+        'exercise_owner',
+      ),
+      sql<LiftFamily | null>`case when canonical.id is not null then canonical.main_lift_family else e.main_lift_family end`.as(
+        'main_lift_family',
+      ),
+      sql<boolean>`case when canonical.id is not null then canonical.is_competition_lift else e.is_competition_lift end`.as(
+        'is_competition_lift',
+      ),
+      sql<CompetitionStance | null>`case when canonical.id is not null then canonical.competition_stance else e.competition_stance end`.as(
+        'competition_stance',
+      ),
       'sl.set_index as set_index',
       'sl.weight_kg as weight_kg',
       'sl.reps as reps',
@@ -160,7 +172,18 @@ async function fetchScopedLogs(
     .where('p.coach_id', '=', coachId)
     .where('p.trainee_id', '=', studentId)
     .where('p.status', 'in', ['published', 'paused', 'completed']);
-  if (exerciseId !== undefined) query = query.where('sl.exercise_id', '=', exerciseId);
+  if (exerciseId !== undefined) {
+    const exercise = await db
+      .selectFrom('exercises')
+      .select('canonical_exercise_id')
+      .where('id', '=', exerciseId)
+      .executeTakeFirst();
+    query = query.where(
+      sql<string>`coalesce(e.canonical_exercise_id, e.id)`,
+      '=',
+      exercise?.canonical_exercise_id ?? exerciseId,
+    );
+  }
   return query.orderBy('sl.logged_at', 'desc').execute();
 }
 
@@ -709,9 +732,20 @@ export async function fetchExerciseStatsDetail(
     fetchScopedLogs(db, coachId, studentId, exerciseId),
     onboardingSnapshot(db, studentId),
     db
-      .selectFrom('exercises')
-      .select(['main_lift_family', 'is_competition_lift', 'competition_stance'])
-      .where('id', '=', exerciseId)
+      .selectFrom('exercises as e')
+      .leftJoin('exercises as canonical', 'canonical.id', 'e.canonical_exercise_id')
+      .select([
+        sql<LiftFamily | null>`case when canonical.id is not null then canonical.main_lift_family else e.main_lift_family end`.as(
+          'main_lift_family',
+        ),
+        sql<boolean>`case when canonical.id is not null then canonical.is_competition_lift else e.is_competition_lift end`.as(
+          'is_competition_lift',
+        ),
+        sql<CompetitionStance | null>`case when canonical.id is not null then canonical.competition_stance else e.competition_stance end`.as(
+          'competition_stance',
+        ),
+      ])
+      .where('e.id', '=', exerciseId)
       .executeTakeFirst(),
   ]);
   const logIds = logs.map((log) => log.id);
