@@ -1,3 +1,5 @@
+import { catalogName } from '../i18n/copy';
+import type { PreferredLocale } from '../i18n/locale';
 import type { Selectable } from 'kysely';
 
 import type { FeedbackTable } from '../db/types';
@@ -41,6 +43,7 @@ export interface FeedbackWithVideoResponse extends FeedbackResponse {
 export interface FeedbackVideoMetadataRow {
   video_attachment_id: string | null;
   video_exercise_name: string | null;
+  video_exercise_owner: string | null;
   video_exercise_name_en: string | null;
   video_set_index: number | null;
   video_weight_kg: string | null;
@@ -65,6 +68,7 @@ export function toFeedback(row: FeedbackRow): FeedbackResponse {
 
 export function toFeedbackWithVideo(
   row: FeedbackRow & FeedbackVideoMetadataRow,
+  locale?: PreferredLocale,
 ): FeedbackWithVideoResponse {
   return {
     ...toFeedback(row),
@@ -73,7 +77,10 @@ export function toFeedbackWithVideo(
         ? null
         : {
             id: row.video_attachment_id,
-            exercise_name: row.video_exercise_name,
+            exercise_name:
+              row.video_exercise_name === null
+                ? null
+                : catalogName(row.video_exercise_name, row.video_exercise_owner, locale),
             exercise_name_en: row.video_exercise_name_en,
             set_index: row.video_set_index,
             weight_kg: row.video_weight_kg === null ? null : Number(row.video_weight_kg).toFixed(2),

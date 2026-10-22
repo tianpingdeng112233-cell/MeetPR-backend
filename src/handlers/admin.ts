@@ -1,3 +1,5 @@
+import { catalogName } from '../i18n/copy';
+import type { PreferredLocale } from '../i18n/locale';
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 
@@ -356,7 +358,7 @@ export async function listAdminPlans(db: Kysely<Database>) {
   return { plans: rows.map(toAdminPlan) };
 }
 
-export async function listAdminExerciseUsage(db: Kysely<Database>) {
+export async function listAdminExerciseUsage(db: Kysely<Database>, locale?: PreferredLocale) {
   const rows = await db
     .selectFrom('exercises as e')
     .leftJoin('plan_exercises as pe', 'pe.exercise_id', 'e.id')
@@ -365,11 +367,12 @@ export async function listAdminExerciseUsage(db: Kysely<Database>) {
     .select([
       'e.id as exercise_id',
       'e.name as name',
+      'e.created_by_coach_id as exercise_owner',
       'e.exercise_type as exercise_type',
       sql<string>`count(pe.id)`.as('plan_count'),
       sql<string>`count(distinct p.coach_id)`.as('coach_count'),
     ])
-    .groupBy(['e.id', 'e.name', 'e.exercise_type'])
+    .groupBy(['e.id', 'e.name', 'e.exercise_type', 'e.created_by_coach_id'])
     .orderBy('plan_count', 'desc')
     .orderBy('e.name', 'asc')
     .execute();
@@ -377,7 +380,7 @@ export async function listAdminExerciseUsage(db: Kysely<Database>) {
   return {
     exercises: rows.map((row) => ({
       exercise_id: row.exercise_id,
-      name: row.name,
+      name: catalogName(row.name, row.exercise_owner, locale),
       exercise_type: row.exercise_type,
       plan_count: toCount(row.plan_count),
       coach_count: toCount(row.coach_count),
@@ -385,7 +388,7 @@ export async function listAdminExerciseUsage(db: Kysely<Database>) {
   };
 }
 
-export async function getAdminPlan(db: Kysely<Database>, planId: string) {
+export async function getAdminPlan(db: Kysely<Database>, planId: string, locale?: PreferredLocale) {
   const plan = await db.selectFrom('plans').selectAll().where('id', '=', planId).executeTakeFirst();
   if (!plan) return null;
   const detail = await getPlanWithChildren(db, plan);
@@ -398,11 +401,13 @@ export async function getAdminPlan(db: Kysely<Database>, planId: string) {
   const names = exerciseIds.length
     ? await db
         .selectFrom('exercises')
-        .select(['id', 'name'])
+        .select(['id', 'name', 'created_by_coach_id'])
         .where('id', 'in', exerciseIds)
         .execute()
     : [];
-  const nameById = new Map(names.map((row) => [row.id, row.name]));
+  const nameById = new Map(
+    names.map((row) => [row.id, catalogName(row.name, row.created_by_coach_id, locale)]),
+  );
   return {
     ...detail,
     days: detail.days.map((day) => ({

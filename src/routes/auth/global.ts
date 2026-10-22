@@ -1,3 +1,4 @@
+import { mailLocale } from '../../i18n/locale';
 import bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 
@@ -469,7 +470,7 @@ export function globalIdentityRouter(deps: GlobalIdentityRouterDeps): ExpressRou
           apiKey: deps.config.RESEND_API_KEY,
           from: deps.config.EMAIL_FROM,
           to: email,
-          locale: deps.config.MAIL_LOCALE ?? 'en',
+          locale: mailLocale(req.get('X-MeetPR-Locale'), deps.config.MAIL_LOCALE),
         };
         // As with forgot, delivery latency never delays the public response.
         const delivery =

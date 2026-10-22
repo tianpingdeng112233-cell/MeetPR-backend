@@ -113,6 +113,40 @@ async function addPlanExercise(
 }
 
 describe('GET /coach/students/:id/exercise-stats', () => {
+  it('localizes catalog statistics while preserving custom exercise names', async () => {
+    const ctx = await makeContext();
+    await addExercise(ctx, COMPETITION_DEADLIFT_ID, '传统硬拉', 'deadlift');
+    const [planExerciseId] = await addPlanExercise(ctx, COMPETITION_DEADLIFT_ID);
+    if (!planExerciseId) throw new Error('missing fixture');
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: planExerciseId,
+        exercise_id: COMPETITION_DEADLIFT_ID,
+        logged_date: daysFromToday(0),
+        set_index: 0,
+        weight_kg: '100',
+        reps: 5,
+        completed: true,
+        logged_at: new Date(),
+      })
+      .execute();
+    const get = () =>
+      request(ctx.app)
+        .get(`/coach/students/${ids.trainee}/exercise-stats`)
+        .set(auth(ctx.coachToken))
+        .set('X-MeetPR-Locale', 'zh-Hant');
+    const response = await get();
+    expect(response.status).toBe(200);
+    expect(response.body.exercises[0].name).toBe('傳統硬舉');
+    await ctx.db
+      .updateTable('exercises')
+      .set({ created_by_coach_id: ids.coach })
+      .where('id', '=', COMPETITION_DEADLIFT_ID)
+      .execute();
+    expect((await get()).body.exercises[0].name).toBe('传统硬拉');
+  });
   it.each([
     ['Asia/Shanghai', '2026-07-12T20:00:00Z'],
     ['Europe/London', '2026-01-13T04:00:00Z'],

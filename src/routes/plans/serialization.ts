@@ -1,3 +1,5 @@
+import { catalogName } from '../../i18n/copy';
+import type { PreferredLocale } from '../../i18n/locale';
 import type { Selectable } from 'kysely';
 
 import type {
@@ -320,10 +322,10 @@ export function toImportedHistory(
   };
 }
 
-export function toExercise(row: ExerciseRow): ExerciseResponse {
+export function toExercise(row: ExerciseRow, locale?: PreferredLocale): ExerciseResponse {
   return {
     id: row.id,
-    name: row.name,
+    name: catalogName(row.name, row.created_by_coach_id, locale),
     name_en: row.name_en,
     exercise_type: row.exercise_type,
     main_lift_family: row.main_lift_family,

@@ -56,8 +56,8 @@ export function adminRouter(deps: AdminRouterDeps): ExpressRouter {
 
   router.get(
     '/exercise-usage',
-    route(async (_req, res) => {
-      res.status(200).json(await listAdminExerciseUsage(deps.db));
+    route(async (req, res) => {
+      res.status(200).json(await listAdminExerciseUsage(deps.db, req.locale));
     }),
   );
 
@@ -114,7 +114,7 @@ export function adminRouter(deps: AdminRouterDeps): ExpressRouter {
         res.status(400).json(validationEnvelope(params.error));
         return;
       }
-      const plan = await getAdminPlan(deps.db, params.data.id);
+      const plan = await getAdminPlan(deps.db, params.data.id, req.locale);
       if (!plan) {
         res.status(404).json({ error: 'ADMIN_PLAN_NOT_FOUND' });
         return;

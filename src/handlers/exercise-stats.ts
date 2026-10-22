@@ -1,3 +1,5 @@
+import { catalogName } from '../i18n/copy';
+import type { PreferredLocale } from '../i18n/locale';
 import type { Kysely } from 'kysely';
 
 import { E1RM_POLICY, calculateEligibleE1RM, resolveCompetitionFamily } from '../domain/e1rm';
@@ -138,6 +140,7 @@ async function fetchScopedLogs(
       'pe.id as plan_exercise_id',
       'sl.exercise_id as exercise_id',
       'e.name as exercise_name',
+      'e.created_by_coach_id as exercise_owner',
       'e.main_lift_family as main_lift_family',
       'e.is_competition_lift as is_competition_lift',
       'e.competition_stance as competition_stance',
@@ -478,6 +481,7 @@ export async function fetchExerciseStatsOverview(
   db: Kysely<Database>,
   coachId: string,
   studentId: string,
+  locale?: PreferredLocale,
 ): Promise<ExerciseStatsOverviewResponse> {
   const [logs, onboarding, planDates, timezone] = await Promise.all([
     fetchScopedLogs(db, coachId, studentId),
@@ -496,7 +500,7 @@ export async function fetchExerciseStatsOverview(
       current.dates.add(dateOnly(log.logged_date));
     } else {
       byExercise.set(log.exercise_id, {
-        name: log.exercise_name,
+        name: catalogName(log.exercise_name, log.exercise_owner, locale),
         dates: new Set([dateOnly(log.logged_date)]),
         lastLoggedAt: log.logged_at,
       });

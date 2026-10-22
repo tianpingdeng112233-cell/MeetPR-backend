@@ -95,6 +95,21 @@ async function outbox(ctx: Context) {
 }
 
 describe('runDailyDigest', () => {
+  it.each([
+    ['zh-Hant', '昨日訓練摘要', '昨天：1 練完'],
+    [null, '昨日训练摘要', '昨天：1 练完'],
+  ] as const)('uses domestic preference %s for email coaches', async (locale, title, body) => {
+    const ctx = await makeContext();
+    await ctx.db
+      .updateTable('users')
+      .set({ phone: null, preferred_locale: locale })
+      .where('id', '=', ids.coach)
+      .execute();
+    await addEvent(ctx, { eventType: 'session_completed' });
+    await runDailyDigest(ctx.db, gymDay, now, logger);
+    const rows = await outbox(ctx);
+    expect(decodePayload(rows[0]?.payload).aps).toEqual({ alert: { title, body } });
+  });
   it('writes only coaches in the requested timezone bucket', async () => {
     const ctx = await makeContext();
     await ctx.db
@@ -193,7 +208,9 @@ describe('runDailyDigest', () => {
     await addEvent(ctx, { eventType: 'session_completed' });
     await addEvent(ctx, { eventType: 'pr_e1rm' });
 
-    await runDailyDigest(ctx.db, gymDay, now, logger);
+    await runDailyDigest(ctx.db, gymDay, now, logger, undefined, undefined, {
+      JWT_AUDIENCE: 'meetpr-global-client',
+    });
 
     const rows = await outbox(ctx);
     expect(rows).toHaveLength(1);

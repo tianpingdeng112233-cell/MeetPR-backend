@@ -1,3 +1,4 @@
+import type { PreferredLocale } from '../i18n/locale';
 import type { Kysely } from 'kysely';
 
 import type { Database } from '../db/types';
@@ -13,6 +14,7 @@ function feedbackWithVideoQuery(db: Kysely<Database>) {
     .select([
       'a.id as video_attachment_id',
       'e.name as video_exercise_name',
+      'e.created_by_coach_id as video_exercise_owner',
       'e.name_en as video_exercise_name_en',
       'sl.set_index as video_set_index',
       'sl.weight_kg as video_weight_kg',
@@ -25,19 +27,21 @@ function feedbackWithVideoQuery(db: Kysely<Database>) {
 export async function fetchOwnFeedback(
   db: Kysely<Database>,
   studentId: string,
+  locale?: PreferredLocale,
 ): Promise<FeedbackWithVideoResponse[]> {
   const rows = await feedbackWithVideoQuery(db)
     .where('f.student_id', '=', studentId)
     .orderBy('f.posted_at', 'desc')
     .execute();
 
-  return rows.map(toFeedbackWithVideo);
+  return rows.map((row) => toFeedbackWithVideo(row, locale));
 }
 
 export async function fetchCoachFeedback(
   db: Kysely<Database>,
   coachId: string,
   studentId: string,
+  locale?: PreferredLocale,
 ): Promise<FeedbackWithVideoResponse[]> {
   const rows = await feedbackWithVideoQuery(db)
     .where('f.student_id', '=', studentId)
@@ -45,5 +49,5 @@ export async function fetchCoachFeedback(
     .orderBy('f.posted_at', 'desc')
     .execute();
 
-  return rows.map(toFeedbackWithVideo);
+  return rows.map((row) => toFeedbackWithVideo(row, locale));
 }

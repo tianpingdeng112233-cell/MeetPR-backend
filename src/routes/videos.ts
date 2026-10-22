@@ -1,3 +1,4 @@
+import { catalogName } from '../i18n/copy';
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
@@ -66,6 +67,7 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
           'a.set_log_id as set_log_id',
           'sl.plan_exercise_id as plan_exercise_id',
           'e.name as exercise_name',
+          'e.created_by_coach_id as exercise_owner',
           'sl.set_index as set_index',
           'sl.weight_kg as weight_kg',
           'sl.reps as reps',
@@ -92,7 +94,10 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
         id: row.id,
         set_log_id: row.set_log_id,
         plan_exercise_id: row.plan_exercise_id,
-        exercise_name: row.exercise_name,
+        exercise_name:
+          row.exercise_name === null
+            ? null
+            : catalogName(row.exercise_name, row.exercise_owner, req.locale),
         set_index: row.set_index,
         weight_kg: row.weight_kg === null ? null : Number(row.weight_kg).toFixed(2),
         reps: row.reps,
