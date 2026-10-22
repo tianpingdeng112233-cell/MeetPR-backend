@@ -49,8 +49,12 @@
 
 ### 2.3 `POST /coach/plan-imports/:import_id/weeks` — 第二步：逐周识别内容
 请求：`{ "weeks": [ { "index": 0, "cells": [[r,c,"text"], ...] } ], "header_cells": [[r,c,"text"], ...] }`（前端从原表按 region 截出；≤ 12 周，Q4）
-- `import_id` 必须属于当前教练、当天创建；每个 import 最多调 3 次本接口（给重试），超出 409。**不另扣次数**。
-- 服务端每周单独调一次模型（并发 ≤ 4），一周失败重试 1 次，仍失败则该周回 `{ index, error: 'PARSE_FAILED' }`（错误信封沿用仓内 `{ error: code }`），其余周照常返回。
+- `import_id` 必须属于当前教练、当天创建；每个 import 最多调 **8** 次本接口（失败周重试 + 教练改格后重新识别都算），超出 409。**不另扣次数**。请求里的 cells 以前端发来的为准（教练可能改过格子，见 plan-web 015 §2.4），服务端不比对原表。
+- 服务端每周单独调一次模型（并发 ≤ 4），一周失败重试 1 次，仍失败则该周回 `{ index, error: 'PARSE_FAILED', reason }`（错误信封沿用仓内 `{ error: code }`），其余周照常返回。`reason` 必填，前端据此给教练一句人话（2026-10-22 David 追加）：
+  - `MODEL_BUSY`：上游 429 / 5xx / 超时 / 网络错误；
+  - `OUTPUT_TOO_LONG`：上游 `finish_reason = 'length'`（输出被截断）；
+  - `BAD_OUTPUT`：返回不是合法 JSON 或 zod 校验不过（重试后仍然）；
+  - `REGION_SUSPECT`：模型在输出里标明这块区域不像完整的一周（提示词里给它这个出口：`{"region_suspect": true}`）。
 响应：
 ```jsonc
 { "weeks": [ {
@@ -111,7 +115,7 @@ CREATE INDEX plan_import_runs_quota_idx ON plan_import_runs (coach_id, trainee_i
 
 ## 5. 测试 seam（先红后绿，越少越好）
 
-1. **HTTP 路由层**（`tests/plan-imports.test.ts`，沿用现有 supertest + 测试库 helper）：注入假 `PlanImportModel`。覆盖：未配 key → status `enabled:false`、POST 404；非本人学员 404；第 4 次 → 429 且前 3 次成功才计数（422 不计）；import_id 跨教练 / 隔天 / 第 4 次调 weeks 被拒；某周模型失败只回该周 error；`inferred` 闸门（假模型返回原文没有的数字 → 响应带 `inferred`）；请求体无文件名字段、日志无单元格文本。
+1. **HTTP 路由层**（`tests/plan-imports.test.ts`，沿用现有 supertest + 测试库 helper）：注入假 `PlanImportModel`。覆盖：未配 key → status `enabled:false`、POST 404；非本人学员 404；第 4 次 → 429 且前 3 次成功才计数（422 不计）；import_id 跨教练 / 隔天 / 第 4 次调 weeks 被拒；某周模型失败只回该周 error 且四种 `reason` 各有一条用例；第 9 次调 weeks 被拒；`inferred` 闸门（假模型返回原文没有的数字 → 响应带 `inferred`）；请求体无文件名字段、日志无单元格文本。
 2. **DeepSeek 适配器单测**：用假 fetch 断言请求形状（json_object、temperature 0、超时）、非法 JSON 重试一次。
 3. **真模型评估脚本**（不进 CI）：`scripts/plan-import-eval.ts <xlsx/csv 路径...>`，本地用真 key 跑两步并打印每周识别摘要与 flags 计数，给 Opus/David 用真实样表验收。样表不进仓（仓库公开）。
 
