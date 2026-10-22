@@ -1,5 +1,7 @@
+import { recipientLocale } from '../i18n/locale';
 import type { Kysely, Transaction } from 'kysely';
 
+import type { Config } from '../config';
 import type { Database } from '../db/types';
 import { PUSH_POLICY } from '../domain/push-policy';
 import type { Logger } from '../logger';
@@ -72,18 +74,19 @@ async function consumeRow(
   apnsClient: ApnsClient,
   now: Date,
   logger: PushConsumerLogger,
+  config: Pick<Config, 'JWT_AUDIENCE'>,
 ): Promise<void> {
   await db.transaction().execute(async (trx) => {
     const outbox = await pendingPushRowQuery(trx, outboxId).executeTakeFirst();
     if (outbox === undefined) return;
 
-    // Global-track recipients (phone IS NULL) get English copy.
+    // Explicit client language wins over deployment-specific legacy defaults.
     const recipient = await trx
       .selectFrom('users')
-      .select('phone')
+      .select(['phone', 'preferred_locale'])
       .where('id', '=', outbox.recipient_id)
       .executeTakeFirst();
-    const locale = recipient?.phone === null ? 'en' : 'zh';
+    const locale = recipientLocale(recipient, config);
 
     let builtPayload;
     try {
@@ -194,6 +197,7 @@ export async function consumePushOutbox(
   apnsClient: ApnsClient,
   now: Date,
   logger: PushConsumerLogger,
+  config: Pick<Config, 'JWT_AUDIENCE'> = {},
 ): Promise<void> {
   await db
     .updateTable('notification_outbox')
@@ -212,6 +216,6 @@ export async function consumePushOutbox(
     .execute();
 
   for (const candidate of candidates) {
-    await consumeRow(db, candidate.id, apnsClient, now, logger);
+    await consumeRow(db, candidate.id, apnsClient, now, logger, config);
   }
 }

@@ -1,0 +1,334 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`all push locales > bind_request preserves existing Chinese and English payloads 1`] = `
+[
+  {
+    "alert": {
+      "body": "张同学 申请绑定",
+      "title": "新学员申请",
+    },
+    "custom": {
+      "kind": "bind_request",
+      "request_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "bind_request",
+  },
+  {
+    "alert": {
+      "body": "张同学 requested to link",
+      "title": "New student request",
+    },
+    "custom": {
+      "kind": "bind_request",
+      "request_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "bind_request",
+  },
+]
+`;
+
+exports[`all push locales > chat_message preserves existing Chinese and English payloads 1`] = `
+[
+  {
+    "alert": {
+      "body": "视频看过了",
+      "title": "张教练",
+    },
+    "collapseId": "conv-10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "conversation_id": "10000000-0000-4000-8000-000000000001",
+      "kind": "chat_message",
+      "seq": 1,
+    },
+    "threadId": "chat_message",
+  },
+  {
+    "alert": {
+      "body": "视频看过了",
+      "title": "张教练",
+    },
+    "collapseId": "conv-10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "conversation_id": "10000000-0000-4000-8000-000000000001",
+      "kind": "chat_message",
+      "seq": 1,
+    },
+    "threadId": "chat_message",
+  },
+]
+`;
+
+exports[`all push locales > coach_daily_digest preserves existing Chinese and English payloads 1`] = `
+[
+  {
+    "alert": {
+      "body": "昨天：1 练完 · 2 缺练",
+      "title": "昨日训练摘要",
+    },
+    "custom": {
+      "counts": {
+        "missed_training": 2,
+        "session_completed": 1,
+      },
+      "gym_day": "2026-10-22",
+      "kind": "coach_daily_digest",
+    },
+    "threadId": "coach_daily_digest",
+  },
+  {
+    "alert": {
+      "body": "昨天：1 练完 · 2 缺练",
+      "title": "昨日训练摘要",
+    },
+    "custom": {
+      "counts": {
+        "missed_training": 2,
+        "session_completed": 1,
+      },
+      "gym_day": "2026-10-22",
+      "kind": "coach_daily_digest",
+    },
+    "threadId": "coach_daily_digest",
+  },
+]
+`;
+
+exports[`all push locales > missed_training preserves existing Chinese and English payloads 1`] = `
+[
+  {
+    "alert": {
+      "body": "张同学已 2 天未训练",
+      "title": "学员缺练提醒",
+    },
+    "custom": {
+      "kind": "missed_training",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "missed_training",
+  },
+  {
+    "alert": {
+      "body": "张同学 hasn't trained for 2 days",
+      "title": "Missed training",
+    },
+    "custom": {
+      "kind": "missed_training",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "missed_training",
+  },
+]
+`;
+
+exports[`all push locales > plan_published preserves existing Chinese and English payloads 1`] = `
+[
+  {
+    "alert": {
+      "body": "新的训练周期已经准备好，打开看看",
+      "title": "教练发布了新计划",
+    },
+    "collapseId": "plan-published-10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "kind": "plan_published",
+      "plan_id": "10000000-0000-4000-8000-000000000001",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "plan_published",
+  },
+  {
+    "alert": {
+      "body": "Your next training cycle is ready",
+      "title": "New plan published",
+    },
+    "collapseId": "plan-published-10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "kind": "plan_published",
+      "plan_id": "10000000-0000-4000-8000-000000000001",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "plan_published",
+  },
+]
+`;
+
+exports[`all push locales > plan_shift preserves existing Chinese and English payloads 1`] = `
+[
+  {
+    "alert": {
+      "body": "张同学 将本周期顺延 2 天",
+      "title": "学员顺延了计划",
+    },
+    "collapseId": "shift-10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "kind": "plan_shift",
+      "plan_id": "10000000-0000-4000-8000-000000000001",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "plan_shift",
+  },
+  {
+    "alert": {
+      "body": "张同学 shifted this cycle by 2 days",
+      "title": "Plan shifted",
+    },
+    "collapseId": "shift-10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "kind": "plan_shift",
+      "plan_id": "10000000-0000-4000-8000-000000000001",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "plan_shift",
+  },
+]
+`;
+
+exports[`all push locales > plan_shift_undone preserves existing Chinese and English payloads 1`] = `
+[
+  {
+    "alert": {
+      "body": "张教练 恢复了原来的推荐日期",
+      "title": "教练撤销了上次的日期调整",
+    },
+    "collapseId": "10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "kind": "plan_shift_undone",
+      "plan_id": "10000000-0000-4000-8000-000000000001",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "plan_updated",
+  },
+  {
+    "alert": {
+      "body": "Your coach restored the previous dates",
+      "title": "Plan date change undone",
+    },
+    "collapseId": "10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "kind": "plan_shift_undone",
+      "plan_id": "10000000-0000-4000-8000-000000000001",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "plan_updated",
+  },
+]
+`;
+
+exports[`all push locales > plan_shifted preserves existing Chinese and English payloads 1`] = `
+[
+  {
+    "alert": {
+      "body": "张教练 把 10月22日 起的训练后移了 2 天",
+      "title": "教练调整了你的计划日期",
+    },
+    "collapseId": "10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "kind": "plan_shifted",
+      "plan_id": "10000000-0000-4000-8000-000000000001",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "plan_updated",
+  },
+  {
+    "alert": {
+      "body": "Your coach moved your training from Oct 22 onward by 2 days",
+      "title": "Your plan dates changed",
+    },
+    "collapseId": "10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "kind": "plan_shifted",
+      "plan_id": "10000000-0000-4000-8000-000000000001",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "plan_updated",
+  },
+]
+`;
+
+exports[`all push locales > plan_updated preserves existing Chinese and English payloads 1`] = `
+[
+  {
+    "alert": {
+      "body": "张教练 调整了你正在练的计划，打开看看",
+      "title": "教练更新了你的计划",
+    },
+    "collapseId": "plan-updated-10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "kind": "plan_updated",
+      "plan_id": "10000000-0000-4000-8000-000000000001",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "plan_updated",
+  },
+  {
+    "alert": {
+      "body": "张教练 adjusted your current plan",
+      "title": "Your plan was updated",
+    },
+    "collapseId": "plan-updated-10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "kind": "plan_updated",
+      "plan_id": "10000000-0000-4000-8000-000000000001",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "plan_updated",
+  },
+]
+`;
+
+exports[`all push locales > pr_congrats preserves existing Chinese and English payloads 1`] = `
+[
+  {
+    "alert": {
+      "body": "张同学 硬拉 实测重量新高 ↑2.5kg",
+      "title": "破 PR 🎉",
+    },
+    "custom": {
+      "kind": "pr_congrats",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "pr_congrats",
+  },
+  {
+    "alert": {
+      "body": "张同学 hit a new weight PR ↑2.5kg",
+      "title": "New PR 🎉",
+    },
+    "custom": {
+      "kind": "pr_congrats",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "pr_congrats",
+  },
+]
+`;
+
+exports[`all push locales > video_pending preserves existing Chinese and English payloads 1`] = `
+[
+  {
+    "alert": {
+      "body": "张同学上传了 杠铃卧推 视频",
+      "title": "新视频待反馈",
+    },
+    "collapseId": "vid-10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "kind": "video_pending",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+      "video_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "video_pending",
+  },
+  {
+    "alert": {
+      "body": "张同学 uploaded a training video",
+      "title": "New video to review",
+    },
+    "collapseId": "vid-10000000-0000-4000-8000-000000000001",
+    "custom": {
+      "kind": "video_pending",
+      "student_id": "10000000-0000-4000-8000-000000000001",
+      "video_id": "10000000-0000-4000-8000-000000000001",
+    },
+    "threadId": "video_pending",
+  },
+]
+`;

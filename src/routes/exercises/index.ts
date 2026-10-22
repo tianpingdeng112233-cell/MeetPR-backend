@@ -132,7 +132,7 @@ export function exercisesRouter(deps: ExerciseRouterDeps): ExpressRouter {
         .orderBy('name', 'asc')
         .execute();
 
-      res.status(200).json({ exercises: rows.map(toExercise) });
+      res.status(200).json({ exercises: rows.map((row) => toExercise(row, req.locale)) });
     }),
   );
 
@@ -162,7 +162,7 @@ export function exercisesRouter(deps: ExerciseRouterDeps): ExpressRouter {
         .returningAll()
         .executeTakeFirstOrThrow();
 
-      res.status(201).json(toExercise(row));
+      res.status(201).json(toExercise(row, req.locale));
     }),
   );
 
@@ -236,7 +236,7 @@ export function exercisesRouter(deps: ExerciseRouterDeps): ExpressRouter {
         return;
       }
 
-      res.status(200).json(toExercise(row));
+      res.status(200).json(toExercise(row, req.locale));
     }),
   );
 

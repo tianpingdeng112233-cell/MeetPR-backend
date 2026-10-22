@@ -6,6 +6,7 @@ import pino from 'pino';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { request as inMemoryRequest } from '../helpers/inMemoryRequest';
 import { createApp } from '../../src/app';
 import type { Config } from '../../src/config';
 import type { Database } from '../../src/db/types';
@@ -42,6 +43,21 @@ function makeDeps() {
 }
 
 describe('app', () => {
+  it('allows the explicit locale header in a Global browser CORS preflight', async () => {
+    const deps = makeDeps();
+    deps.config.CORS_ORIGIN = 'https://plan.example.test';
+    const response = await inMemoryRequest(createApp(deps))
+      .options('/exercises')
+      .set('Origin', 'https://plan.example.test')
+      .set('Access-Control-Request-Method', 'GET')
+      .set('Access-Control-Request-Headers', 'authorization,content-type,x-meetpr-locale');
+    expect(response.status).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe('https://plan.example.test');
+    expect(
+      String(response.headers['access-control-allow-headers']).toLowerCase().split(/,\s*/),
+    ).toEqual(expect.arrayContaining(['authorization', 'content-type', 'x-meetpr-locale']));
+  });
+
   it('returns 200 with status ok on /health', async () => {
     const app = createApp(makeDeps());
     const res = await request(app).get('/health');

@@ -1,10 +1,11 @@
+import { copy } from '../i18n/copy';
 const RESEND_EMAILS_URL = 'https://api.resend.com/emails';
 
 interface MailInput {
   apiKey: string;
   from: string;
   to: string;
-  locale?: 'en' | 'zh';
+  locale?: 'en' | 'zh' | 'zh-Hant';
 }
 
 export interface PasswordResetEmailInput extends MailInput {
@@ -25,11 +26,19 @@ export async function sendPasswordResetEmail(
   const html = `<p>Your MeetPR password reset code is <strong>${input.code}</strong>.</p><p>It expires in 10 minutes. If you did not request this, you can ignore this email.</p>`;
   return sendMail(
     input,
-    input.locale === 'zh'
+    input.locale === 'zh' || input.locale === 'zh-Hant'
       ? {
-          subject: 'MeetPR 重置密码验证码',
-          text: `你的 MeetPR 重置密码验证码是 ${input.code}，10 分钟内有效。如果不是你本人操作，请忽略这封邮件。`,
-          html: `<p>你的 MeetPR 重置密码验证码是 <strong>${input.code}</strong>，10 分钟内有效。</p><p>如果不是你本人操作，请忽略这封邮件。</p>`,
+          subject: copy(input.locale, 'MeetPR 重置密码验证码'),
+          text: copy(
+            input.locale,
+            '你的 MeetPR 重置密码验证码是 {0}，10 分钟内有效。如果不是你本人操作，请忽略这封邮件。',
+            [input.code],
+          ),
+          html: copy(
+            input.locale,
+            '<p>你的 MeetPR 重置密码验证码是 <strong>{0}</strong>，10 分钟内有效。</p><p>如果不是你本人操作，请忽略这封邮件。</p>',
+            [input.code],
+          ),
         }
       : { subject: 'Your MeetPR password reset code', text, html },
     fetchImpl,
@@ -42,11 +51,19 @@ export async function sendSignupCodeEmail(
 ): Promise<void> {
   return sendMail(
     input,
-    input.locale === 'zh'
+    input.locale === 'zh' || input.locale === 'zh-Hant'
       ? {
-          subject: 'MeetPR 注册验证码',
-          text: `你的 MeetPR 注册验证码是 ${input.code}，10 分钟内有效。如果不是你本人操作，请忽略这封邮件。`,
-          html: `<p>你的 MeetPR 注册验证码是 <strong>${input.code}</strong>，10 分钟内有效。</p><p>如果不是你本人操作，请忽略这封邮件。</p>`,
+          subject: copy(input.locale, 'MeetPR 注册验证码'),
+          text: copy(
+            input.locale,
+            '你的 MeetPR 注册验证码是 {0}，10 分钟内有效。如果不是你本人操作，请忽略这封邮件。',
+            [input.code],
+          ),
+          html: copy(
+            input.locale,
+            '<p>你的 MeetPR 注册验证码是 <strong>{0}</strong>，10 分钟内有效。</p><p>如果不是你本人操作，请忽略这封邮件。</p>',
+            [input.code],
+          ),
         }
       : {
           subject: 'Your MeetPR signup code',
@@ -63,11 +80,17 @@ export async function sendAlreadyRegisteredEmail(
 ): Promise<void> {
   return sendMail(
     input,
-    input.locale === 'zh'
+    input.locale === 'zh' || input.locale === 'zh-Hant'
       ? {
-          subject: '你已经有 MeetPR 账号了',
-          text: '这个邮箱已注册 MeetPR，请直接登录。忘了密码可在登录页找回。如果不是你本人操作，请忽略这封邮件。',
-          html: '<p>这个邮箱已注册 MeetPR，请直接登录。忘了密码可在登录页找回。</p><p>如果不是你本人操作，请忽略这封邮件。</p>',
+          subject: copy(input.locale, '你已经有 MeetPR 账号了'),
+          text: copy(
+            input.locale,
+            '这个邮箱已注册 MeetPR，请直接登录。忘了密码可在登录页找回。如果不是你本人操作，请忽略这封邮件。',
+          ),
+          html: copy(
+            input.locale,
+            '<p>这个邮箱已注册 MeetPR，请直接登录。忘了密码可在登录页找回。</p><p>如果不是你本人操作，请忽略这封邮件。</p>',
+          ),
         }
       : {
           subject: 'You already have a MeetPR account',

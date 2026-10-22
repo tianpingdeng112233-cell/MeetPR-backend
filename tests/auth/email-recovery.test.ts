@@ -90,6 +90,46 @@ afterEach(() => {
 });
 
 describe('email password recovery', () => {
+  it.each(['Accept-Language', 'X-MeetPR-Locale'])(
+    'keeps legacy mail copy for unsupported %s: zh-TW',
+    async (header) => {
+      const fetchMock = stubResend();
+      const { app } = makeContext({ MAIL_LOCALE: 'zh' });
+      await register(app);
+      const response = await request(app)
+        .post('/auth/email/forgot')
+        .set(header, 'zh-TW')
+        .send({ email: 'student@example.com' });
+      expect(response.status).toBe(204);
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalled();
+      });
+      const rawBody = fetchMock.mock.calls[0]?.[1]?.body;
+      if (typeof rawBody !== 'string') throw new Error('missing mail body');
+      expect(JSON.parse(rawBody)).toMatchObject({ subject: 'MeetPR 重置密码验证码' });
+    },
+  );
+  it('uses the requested Taiwan locale for password reset mail', async () => {
+    const fetchMock = stubResend();
+    const { app } = makeContext({ MAIL_LOCALE: 'zh' });
+    await register(app);
+    const response = await request(app)
+      .post('/auth/email/forgot')
+      .set('X-MeetPR-Locale', 'zh-Hant')
+      .send({ email: 'student@example.com' });
+    expect(response.status).toBe(204);
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+    const rawBody = fetchMock.mock.calls[0]?.[1]?.body;
+    if (typeof rawBody !== 'string') throw new Error('missing mail body');
+    const body = JSON.parse(rawBody) as {
+      subject: string;
+      text: string;
+    };
+    expect(body.subject).toBe('MeetPR 重置密碼驗證碼');
+    expect(body.text).toContain('10 分鐘內有效');
+  });
   it('resets the password, consumes the code, and revokes every old session', async () => {
     const fetchMock = stubResend();
     const { app, db } = makeContext();

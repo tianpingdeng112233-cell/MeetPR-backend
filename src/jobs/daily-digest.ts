@@ -1,3 +1,6 @@
+import type { Config } from '../config';
+import { recipientLocale, type CopyLocale } from '../i18n/locale';
+import { copy } from '../i18n/copy';
 import { createHash } from 'node:crypto';
 import type { Kysely } from 'kysely';
 
@@ -7,7 +10,6 @@ import { normalizeDateOnly, trainingDay, utcDate, utcDateOnly } from '../utils/d
 import { DEFAULT_TIME_ZONE } from '../utils/timezone';
 
 const DIGEST_EVENT_TYPE = 'coach_daily_digest';
-const DIGEST_TITLE = '昨日训练摘要';
 const DIGEST_TITLE_EN = "Yesterday's training recap";
 
 export interface DailyDigestCounts {
@@ -108,7 +110,7 @@ export function deriveDailyDigestAggregateId(coachId: string, gymDay: string): s
 
 export function dailyDigestBody(
   counts: DailyDigestCounts,
-  locale: 'zh' | 'en' = 'zh',
+  locale: CopyLocale = 'zh',
 ): string | null {
   const segments =
     locale === 'en'
@@ -121,13 +123,21 @@ export function dailyDigestBody(
             : null,
         ].filter((segment): segment is string => segment !== null)
       : [
-          counts.session_completed > 0 ? `${String(counts.session_completed)} 练完` : null,
-          counts.session_partial > 0 ? `${String(counts.session_partial)} 部分完成` : null,
-          counts.missed_training > 0 ? `${String(counts.missed_training)} 缺练` : null,
-          counts.pr_e1rm > 0 ? `${String(counts.pr_e1rm)} 破 PR` : null,
+          counts.session_completed > 0
+            ? copy(locale, '{0} 练完', [String(counts.session_completed)])
+            : null,
+          counts.session_partial > 0
+            ? copy(locale, '{0} 部分完成', [String(counts.session_partial)])
+            : null,
+          counts.missed_training > 0
+            ? copy(locale, '{0} 缺练', [String(counts.missed_training)])
+            : null,
+          counts.pr_e1rm > 0 ? copy(locale, '{0} 破 PR', [String(counts.pr_e1rm)]) : null,
         ].filter((segment): segment is string => segment !== null);
   if (segments.length === 0) return null;
-  return locale === 'en' ? `Yesterday: ${segments.join(' · ')}` : `昨天：${segments.join(' · ')}`;
+  return locale === 'en'
+    ? `Yesterday: ${segments.join(' · ')}`
+    : copy(locale, '昨天：{0}', [segments.join(' · ')]);
 }
 
 // Demo/DemoStudent hard-ban (CEO plan red line #4): the iOS demo builds are
@@ -143,6 +153,7 @@ export async function runDailyDigest(
   logger: DailyDigestLogger,
   timezone = DEFAULT_TIME_ZONE,
   failedStudentIds: ReadonlySet<string> = new Set<string>(),
+  config: Pick<Config, 'JWT_AUDIENCE'> = {},
 ): Promise<void> {
   const acceptedBonds = (
     await db
@@ -154,6 +165,7 @@ export async function runDailyDigest(
         'br.student_id',
         'student.timezone as student_timezone',
         'coach.phone as coach_phone',
+        'coach.preferred_locale as coach_preferred_locale',
       ])
       .where('br.status', '=', 'accepted')
       .where('coach.role', '=', 'coach')
@@ -161,8 +173,14 @@ export async function runDailyDigest(
       .execute()
   ).filter((bond) => !failedStudentIds.has(bond.student_id));
   const coachIds = [...new Set(acceptedBonds.map((bond) => bond.coach_id))];
-  const coachLocaleById = new Map<string, 'zh' | 'en'>(
-    acceptedBonds.map((bond) => [bond.coach_id, bond.coach_phone === null ? 'en' : 'zh']),
+  const coachLocaleById = new Map<string, CopyLocale>(
+    acceptedBonds.map((bond) => [
+      bond.coach_id,
+      recipientLocale(
+        { phone: bond.coach_phone, preferred_locale: bond.coach_preferred_locale },
+        config,
+      ),
+    ]),
   );
   if (coachIds.length === 0) {
     logger.info({ gymDay, inserted: 0 }, 'coach_daily_digest_completed');
@@ -305,8 +323,14 @@ export async function runDailyDigest(
               aggregate_id: aggregateId,
               recipient_id: coachId,
               payload: JSON.stringify({
+                // Legacy zh/en outbox payloads remain byte-identical. Mark new
+                // Taiwan copy so a later language report can render it again.
+                ...(locale === 'zh-Hant' ? { locale } : {}),
                 aps: {
-                  alert: { title: locale === 'en' ? DIGEST_TITLE_EN : DIGEST_TITLE, body },
+                  alert: {
+                    title: locale === 'en' ? DIGEST_TITLE_EN : copy(locale, '昨日训练摘要'),
+                    body,
+                  },
                 },
                 counts,
                 gym_day: gymDay,
