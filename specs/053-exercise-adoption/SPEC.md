@@ -19,7 +19,7 @@
 
 ## 变更
 
-### 1. 迁移（编号取实装时所有分支上的下一个空号，PR 描述里写明并核对无撞号）
+### 1. 迁移（编号取实装时所有分支上的下一个空号，PR 描述里写明并核对无撞号；10/22 核实 0076、0077 均已被其他分支占用 → 用 0078）
 
 `exercises` 加可空列 `canonical_exercise_id UUID REFERENCES exercises(id) ON DELETE RESTRICT`，加部分索引 `WHERE canonical_exercise_id IS NOT NULL`。存量全部为 NULL，语义不变，无需回填。约束（handler 层保证，测试覆盖）：只有自建动作（`created_by_coach_id IS NOT NULL`）可以有链接；链接目标必须是官方动作；不允许链到链（目标自身 `canonical_exercise_id` 必为 NULL）。
 
@@ -27,13 +27,13 @@
 
 - `GET /admin/custom-exercises`
   返回两组：
-  - `pending`：未收录的自建动作，按**归一名**分组（`lower(name)` 去首尾空白、连续空白压成一个）。每组：`key`、`display_name`（组内计划用量最多那条的原名）、`coach_count`（建过的教练数）、`plan_count`（用到组内任一条的不同计划数）、`rows[]`（每条：`exercise_id`、`name`、`coach_id`、`coach_name`、`plan_count`、全部属性字段）。组按 `plan_count` 降序，再按 `coach_count` 降序。
+  - `pending`：未收录的自建动作，按**归一名**分组（全角字符转半角、去掉**所有**空白、转小写；与网页端 `normalizeAdoptionName` 同口径，2026-10-22 收货时更正）。每组：`key`、`display_name`（组内计划用量最多那条的原名）、`coach_count`（建过的教练数）、`plan_count`（用到组内任一条的不同计划数）、`rows[]`（每条：`exercise_id`、`name`、`coach_id`、`coach_name`、`plan_count`、全部属性字段）。组按 `plan_count` 降序，再按 `coach_count` 降序。
   - `adopted`：已收录的自建动作，按目标官方动作分组。每组：`official`（`id`、`name`、`name_en`）、`rows[]`（`exercise_id`、`name`＝教练叫法、`coach_id`、`coach_name`、`plan_count`、`adopted_at`）。组按官方名排序。
 - `POST /admin/custom-exercises/adopt`
   body：`exercise_ids: string[]`（1–50，全部必须是未收录的自建动作）+ 二选一：
   - `target_exercise_id`：已有官方动作 id；或
   - `new_official`：与 `POST /exercises` 相同的动作属性体（`name`、`name_en`、`exercise_type`、`main_lift_family`、`is_competition_lift`、`muscle_groups`、`equipment`、`movement_pattern`），新建为官方动作（`created_by_coach_id = NULL`）。
-  单事务：（新建官方 →）把这些行的 `canonical_exercise_id` 设为目标，记 `adopted_at`（另加可空列 `adopted_at TIMESTAMPTZ`，同一迁移）。返回目标官方动作与已挂行。错误：任一 id 不存在/不是自建/已收录 → 409 `EXERCISE_ADOPTION_CONFLICT`（整体回滚，带出问题 id）；目标不是官方 → 400；`new_official` 校验失败 → 400 沿用现有校验信封。
+    单事务：（新建官方 →）把这些行的 `canonical_exercise_id` 设为目标，记 `adopted_at`（另加可空列 `adopted_at TIMESTAMPTZ`，同一迁移）。返回目标官方动作与已挂行。错误：任一 id 不存在/不是自建/已收录 → 409 `EXERCISE_ADOPTION_CONFLICT`（整体回滚，带出问题 id）；目标不是官方 → 400；`new_official` 校验失败 → 400 沿用现有校验信封。
 - `POST /admin/custom-exercises/unadopt`
   body：`exercise_ids: string[]`（1–50，必须都已收录）。单事务把链接与 `adopted_at` 置 NULL。因「收录成新」而新建的官方动作**保留**（它已是官方库的一员，可能已被别人用）。
 
@@ -80,7 +80,7 @@
 - **路由级集成测试**（仓内现有 admin 与 exercises 路由测试所用的测试库 + supertest 方式，优先复用其夹具）：`/admin/custom-exercises*` 三个接口、`/exercises` 的 GET/PATCH/DELETE 新规则、不变量 1–4。
 - **`exercise-stats` 现有测试文件**：加「链到同一官方动作的历史被合并」用例。
 - **`/admin/exercise-usage` 现有测试**：加计入链接用量的用例。
-先写这些用例跑红，再实装。
+  先写这些用例跑红，再实装。
 
 ## 决策记录（2026-10-22 /grill）
 
