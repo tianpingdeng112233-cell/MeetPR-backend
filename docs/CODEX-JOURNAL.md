@@ -385,3 +385,15 @@ David 现场要求欢迎页直接进入教练网页登录，并重写欢迎邮�
 - 测试文件本轮没有修改；36 条用例原样交接。SHA-256：`f34fbf40c1e6ec69d29e397def309818018f7f2fc7123b1cf3d6f555b32e24e9`。没有锁文件、依赖清单、迁移或其他端点改动。
 - 本地验证：初次 typecheck/lint 发现路由两种 Zod 校验结果合并后过滤字段类型丢失，已显式声明校验结果的可选字段类型；修正后 `npm run typecheck` 退出 0、`npm run lint` 退出 0。两个生产文件的 Prettier check 及 `git diff --check` 均通过。独立静态 code-review：Standards 0 findings、Spec 0 findings。
 - 与 SPEC 行为契约无已知出入。SPEC 文件仍为 Draft，未擅自更新状态；此前阻塞记录中的“尚未实现”已由本节取代。按本轮分工没有在沙箱重复运行 HTTP/全量测试；36 条是否全绿及 SPEC 验收 8 的全量测试仍需 Claude 在沙箱外给出实际输出，不把静态检查当作绿测或功能验收。未 commit、push、开 PR 或部署。
+
+## 2026-10-22 · 邀请落地页分享标题（未提交，待外部 Supertest / 全量收货）
+
+- 工作位置固定为当前 `MeetPR-backend-wt-invite-title`，分支 `fix/invite-landing-title`，HEAD 与本地 `origin/staging` 均为 `11ea46d`。依据 David 本轮实施卡及后续明确分工执行；未 commit、push 或部署，无依赖、锁文件、迁移、其他 worktree 或其他业务路由改动。
+- 新增 `src/routes/invite-landing-pages.ts`，在 `src/app.ts` 的静态资源后、通用 SPA fallback 前挂载一次。仅偏好 HTML 的 `/i/:code` 请求读取并在进程内缓存原始 `web/index.html`；并发请求共享读取 Promise，读取失败清缓存并 next，保持原 fallback/notFound 行为。逐请求生成标题、description、og:title、og:description，其余页面保留，磁盘产物不改；JSON/通配符/缺省 Accept 继续 next。不查数据库，不输出教练信息。
+- 字符集现场核对 `src/handlers/invite-codes.ts` 与 `src/routes/public-invites.ts` 为 `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`；接受 10 位与兼容 8 位，按四位分组（4-4-2 / 4-4）。非法字符或长度不回显，使用不带码的通用描述；全部注入文本经 HTML 转义。遵守当前 worktree 边界，未读取外仓 App 的 `InviteCodeFormat.grouped` 源码；按 David 明确给定的分组契约实现。
+- 在既有 `tests/unit/app.test.ts` 的 Supertest/createApp seam 新增 15 条回归，连同原 6 条共 21 条：标题与三项 head metadata、8/10 位分组、注入载荷与非法字符/9/11 位长度、Accept 协商、缺失文件与原 fallback 一致、缓存不串码、其他 SPA 路径与磁盘模板保持不变。临时 fixture 均建在当前 worktree 并逐例清理。
+- 红测来源：已亲读 Opus 沙箱外生成的 `.invite-title-external-red.log`，实施前版本为 7 failed / 12 passed（19），失败均为旧 HTML 缺标题/分组邀请码，无环境错误。后补两条非法长度断言不在该次外部红测中。此前本机 Supertest 的 19 failed / 19 errors 均为 `listen EPERM`，不冒充业务红测；本机全量串行尝试同样遭监听阻断，已终止，没有完整全量结果。依赖由用户确认已安装，本轮不再安装。
+- 沙箱内功能验证：为保留正式 Supertest seam，临时复制 app 测试，仅将 request import 换成既有 `tests/helpers/inMemoryRequest`，其余断言不变；与 `tests/unit/in-memory-request.test.ts`、`tests/coach-applications.test.ts` 串行执行，3 文件 / 39 passed / 1 skipped，含全部 21 条 app 断言。skip 为既有真实 PostgreSQL 专用事务测试。临时副本验证后删除；此结果不代替正式 Supertest 或全量验收。日志 `.invite-title-in-memory-test.log`。
+- 首轮 lint 指出 Express 回调不能直接返回 Promise，已改为缓存读取 Promise 并显式转发异常，再跑上述 39 条通过。修正后 `pnpm typecheck`、`pnpm lint` 均退出 0；四个改动文件的 Prettier check 与 `git diff --check` 通过。静态检查日志为 `.invite-title-final-typecheck.log`、`.invite-title-final-lint.log`。
+- 自审分别核对 Standards（工厂内缓存、异步错误转发、无共享单例/依赖）与 Spec（Accept、分组与白名单、HTML 转义、不查库、仅模板元信息变化），无已知范围偏离；未把自测作为 Opus 的收货结论。真实微信链接卡片、浏览器 SPA 接管、真实 PostgreSQL 与部署均未验。
+- Opus 沙箱外待执行：`pnpm test -- tests/unit/app.test.ts --maxWorkers=1 --minWorkers=1`（预期 21 条）；`pnpm test -- --maxWorkers=1 --minWorkers=1`（全量串行）。当前交付为未提交实现和测试，不宣称这两项已通过。

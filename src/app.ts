@@ -17,6 +17,7 @@ import { createGlobalRateLimit } from './middleware/rateLimit';
 import { requestId } from './middleware/requestId';
 import type { RealtimeHub } from './realtime/hub';
 import { mountRoutes } from './routes';
+import { inviteLandingPagesRouter } from './routes/invite-landing-pages';
 import type { OssService } from './services/oss';
 
 export interface AppDeps {
@@ -109,6 +110,7 @@ export function createApp(deps: AppDeps): Express {
   // web/ is absent in dev (no build) — sendFile errors then fall through to notFound.
   const webDir = path.resolve(process.cwd(), 'web');
   app.use(express.static(webDir));
+  app.use(inviteLandingPagesRouter(webDir));
   app.use((req, res, next) => {
     if (req.method !== 'GET' || req.accepts(['json', 'html']) !== 'html') {
       next();
