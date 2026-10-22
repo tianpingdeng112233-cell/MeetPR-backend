@@ -1,5 +1,8 @@
 import { sql, type Kysely } from 'kysely';
 
+import { catalogName } from '../i18n/copy';
+import type { PreferredLocale } from '../i18n/locale';
+
 import { E1RM_POLICY, calculateEligibleE1RM, resolveCompetitionFamily } from '../domain/e1rm';
 import {
   LIFT_FAMILIES,
@@ -139,6 +142,11 @@ async function fetchScopedLogs(
       'pe.id as plan_exercise_id',
       sql<string>`coalesce(e.canonical_exercise_id, e.id)`.as('exercise_id'),
       sql<string>`coalesce(canonical.name, e.name)`.as('exercise_name'),
+      sql<
+        string | null
+      >`case when canonical.id is not null then canonical.created_by_coach_id else e.created_by_coach_id end`.as(
+        'exercise_owner',
+      ),
       sql<LiftFamily | null>`case when canonical.id is not null then canonical.main_lift_family else e.main_lift_family end`.as(
         'main_lift_family',
       ),
@@ -496,6 +504,7 @@ export async function fetchExerciseStatsOverview(
   db: Kysely<Database>,
   coachId: string,
   studentId: string,
+  locale?: PreferredLocale,
 ): Promise<ExerciseStatsOverviewResponse> {
   const [logs, onboarding, planDates, timezone] = await Promise.all([
     fetchScopedLogs(db, coachId, studentId),
@@ -514,7 +523,7 @@ export async function fetchExerciseStatsOverview(
       current.dates.add(dateOnly(log.logged_date));
     } else {
       byExercise.set(log.exercise_id, {
-        name: log.exercise_name,
+        name: catalogName(log.exercise_name, log.exercise_owner, locale),
         dates: new Set([dateOnly(log.logged_date)]),
         lastLoggedAt: log.logged_at,
       });

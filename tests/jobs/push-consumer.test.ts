@@ -50,6 +50,100 @@ function fakeClient(result: ApnsResult): { client: ApnsClient; send: ReturnType<
 }
 
 describe('consumePushOutbox', () => {
+  it.each(['zh-Hans', 'en'] as const)(
+    'renders queued traditional digests using the latest preference %s',
+    async (preferred_locale) => {
+      const ctx = await makeContext();
+      await ctx.db
+        .updateTable('users')
+        .set({ preferred_locale })
+        .where('id', '=', ids.coach)
+        .execute();
+      await addToken(ctx, 'aaaa');
+      await addOutbox(ctx, {
+        payload: {
+          locale: 'zh-Hant',
+          aps: { alert: { title: '昨日訓練摘要', body: '昨天：1 練完' } },
+          counts: { session_completed: 1 },
+          gym_day: '2026-07-17',
+        },
+      });
+      const fake = fakeClient({ ok: true, status: 200 });
+      await consumePushOutbox(ctx.db, fake.client, now, logger);
+      expect(fake.send.mock.calls[0]?.[1]).toMatchObject({
+        aps: {
+          alert:
+            preferred_locale === 'en'
+              ? { title: "Yesterday's training recap", body: 'Yesterday: 1 done' }
+              : { title: '昨日训练摘要', body: '昨天：1 练完' },
+        },
+      });
+    },
+  );
+  it('preserves an unknown legacy video exercise instead of assuming it is catalog-owned', async () => {
+    const ctx = await makeContext();
+    await ctx.db
+      .updateTable('users')
+      .set({ preferred_locale: 'zh-Hant' })
+      .where('id', '=', ids.coach)
+      .execute();
+    await addToken(ctx, 'aaaa');
+    await addOutbox(ctx, {
+      eventType: 'video_pending',
+      payload: {
+        student_name: '张同学',
+        exercise_name: '杠铃卧推',
+        student_id: ids.trainee,
+        video_id: randomUUID(),
+      },
+    });
+    const fake = fakeClient({ ok: true, status: 200 });
+    await consumePushOutbox(ctx.db, fake.client, now, logger);
+    expect(fake.send.mock.calls[0]?.[1]).toMatchObject({
+      aps: { alert: { body: '张同学上傳了 杠铃卧推 影片' } },
+    });
+  });
+  it('prioritizes the reported language over deployment and phone', async () => {
+    const ctx = await makeContext();
+    await ctx.db
+      .updateTable('users')
+      .set({ preferred_locale: 'zh-Hant' })
+      .where('id', '=', ids.coach)
+      .execute();
+    await addToken(ctx, 'aaaa');
+    await addOutbox(ctx, {
+      eventType: 'missed_training',
+      payload: {
+        student_name: 'Alex',
+        consecutive_days: 1,
+        student_id: ids.trainee,
+      },
+    });
+    const fake = fakeClient({ ok: true, status: 200 });
+    await consumePushOutbox(ctx.db, fake.client, now, logger);
+    expect(fake.send.mock.calls[0]?.[1]).toMatchObject({
+      aps: { alert: { title: '學員缺練提醒', body: 'Alex已 1 天未訓練' } },
+    });
+  });
+  it('keeps domestic email recipients on Chinese copy', async () => {
+    const ctx = await makeContext();
+    await ctx.db.updateTable('users').set({ phone: null }).where('id', '=', ids.coach).execute();
+    await addToken(ctx, 'aaaa');
+    await addOutbox(ctx, {
+      eventType: 'missed_training',
+      payload: {
+        student_name: 'Alex',
+        consecutive_days: 1,
+        student_id: ids.trainee,
+      },
+    });
+    const fake = fakeClient({ ok: true, status: 200 });
+    await consumePushOutbox(ctx.db, fake.client, now, logger, { JWT_AUDIENCE: 'meetpr-client' });
+    expect(fake.send.mock.calls[0]?.[1]).toMatchObject({
+      aps: { alert: { title: '学员缺练提醒', body: 'Alex已 1 天未训练' } },
+    });
+  });
+
   it('localizes copy by the recipient track: phone set → Chinese, phone NULL → English', async () => {
     const ctx = await makeContext();
     const payload = {
@@ -71,7 +165,9 @@ describe('consumePushOutbox', () => {
     await ctx.db.updateTable('users').set({ phone: null }).where('id', '=', ids.coach).execute();
     const globalId = await addOutbox(ctx, { eventType: 'missed_training', payload });
     const globalFake = fakeClient({ ok: true, status: 200 });
-    await consumePushOutbox(ctx.db, globalFake.client, now, logger);
+    await consumePushOutbox(ctx.db, globalFake.client, now, logger, {
+      JWT_AUDIENCE: 'meetpr-global-client',
+    });
     const globalPayload = globalFake.send.mock.calls[0]?.[1] as {
       aps: { alert: { title: string; body: string } };
     };

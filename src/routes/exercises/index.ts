@@ -175,7 +175,7 @@ export function exercisesRouter(deps: ExerciseRouterDeps): ExpressRouter {
         .orderBy('exercises.name', 'asc')
         .execute();
 
-      res.status(200).json({ exercises: rows.map(toExercise) });
+      res.status(200).json({ exercises: rows.map((row) => toExercise(row, req.locale)) });
     }),
   );
 
@@ -205,7 +205,7 @@ export function exercisesRouter(deps: ExerciseRouterDeps): ExpressRouter {
         .returningAll()
         .executeTakeFirstOrThrow();
 
-      res.status(201).json(toExercise(row));
+      res.status(201).json(toExercise(row, req.locale));
     }),
   );
 
@@ -265,7 +265,10 @@ export function exercisesRouter(deps: ExerciseRouterDeps): ExpressRouter {
           }
           return {
             status: 200,
-            body: toExercise({ ...composed, name: adoptedBody.data.name ?? composed.name }),
+            body: toExercise(
+              { ...composed, name: adoptedBody.data.name ?? composed.name },
+              req.locale,
+            ),
           };
         }
 
@@ -309,7 +312,7 @@ export function exercisesRouter(deps: ExerciseRouterDeps): ExpressRouter {
           return { status: 404, body: { error: 'EXERCISE_NOT_FOUND' } };
         }
 
-        return { status: 200, body: toExercise(row) };
+        return { status: 200, body: toExercise(row, req.locale) };
       });
       res.status(result.status).json(result.body);
     }),

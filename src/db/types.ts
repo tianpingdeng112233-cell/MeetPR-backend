@@ -1,3 +1,4 @@
+import type { PreferredLocale } from '../i18n/locale';
 import type { ColumnType, Generated } from 'kysely';
 
 import type { SetRefV1 } from '../domain/set-ref';
@@ -204,6 +205,7 @@ type NullableJsonColumn<T> = ColumnType<T | null, T | string | null | undefined,
 
 export interface UsersTable {
   id: Generated<string>;
+  preferred_locale: NullableColumn<PreferredLocale>;
   phone: NullableColumn<string>;
   email: NullableColumn<string>;
   email_verified_at: NullableColumn<Date>;

@@ -108,6 +108,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       apple_user_id TEXT,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL,
+      preferred_locale TEXT NULL,
       timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
       refresh_token_jti UUID,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

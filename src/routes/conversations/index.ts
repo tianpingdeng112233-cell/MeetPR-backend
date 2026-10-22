@@ -15,7 +15,7 @@ import { requireRole } from '../../middleware/auth';
 import { chatMessageEvent, chatReadEvent } from '../../realtime/events';
 import type { RealtimeHub } from '../../realtime/hub';
 import type { OssService, OssSignOptions } from '../../services/oss';
-import { pushDisplayName, tryEnqueuePushOutbox } from '../../services/push-outbox';
+import { pushDisplayNameFields, tryEnqueuePushOutbox } from '../../services/push-outbox';
 import { uuidEquals } from '../../utils/uuid';
 import { route, validationEnvelope } from '../http';
 import {
@@ -1074,8 +1074,11 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
             aggregateId: result.message.id,
             recipientId: otherParticipantId(conversation, user.id),
             payload: {
-              sender_name: await pushDisplayName(db, user.id),
+              ...(await pushDisplayNameFields(db, user.id, 'sender_name')),
               preview: pushMessagePreview(result.message),
+              ...(result.message.kind === 'image' || result.message.set_ref !== null
+                ? { preview_is_system: true }
+                : {}),
               conversation_id: conversation.id,
               seq: result.message.seq,
             },

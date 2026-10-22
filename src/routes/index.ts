@@ -1,3 +1,4 @@
+import { createPreferredLocale } from '../middleware/preferred-locale';
 import type { Express, RequestHandler } from 'express';
 import type { Kysely } from 'kysely';
 
@@ -48,6 +49,8 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });
   });
+
+  app.use(createPreferredLocale(deps.config, deps.db, deps.logger));
 
   if (deps.config.COACH_ONBOARDING_ENABLED === true) {
     app.use(coachOnboardingPagesRouter());

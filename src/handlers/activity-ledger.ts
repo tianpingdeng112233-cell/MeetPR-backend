@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { Database, SessionStatus, StudentEventType } from '../db/types';
 import { SIGNAL_POLICY } from '../domain/signal-policy';
 import type { Logger } from '../logger';
-import { pushDisplayName, tryEnqueuePushOutbox } from '../services/push-outbox';
+import { pushDisplayNameFields, tryEnqueuePushOutbox } from '../services/push-outbox';
 import { normalizeDateOnly, trainingDay } from '../utils/date';
 import { detectSetLogPr } from './pr-detection';
 import { sessionProgress } from './session-progress';
@@ -233,7 +233,7 @@ export async function recordSetLogActivity(
       aggregateId: prPush.signalId,
       recipientId: prPush.coachId,
       payload: {
-        student_name: await pushDisplayName(db, prPush.studentId),
+        ...(await pushDisplayNameFields(db, prPush.studentId, 'student_name')),
         lift_name: prPush.liftName,
         increase_kg: prPush.increaseKg,
         student_id: prPush.studentId,

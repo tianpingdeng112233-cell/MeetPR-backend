@@ -96,6 +96,9 @@ function makeContext(): TestContext {
   mem.public.none(fs.readFileSync('db/migrations/0001-init-users.sql', 'utf8'));
   mem.public.none(fs.readFileSync('db/migrations/0044-add-admin-role.sql', 'utf8'));
   mem.public.none(fs.readFileSync('db/migrations/0064-global-identity.sql', 'utf8'));
+  // This reduced pg-mem fixture cannot apply the CHECK after 0064 rebuilds users.
+  // The dedicated 0077 migration suite exercises the actual constraint.
+  mem.public.none('ALTER TABLE users ADD COLUMN preferred_locale TEXT NULL');
   mem.public.none(`
     CREATE TABLE coach_profiles (
       user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -223,6 +226,7 @@ function makeContext(): TestContext {
     CREATE TABLE exercises (
       id UUID PRIMARY KEY,
       name TEXT NOT NULL,
+      created_by_coach_id UUID,
       exercise_type TEXT NOT NULL
     );
     INSERT INTO exercises (id, name, exercise_type) VALUES

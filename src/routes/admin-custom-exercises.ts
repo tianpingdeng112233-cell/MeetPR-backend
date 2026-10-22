@@ -138,7 +138,7 @@ export function adminCustomExercisesRouter(db: Kysely<Database>): ExpressRouter 
       });
       if (result.type === 'conflict')
         res.status(409).json({ error: 'EXERCISE_ADOPTION_CONFLICT', exercise_ids: result.ids });
-      else res.status(200).json({ rows: result.rows.map(toExercise) });
+      else res.status(200).json({ rows: result.rows.map((row) => toExercise(row)) });
     }),
   );
   return router;

@@ -1,3 +1,4 @@
+import { mailLocale } from '../../i18n/locale';
 import bcrypt from 'bcrypt';
 import { randomInt } from 'node:crypto';
 
@@ -122,7 +123,7 @@ export function emailRecoveryRouter(deps: EmailRecoveryRouterDeps): ExpressRoute
               from: deps.config.EMAIL_FROM,
               to: email,
               code: issued.code,
-              locale: deps.config.MAIL_LOCALE ?? 'en',
+              locale: mailLocale(req.get('X-MeetPR-Locale'), deps.config.MAIL_LOCALE),
             },
             deps.fetch,
           ).catch((error: unknown) => {
