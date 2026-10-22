@@ -14,10 +14,13 @@
 ## 2. 接口（教练身份；`trainee_id` 必须是该教练名下学员，否则 404，沿用现有归属校验）
 
 ### 2.1 `GET /coach/plan-imports/status?trainee_id=`
+
 `{ enabled: boolean, daily_limit: 3, remaining_today: number }`
 
 ### 2.2 `POST /coach/plan-imports` — 第一步：认结构
+
 请求：
+
 ```jsonc
 {
   "trainee_id": "uuid",
@@ -25,11 +28,13 @@
   "sheets": [ { "name": "2026", "cells": [[row, col, "text"], ...] } ]   // 1-based；只含非空格；文本已 trim；日期格由前端转成 ISO「2026-01-05」
 }
 ```
+
 - **不收文件名**（文件名常是学员姓名，Q6）。
 - 体积上限：全部 cells 文本合计 ≤ 400k 字符，超出 413。
 - 发给模型前按预算裁剪：每页保留表头（前 40 个非空行）+ 尾部最新的行，直到合计约 60k token；裁掉的行数回给前端提示。
 - 模型任务：选出训练计划所在的页，列出其中**每一周**及其单元格范围。
-响应：
+  响应：
+
 ```jsonc
 {
   "import_id": "uuid",
@@ -44,18 +49,22 @@
   ]
 }
 ```
+
 - 识别不出任何周 → 422 `{ error: 'NO_TRAINING_WEEKS' }`（不扣次数）。
 - **扣次数在这一步**：成功返回才记一次（Q9：单个学员每天 3 次；「天」按 Asia/Shanghai 自然日；按 教练×学员 计）。用完 → 429 `{ error: 'IMPORT_DAILY_LIMIT', remaining_today: 0 }`。
 
 ### 2.3 `POST /coach/plan-imports/:import_id/weeks` — 第二步：逐周识别内容
+
 请求：`{ "weeks": [ { "index": 0, "cells": [[r,c,"text"], ...] } ], "header_cells": [[r,c,"text"], ...] }`（前端从原表按 region 截出；≤ 12 周，Q4）
+
 - `import_id` 必须属于当前教练、当天创建；每个 import 最多调 **8** 次本接口（失败周重试 + 教练改格后重新识别都算），超出 409。**不另扣次数**。请求里的 cells 以前端发来的为准（教练可能改过格子，见 plan-web 015 §2.4），服务端不比对原表。
 - 服务端每周单独调一次模型（并发 ≤ 4），一周失败重试 1 次，仍失败则该周回 `{ index, error: 'PARSE_FAILED', reason }`（错误信封沿用仓内 `{ error: code }`），其余周照常返回。`reason` 必填，前端据此给教练一句人话（2026-10-22 David 追加）：
   - `MODEL_BUSY`：上游 429 / 5xx / 超时 / 网络错误；
   - `OUTPUT_TOO_LONG`：上游 `finish_reason = 'length'`（输出被截断）；
   - `BAD_OUTPUT`：返回不是合法 JSON 或 zod 校验不过（重试后仍然）；
   - `REGION_SUSPECT`：模型在输出里标明这块区域不像完整的一周（提示词里给它这个出口：`{"region_suspect": true}`）。
-响应：
+    响应：
+
 ```jsonc
 { "weeks": [ {
   "index": 0,
@@ -78,6 +87,7 @@
 ```
 
 ### 2.4 存疑标记（flags，Q12）
+
 - `note_fallback`：有单元格内容没能结构化、被放进了 `note`。
 - `inferred`：`values` 里出现了原单元格文本里**找不到**的数字（例如一个重量铺满 4 组、爬坡「80→90 +5」展开）。**服务端确定性校验**：把这一周 cells 文本里的所有数字收集起来，`values`/`sets`/`reps` 中任何数字不在其中 → 必加 `inferred`；模型自报的也保留。这一条是防模型编数的闸门，不靠模型自觉。
 - 「动作名没对上」「某周没日期」由前端判断，不在这里。
@@ -111,11 +121,12 @@ CREATE TABLE plan_import_runs (
 );
 CREATE INDEX plan_import_runs_quota_idx ON plan_import_runs (coach_id, trainee_id, created_at);
 ```
+
 （外键表名以现有 schema 为准。）只存计数，不存表格内容。纯新增表，无存量数据照护问题。`db/MIGRATIONS-APPLIED.md` 按惯例记账。
 
 ## 5. 测试 seam（先红后绿，越少越好）
 
-1. **HTTP 路由层**（`tests/plan-imports.test.ts`，沿用现有 supertest + 测试库 helper）：注入假 `PlanImportModel`。覆盖：未配 key → status `enabled:false`、POST 404；非本人学员 404；第 4 次 → 429 且前 3 次成功才计数（422 不计）；import_id 跨教练 / 隔天 / 第 4 次调 weeks 被拒；某周模型失败只回该周 error 且四种 `reason` 各有一条用例；第 9 次调 weeks 被拒；`inferred` 闸门（假模型返回原文没有的数字 → 响应带 `inferred`）；请求体无文件名字段、日志无单元格文本。
+1. **HTTP 路由层**（`tests/plan-imports.test.ts`，沿用现有 supertest + 测试库 helper）：注入假 `PlanImportModel`。覆盖：未配 key → status `enabled:false`、POST 404；非本人学员 404；第 4 次 → 429 且前 3 次成功才计数（422 不计）；import_id 跨教练 / 隔天被拒；某周模型失败只回该周 error 且四种 `reason` 各有一条用例；第 9 次调 weeks 被拒；`inferred` 闸门（假模型返回原文没有的数字 → 响应带 `inferred`）；请求体无文件名字段、日志无单元格文本。
 2. **DeepSeek 适配器单测**：用假 fetch 断言请求形状（json_object、temperature 0、超时）、非法 JSON 重试一次。
 3. **真模型评估脚本**（不进 CI）：`scripts/plan-import-eval.ts <xlsx/csv 路径...>`，本地用真 key 跑两步并打印每周识别摘要与 flags 计数，给 Opus/David 用真实样表验收。样表不进仓（仓库公开）。
 
