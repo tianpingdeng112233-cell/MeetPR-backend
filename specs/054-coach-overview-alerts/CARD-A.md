@@ -24,4 +24,4 @@
 4. 现有全量测试全绿（清单第 9 条）。
 
 ## 交付
-在 `docs/CODEX-JOURNAL.md` 追加一段：改动文件、红 → 绿证据（命令 + 数字）、`npm test` / `npx tsc --noEmit` / lint 结果、最终迁移号、与 SPEC 不一致或拿不准的地方（尤其时区、`coach_rpe` 覆盖、额外组识别方式）。
+在 `docs/CODEX-JOURNAL.md` 追加一段：改动文件、红 → 绿证据（命令 + 数字）、`pnpm test` / `pnpm exec tsc --noEmit` / lint 结果（本仓用 pnpm，依赖已装好）、最终迁移号、与 SPEC 不一致或拿不准的地方（尤其时区、`coach_rpe` 覆盖、额外组识别方式）。
