@@ -68,8 +68,10 @@
 
 > 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。0043 现由 open PR #77/#79(账本扩展)占号,0044 先行落库,库内号段暂跳 0043——#77/#79 合并应用后回续。0047 已被 open PR #95、0048 已被 #99 占用,因此下一份空号取 0049。
 
-**本账本最后记录的 staging schema head = 0075（2026-10-17 DMS 核对；0069、0071 尚未应用；0073 本分支无此文件）。** 0063–0067 的应用记录见各日期条目，0065 晚于 0066/0067 应用。缺号与 open PR 的现状须在分配新号前重新核实，编号不代表连续应用。
+**本账本最后记录的 staging schema head = 0077（2026-10-22 DMS 核对；0076 被 open PR 占号未应用；0069、0071 尚未应用；0073 本分支无此文件）。** 0063–0067 的应用记录见各日期条目，0065 晚于 0066/0067 应用。缺号与 open PR 的现状须在分配新号前重新核实，编号不代表连续应用。
 (此行 2026-08-02 修正:此前长期停在 0052,0054/0055 只记在变更历史漏更此行。)
+
+**0077 已应用（2026-10-22）**：spec 052 繁体中文，`db/migrations/0077-users-preferred-locale.sql`（随 #321 `e493432` 入库）：`users.preferred_locale TEXT NULL` + CHECK（`zh-Hans`/`zh-Hant`/`en`），无回填，不改存量数据（空值=沿用部署默认语言）。David 经 DMS SQLConsole（`meetpr-rds-v01-staging`，库 `meetpr`）整段执行，4/4 语句成功；随后 `information_schema.columns` 查得 `preferred_locale | text | YES`。**迁移前备份：未记录**（DMS 回滚备份未开启；RDS 手动快照是否触发未确认）。执行人：David。号段：0076 被 open PR（`0076-plan-import-runs`）占号，库内暂跳 0076。回滚策略：换回旧镜像，保留该可空列，不 DROP。部署：待与 0078（另一会话 #323）一起部署 staging，部署条目另记。
 
 **0075 已应用（2026-10-17，具体时刻未记录）**：spec 093 教练入驻，`db/migrations/0075-coach-applications.sql`（SHA-256 `4fa93cf28b510387fcde057b2688911172d6baa859776aea33c8b4be5b6bb5bc`，随 #299 `29dd55a` 入库）：新表 `coach_applications` + `password_reset_codes.purpose TEXT NOT NULL DEFAULT 'password_reset'`，存量找回码按默认值归为 `password_reset`，其余表不动。授权：David 批准本轮国内 staging 新全库备份、0075 与 `COACH_ONBOARDING` 两项配置（`docs/CODEX-JOURNAL.md` 第 348 行）；该日志第 354 行（提交 `1532e98`，2026-10-17 07:17 UTC）仍写备份、DMS 0075、SAE 配置待在控制台操作，第 358 行（提交 `294454c`，2026-10-17 09:42 UTC）记 0075 已在 DMS 核对，故应用时间落在两次提交之间。验证（第 358 行）：`coach_applications` 11 列、3 个索引，`purpose` NOT NULL 默认 `password_reset`；原始查询结果未入仓。**执行人：未记录**（第 354 行只写计划由 David 在控制台操作，无执行回执）。**迁移前备份：未记录**——第 348 行有批准，未见备份 ID、完成时间或成功状态；B0 两行补邮箱备份不是本次恢复点。首个含 0075 的镜像为 `973f224`（[ACR build run 39013505126](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/39013505126) 绿），第 358 行记其已部署并经线上 bundle 哈希核对；`deploy-staging.yml` 在 2026-10-14 与 2026-10-18 之间无 run，**该次部署渠道与时间未记录**。回滚策略：关 `COACH_ONBOARDING_ENABLED` 和/或换回旧镜像，保留新表、列与数据，不 DROP/DELETE。
 
