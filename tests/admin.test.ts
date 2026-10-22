@@ -20,7 +20,7 @@ import {
   listAdminPlans,
   listAdminUsers,
 } from '../src/handlers/admin';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 
 const ids = {
   admin: '10000000-0000-4000-8000-000000004410',
@@ -273,6 +273,7 @@ function makeContext(): TestContext {
     );
   `);
 
+  mem.public.none(fs.readFileSync('db/migrations/0078-exercise-adoption.sql', 'utf8'));
   const { Pool } = mem.adapters.createPg();
   const db = createDb(new Pool());
   return {
@@ -681,5 +682,39 @@ describe('admin email visibility', () => {
       .get(`/admin/users/${ids.coach}`)
       .set(auth(ctx.tokens.admin));
     expect(detail.body.user.email).toBe('searchable@example.com');
+  });
+});
+
+describe('spec 053 admin usage aggregation', () => {
+  it('includes alias occurrences and distinct coaches in the official row only', async () => {
+    const ctx = makeContext();
+    await addDuplicateOtherCoachUsage(ctx);
+    const alias = '53000000-0000-4000-8000-000000000003';
+    await sql`insert into exercises (id, name, exercise_type, canonical_exercise_id) values (${alias}, 'Alias', 'accessory', ${ids.usedExercise})`.execute(
+      ctx.db,
+    );
+    await ctx.db
+      .insertInto('plan_exercises')
+      .values([
+        { plan_day_id: ids.day, exercise_id: alias },
+        { plan_day_id: ids.day, exercise_id: alias },
+      ])
+      .execute();
+    const response = await request(ctx.app)
+      .get('/admin/exercise-usage')
+      .set(auth(ctx.tokens.admin));
+    expect(response.status).toBe(200);
+    expect(response.body.exercises).toHaveLength(3);
+    expect(response.body.exercises[0]).toEqual({
+      exercise_id: ids.usedExercise,
+      name: '竞技深蹲',
+      exercise_type: 'main_lift',
+      plan_count: 7,
+      coach_count: 2,
+    });
+    expect(
+      response.body.exercises.some((row: { exercise_id: string }) => row.exercise_id === alias),
+    ).toBe(false);
+    await ctx.db.destroy();
   });
 });

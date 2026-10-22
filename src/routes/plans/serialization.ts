@@ -146,6 +146,8 @@ export interface ImportedHistoryResponse {
 }
 
 export interface ExerciseResponse {
+  canonical_exercise_id: string | null;
+  adopted: boolean;
   id: string;
   name: string;
   name_en: string | null;
@@ -320,8 +322,12 @@ export function toImportedHistory(
   };
 }
 
-export function toExercise(row: ExerciseRow): ExerciseResponse {
+export function toExercise(
+  row: Pick<ExerciseRow, Exclude<keyof ExerciseResponse, 'adopted'>>,
+): ExerciseResponse {
   return {
+    canonical_exercise_id: row.canonical_exercise_id ?? null,
+    adopted: row.canonical_exercise_id != null,
     id: row.id,
     name: row.name,
     name_en: row.name_en,

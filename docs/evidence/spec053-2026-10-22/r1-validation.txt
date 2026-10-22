@@ -1,0 +1,358 @@
+053 R1 validation — 2026-10-22
+Migration now 0078 per CARD-R1.md. Earlier migration-audit.json and validation.txt are historical evidence and their 0077 selection is superseded.
+Formal HTTP red/green and full-suite green: NOT ACHIEVED (sandbox listen EPERM).
+Supplemental runs reuse the previous temporary wrapper around tests/helpers/inMemoryRequest.ts; repository tests still import supertest.
+
+Baseline typecheck
+$ pnpm typecheck
+exit_code=0
+raw_log=/tmp/053-r1-baseline-typecheck.log
+
+> meetpr-backend@0.0.1 typecheck /Users/david/Projects/apps/MeetPR-backend-wt-053-adopt
+> tsc --noEmit
+
+
+Baseline lint
+$ pnpm lint
+exit_code=0
+raw_log=/tmp/053-r1-baseline-lint.log
+
+> meetpr-backend@0.0.1 lint /Users/david/Projects/apps/MeetPR-backend-wt-053-adopt
+> eslint .
+
+
+Formal regression before implementation (blocked at listen)
+$ pnpm test -- tests/exercise-adoption.test.ts -t 'groups whitespace and full-width' --maxWorkers=2 --minWorkers=1
+exit_code=1
+raw_log=/tmp/053-r1-red-formal.log
+The latest test that might've caused the error is "spec 053 catalog visibility and edit rules". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 17 skipped (19)
+     Errors  2 errors
+   Start at  10:45:20
+   Duration  1.64s (transform 634ms, setup 7ms, collect 1.23s, tests 166ms, environment 0ms, prepare 44ms)
+
+ ELIFECYCLE  Test failed. See above for more details.
+
+Supplemental regression RED before implementation
+$ pnpm exec vitest run --config /tmp/053-inprocess.config.cjs tests/exercise-adoption.test.ts -t 'groups whitespace and full-width'
+exit_code=1
+raw_log=/tmp/053-r1-red-supplemental.log
+
+ RUN  v2.1.9 /Users/david/Projects/apps/MeetPR-backend-wt-053-adopt
+
+ ❯ tests/exercise-adoption.test.ts (19 tests | 2 failed | 17 skipped) 130ms
+   × spec 053 admin adoption > groups whitespace and full-width variants of 保加利亚分腿蹲 with distinct usage counts 105ms
+     → expected [ { key: '保加利亚 分腿蹲', …(4) }, …(1) ] to deeply equal [ ObjectContaining{…} ]
+   × spec 053 admin adoption > groups whitespace and full-width variants of Tempo Squat (1) with distinct usage counts 24ms
+     → expected [ …(2) ] to deeply equal [ ObjectContaining{…} ]
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/exercise-adoption.test.ts > spec 053 admin adoption > groups whitespace and full-width variants of 保加利亚分腿蹲 with distinct usage counts
+AssertionError: expected [ { key: '保加利亚 分腿蹲', …(4) }, …(1) ] to deeply equal [ ObjectContaining{…} ]
+
+- Expected
++ Received
+
+  Array [
+-   ObjectContaining {
++   Object {
+      "coach_count": 2,
+      "display_name": "保加利亚 分腿蹲",
+-     "key": "保加利亚分腿蹲",
++     "key": "保加利亚 分腿蹲",
+      "plan_count": 2,
+-     "rows": ArrayContaining [
+-       ObjectContaining {
+-         "exercise_id": "91fb09f6-9068-45bb-9e1a-e525cfb78650",
+-         "name": "保加利亚分腿蹲",
+-         "plan_count": 1,
+-       },
+-       ObjectContaining {
++     "rows": Array [
++       Object {
++         "coach_id": "10000000-0000-4000-8000-000000000002",
++         "coach_name": "Coach B",
++         "competition_stance": null,
++         "equipment": Array [
++           "barbell",
++         ],
+          "exercise_id": "71c58742-54bc-4757-ab71-5f2f096b98d0",
++         "exercise_type": "main_lift_variation",
++         "is_competition_lift": false,
++         "main_lift_family": "squat",
++         "movement_pattern": Array [],
++         "muscle_groups": Array [
++           "quad",
++         ],
+          "name": "保加利亚 分腿蹲",
++         "name_en": "Original",
+          "plan_count": 2,
+        },
+-       ObjectContaining {
++       Object {
++         "coach_id": "10000000-0000-4000-8000-000000000001",
++         "coach_name": "Coach A",
++         "competition_stance": null,
++         "equipment": Array [
++           "barbell",
++         ],
+          "exercise_id": "420f9f4a-bf87-4767-ba6b-334f5b35694b",
++         "exercise_type": "main_lift_variation",
++         "is_competition_lift": false,
++         "main_lift_family": "squat",
++         "movement_pattern": Array [],
++         "muscle_groups": Array [
++           "quad",
++         ],
+          "name": "保加利亚　分腿蹲",
++         "name_en": "Original",
++         "plan_count": 1,
++       },
++     ],
++   },
++   Object {
++     "coach_count": 1,
++     "display_name": "保加利亚分腿蹲",
++     "key": "保加利亚分腿蹲",
++     "plan_count": 1,
++     "rows": Array [
++       Object {
++         "coach_id": "10000000-0000-4000-8000-000000000001",
++         "coach_name": "Coach A",
++         "competition_stance": null,
++         "equipment": Array [
++           "barbell",
++         ],
++         "exercise_id": "91fb09f6-9068-45bb-9e1a-e525cfb78650",
++         "exercise_type": "main_lift_variation",
++         "is_competition_lift": false,
++         "main_lift_family": "squat",
++         "movement_pattern": Array [],
++         "muscle_groups": Array [
++           "quad",
++         ],
++         "name": "保加利亚分腿蹲",
++         "name_en": "Original",
+          "plan_count": 1,
+        },
+      ],
+    },
+  ]
+
+ ❯ tests/exercise-adoption.test.ts:228:37
+    226|       const response = await request(ctx.app).get('/admin/custom-exerc…
+    227|       expect(response.status).toBe(200);
+    228|       expect(response.body.pending).toEqual([
+       |                                     ^
+    229|         expect.objectContaining({
+    230|           key,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/exercise-adoption.test.ts > spec 053 admin adoption > groups whitespace and full-width variants of Tempo Squat (1) with distinct usage counts
+AssertionError: expected [ …(2) ] to deeply equal [ ObjectContaining{…} ]
+
+- Expected
++ Received
+
+  Array [
+-   ObjectContaining {
+-     "coach_count": 2,
+-     "display_name": "Ｔｅｍｐｏ　ＳＱＵＡＴ（１）",
+-     "key": "temposquat(1)",
++   Object {
++     "coach_count": 1,
++     "display_name": "Tempo	Squat
++  (1)",
++     "key": "tempo squat (1)",
+      "plan_count": 2,
+-     "rows": ArrayContaining [
+-       ObjectContaining {
++     "rows": Array [
++       Object {
++         "coach_id": "10000000-0000-4000-8000-000000000001",
++         "coach_name": "Coach A",
++         "competition_stance": null,
++         "equipment": Array [
++           "barbell",
++         ],
++         "exercise_id": "d472063c-d263-48d7-abdc-eeefcc9edf9c",
++         "exercise_type": "main_lift_variation",
++         "is_competition_lift": false,
++         "main_lift_family": "squat",
++         "movement_pattern": Array [],
++         "muscle_groups": Array [
++           "quad",
++         ],
++         "name": "Tempo	Squat
++  (1)",
++         "name_en": "Original",
++         "plan_count": 1,
++       },
++       Object {
++         "coach_id": "10000000-0000-4000-8000-000000000001",
++         "coach_name": "Coach A",
++         "competition_stance": null,
++         "equipment": Array [
++           "barbell",
++         ],
+          "exercise_id": "8e7387eb-c1cd-4599-a6ec-5476dcd1c44a",
++         "exercise_type": "main_lift_variation",
++         "is_competition_lift": false,
++         "main_lift_family": "squat",
++         "movement_pattern": Array [],
++         "muscle_groups": Array [
++           "quad",
++         ],
+          "name": "Tempo Squat (1)",
++         "name_en": "Original",
+          "plan_count": 1,
+        },
+-       ObjectContaining {
++     ],
++   },
++   Object {
++     "coach_count": 1,
++     "display_name": "Ｔｅｍｐｏ　ＳＱＵＡＴ（１）",
++     "key": "ｔｅｍｐｏ ｓｑｕａｔ（１）",
++     "plan_count": 2,
++     "rows": Array [
++       Object {
++         "coach_id": "10000000-0000-4000-8000-000000000002",
++         "coach_name": "Coach B",
++         "competition_stance": null,
++         "equipment": Array [
++           "barbell",
++         ],
+          "exercise_id": "918b9649-8b88-4c93-9882-48f24b280681",
++         "exercise_type": "main_lift_variation",
++         "is_competition_lift": false,
++         "main_lift_family": "squat",
++         "movement_pattern": Array [],
++         "muscle_groups": Array [
++           "quad",
++         ],
+          "name": "Ｔｅｍｐｏ　ＳＱＵＡＴ（１）",
++         "name_en": "Original",
+          "plan_count": 2,
+-       },
+-       ObjectContaining {
+-         "exercise_id": "d472063c-d263-48d7-abdc-eeefcc9edf9c",
+-         "name": "Tempo	Squat
+-  (1)",
+-         "plan_count": 1,
+        },
+      ],
+    },
+  ]
+
+ ❯ tests/exercise-adoption.test.ts:228:37
+    226|       const response = await request(ctx.app).get('/admin/custom-exerc…
+    227|       expect(response.status).toBe(200);
+    228|       expect(response.body.pending).toEqual([
+       |                                     ^
+    229|         expect.objectContaining({
+    230|           key,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 17 skipped (19)
+   Start at  10:45:37
+   Duration  987ms (transform 317ms, setup 9ms, collect 654ms, tests 130ms, environment 0ms, prepare 65ms)
+
+
+
+Supplemental regression GREEN after implementation
+$ pnpm exec vitest run --config /tmp/053-inprocess.config.cjs tests/exercise-adoption.test.ts -t 'groups whitespace and full-width'
+exit_code=0
+raw_log=/tmp/053-r1-green-supplemental-final.log
+
+ RUN  v2.1.9 /Users/david/Projects/apps/MeetPR-backend-wt-053-adopt
+
+ ✓ tests/exercise-adoption.test.ts (19 tests | 17 skipped) 467ms
+   ✓ spec 053 admin adoption > groups whitespace and full-width variants of 保加利亚分腿蹲 with distinct usage counts 390ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed | 17 skipped (19)
+   Start at  10:46:41
+   Duration  3.02s (transform 772ms, setup 14ms, collect 1.72s, tests 467ms, environment 0ms, prepare 189ms)
+
+
+Typecheck after implementation
+$ pnpm typecheck
+exit_code=0
+raw_log=/tmp/053-r1-typecheck.log
+
+> meetpr-backend@0.0.1 typecheck /Users/david/Projects/apps/MeetPR-backend-wt-053-adopt
+> tsc --noEmit
+
+
+Lint after implementation
+$ pnpm lint
+exit_code=0
+raw_log=/tmp/053-r1-lint.log
+
+> meetpr-backend@0.0.1 lint /Users/david/Projects/apps/MeetPR-backend-wt-053-adopt
+> eslint .
+
+
+Formal full suite (before correcting the remaining asingle expectation)
+$ pnpm test -- --maxWorkers=2 --minWorkers=1
+exit_code=1
+raw_log=/tmp/053-r1-full.log
+The latest test that might've caused the error is "tests/uploads-not-configured.test.ts". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ Test Files  47 failed | 113 passed (160)
+      Tests  572 failed | 737 passed | 1 skipped (1310)
+     Errors  567 errors
+   Start at  10:46:23
+   Duration  66.17s (transform 1.62s, setup 228ms, collect 36.04s, tests 58.12s, environment 20ms, prepare 6.75s)
+
+ ELIFECYCLE  Test failed. See above for more details.
+
+Formal related tests on final code
+$ pnpm test -- tests/exercise-adoption.test.ts tests/migrations/0078-exercise-adoption.test.ts --maxWorkers=2 --minWorkers=1
+exit_code=1
+raw_log=/tmp/053-r1-related-formal-final.log
+The latest test that might've caused the error is "tests/exercise-adoption.test.ts". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  19 failed | 1 passed (20)
+     Errors  19 errors
+   Start at  10:47:48
+   Duration  1.31s (transform 314ms, setup 12ms, collect 721ms, tests 503ms, environment 0ms, prepare 73ms)
+
+ ELIFECYCLE  Test failed. See above for more details.
+
+Supplemental related tests on final code
+$ pnpm exec vitest run --config /tmp/053-inprocess.config.cjs tests/exercise-adoption.test.ts tests/exercise-crud.test.ts tests/exercise-stats.test.ts tests/admin.test.ts tests/plans/plans.test.ts tests/exercise-usage.test.ts tests/migrations/0078-exercise-adoption.test.ts tests/unit/in-memory-request.test.ts
+exit_code=0
+raw_log=/tmp/053-r1-related-supplemental-final.log
+ ✓ tests/admin.test.ts (26 tests) 485ms
+ ✓ tests/exercise-adoption.test.ts (19 tests) 667ms
+ ✓ tests/exercise-crud.test.ts (13 tests) 379ms
+ ✓ tests/unit/in-memory-request.test.ts (2 tests) 19ms
+ ✓ tests/exercise-usage.test.ts (4 tests) 231ms
+ ✓ tests/migrations/0078-exercise-adoption.test.ts (1 test) 29ms
+
+ Test Files  8 passed (8)
+      Tests  155 passed (155)
+   Start at  10:47:48
+   Duration  4.90s (transform 401ms, setup 21ms, collect 2.58s, tests 5.22s, environment 1ms, prepare 292ms)
+
+
+Intermediate supplemental run during migration rename failed with ENOENT for the old path; rerun after rename passed. Initial related supplemental run: 154 passed / 1 failed (old a single key expectation); updated to asingle, final 155 passed.
+No dependency, lockfile, historical data, commit, push, PR or deployment changes.
