@@ -110,7 +110,7 @@ export function createApp(deps: AppDeps): Express {
   // web/ is absent in dev (no build) — sendFile errors then fall through to notFound.
   const webDir = path.resolve(process.cwd(), 'web');
   app.use(express.static(webDir));
-  app.use(inviteLandingPagesRouter(webDir));
+  app.use(inviteLandingPagesRouter(webDir, deps.db));
   app.use((req, res, next) => {
     if (req.method !== 'GET' || req.accepts(['json', 'html']) !== 'html') {
       next();

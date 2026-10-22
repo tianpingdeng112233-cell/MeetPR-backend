@@ -2,6 +2,10 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { Router } from 'express';
+import type { Kysely } from 'kysely';
+
+import type { Database } from '../db/types';
+import { findValidInvite } from '../handlers/public-invites';
 
 function escapeHtml(value: string): string {
   return value
@@ -12,8 +16,8 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-/** Share metadata for the invitation SPA, without looking up the invitation. */
-export function inviteLandingPagesRouter(webDir: string) {
+/** Share metadata for the invitation SPA using the inviting coach when available. */
+export function inviteLandingPagesRouter(webDir: string, db: Kysely<Database>) {
   const router = Router();
   const indexPath = path.join(webDir, 'index.html');
   let template: Promise<string> | undefined;
@@ -27,19 +31,25 @@ export function inviteLandingPagesRouter(webDir: string) {
     template ??= readFile(indexPath, 'utf8');
     void template
       .then(
-        (page) => {
+        async (page) => {
           const code = req.params.code;
           // Same alphabet as handlers/invite-codes.ts and routes/public-invites.ts.
           // Current codes have 10 characters; also support the 8-character share format.
-          const validCode =
+          const validFormat =
             (code.length === 8 || code.length === 10) &&
             /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]+$/.test(code);
-          const groupedCode = validCode ? code.match(/.{1,4}/g)?.join(' ') : undefined;
-          const title = escapeHtml('教练邀请你加入 MeetPR');
+          const invite = validFormat ? await findValidInvite(db, code) : undefined;
+          const groupedCode = invite ? code.match(/.{1,4}/g)?.join(' ') : undefined;
+          const coachName = Array.from(invite?.display_name?.trim() ?? '')
+            .slice(0, 30)
+            .join('');
+          const title = escapeHtml(
+            `${coachName ? `${coachName} 教练` : '你的教练'}邀请你在 MeetPR 跟练训练计划`,
+          );
           const description = escapeHtml(
             groupedCode
-              ? `用邀请码 ${groupedCode} 加入教练，在 MeetPR 接收训练计划`
-              : '加入教练，在 MeetPR 接收训练计划',
+              ? `输入邀请码 ${groupedCode}，我排的计划直接同步到你手机`
+              : '我排的计划直接同步到你手机',
           );
           const metadata = [
             `<meta name="description" content="${description}">`,
@@ -47,8 +57,8 @@ export function inviteLandingPagesRouter(webDir: string) {
             `<meta property="og:description" content="${description}">`,
           ].join('\n');
           const html = page
-            .replace(/<title>.*?<\/title>/is, `<title>${title}</title>`)
-            .replace(/<\/head>/i, `${metadata}\n</head>`);
+            .replace(/<title>.*?<\/title>/is, () => `<title>${title}</title>`)
+            .replace(/<\/head>/i, () => `${metadata}\n</head>`);
           res.type('html').send(html);
         },
         () => {
