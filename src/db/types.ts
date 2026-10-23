@@ -841,6 +841,12 @@ export interface AnalyticsFeedbackTable {
   ts_server: TimestampColumn;
 }
 
+export interface CoachStudentPlanViewsTable {
+  coach_id: string;
+  student_id: string;
+  seen_at: Date;
+}
+
 export interface Database {
   users: UsersTable;
   user_identities: UserIdentitiesTable;
@@ -859,6 +865,7 @@ export interface Database {
   plan_exercises: PlanExercisesTable;
   plan_sets: PlanSetsTable;
   coach_profiles: CoachProfilesTable;
+  coach_student_plan_views: CoachStudentPlanViewsTable;
   student_profiles: StudentProfilesTable;
   bind_requests: BindRequestsTable;
   set_logs: SetLogsTable;

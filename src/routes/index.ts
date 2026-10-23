@@ -14,6 +14,7 @@ import { coachApplicationsRouter } from './coach-applications';
 import { authRouter } from './auth';
 import { coachBindRequestsRouter, studentBindRequestsRouter } from './bind-requests';
 import { coachRouter } from './coach';
+import { coachOverviewAlertsRouter } from './coach-overview-alerts';
 import { conversationsRouter } from './conversations';
 import { devicesRouter } from './devices';
 import { eventsRouter } from './events';
@@ -113,6 +114,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
     }),
   );
   app.use('/coach', deps.requireAuth, coachRouter({ db: deps.db, logger: deps.logger }));
+  app.use('/coach', deps.requireAuth, coachOverviewAlertsRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachExerciseStatsRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachFeedbackRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachInviteCodesRouter({ db: deps.db }));
