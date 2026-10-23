@@ -92,7 +92,7 @@
 ### 2.4 存疑标记（flags，Q12）
 
 - `note_fallback`：有单元格内容没能结构化、被放进了 `note`。
-- `inferred`：`intensity_values` / `weight_values` 里出现了原单元格文本里**找不到**的数字（例如一个重量铺满 4 组、爬坡「80→90 +5」展开）。**服务端确定性校验**：把这一周 cells 文本里的所有数字收集起来，`intensity_values`/`weight_values`/`sets`/`reps` 中任何数字不在其中 → 必加 `inferred`；模型自报的也保留。这一条是防模型编数的闸门，不靠模型自觉。
+- `inferred`：`intensity_values` / `weight_values` 里出现了原单元格文本里**找不到**的数字（例如爬坡「80→90 +5」展开出的 85）。**把表里写的一个值铺满各组不算推断**（「4×8 · 120」→ 120×4 是确定含义；David 2026-10-23 选 A：只标可能让学员练错的数）。**服务端确定性校验**：把这一周 cells 文本里的所有数字收集起来，`intensity_values`/`weight_values`/`sets`/`reps` 中任何数字不在其中 → 必加 `inferred`；模型自报的也保留。这一条是防模型编数的闸门，不靠模型自觉。
 - 「动作名没对上」「某周没日期」由前端判断，不在这里。
 
 **强度与重量分两条线**（2026-10-23 本地实测补）：教练表常同时写 RPE 和预期重量（如 RPE 6 + 227.5 kg），旧的单一 `mode/values` 让模型只能二选一，实测整行放弃、数字全进备注。改为 `intensity_kind` + `intensity_values` 与 `weight_values` 两条线，两样都有就都填。上限「≤6」填 6、原文留 note；区间「8-9」「rpe8-9」取下限、原文留 note；RIR 列 → `rir`；百分比 → `pct`（「75%」填 75）。
