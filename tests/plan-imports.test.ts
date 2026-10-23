@@ -46,8 +46,9 @@ const weekResult = (index: number): WeekResult => ({
           name: '深蹲',
           sets: 4,
           reps: '8',
-          mode: 'kg',
-          values: ['112.5', '112.5', '112.5', '112.5'],
+          intensity_kind: null,
+          intensity_values: [],
+          weight_values: ['112.5', '112.5', '112.5', '112.5'],
           note: '',
           family_guess: 'squat',
           flags: [],
@@ -77,6 +78,94 @@ afterEach(async () => {
 });
 
 describe('coach plan imports', () => {
+  it.each([
+    { kind: 'rpe', value: '6', cells: '深蹲 1×8 RPE 6 227.5kg', flags: [] },
+    { kind: 'rir', value: '2', cells: '深蹲 1×8 RIR 2 227.5kg', flags: [] },
+    { kind: 'pct', value: '75', cells: '深蹲 1×8 75% 227.5kg', flags: [] },
+    { kind: 'rpe', value: '6', cells: '深蹲 1×8 RPE 6', flags: ['inferred'] },
+    { kind: 'rpe', value: '6.5', cells: '深蹲 1×8 227.5kg', flags: ['inferred'] },
+  ])(
+    'returns both tracks with evidence flags for $cells / $value',
+    async ({ kind, value, cells, flags }) => {
+      const result = weekResult(0);
+      const exercise = {
+        name: '深蹲',
+        sets: 1,
+        reps: '8',
+        intensity_kind: kind,
+        intensity_values: [value],
+        weight_values: ['227.5'],
+        note: '',
+        family_guess: 'squat',
+        flags: [],
+      };
+      const parsed = { ...result, days: [{ weekday: 0, rest: false, exercises: [exercise] }] };
+      const ctx = await enabledContext({
+        outline: vi.fn().mockResolvedValue(outline),
+        parseWeek: vi.fn().mockResolvedValue(parsed),
+      });
+      const created = await request(ctx.app)
+        .post('/coach/plan-imports')
+        .set(auth(ctx.coachToken))
+        .send(input);
+      const response = await request(ctx.app)
+        .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+        .set(auth(ctx.coachToken))
+        .send({ weeks: [{ index: 0, cells: [[1, 1, cells]] }], header_cells: [] });
+      expect(response.status).toBe(200);
+      expect(response.body.weeks).toEqual([
+        { ...parsed, days: [{ weekday: 0, rest: false, exercises: [{ ...exercise, flags }] }] },
+      ]);
+    },
+  );
+  it.each([
+    { field: 'intensity_values', values: ['6', '6'] },
+    { field: 'weight_values', values: ['227.5', '227.5'] },
+    { field: 'intensity_values', values: ['<=6'] },
+    { field: 'intensity_values', values: ['8-9'] },
+  ])('rejects malformed $field: $values with week BAD_OUTPUT', async ({ field, values }) => {
+    const exercise = {
+      name: '深蹲',
+      sets: 1,
+      reps: '8',
+      intensity_kind: 'rpe',
+      intensity_values: ['6'],
+      weight_values: ['227.5'],
+      note: '',
+      family_guess: 'squat',
+      flags: [],
+    };
+    const parsed = {
+      index: 0,
+      start_date: null,
+      days: [{ weekday: 0, rest: false, exercises: [exercise] }],
+    };
+    const parseWeek = vi.fn().mockResolvedValue(parsed);
+    const ctx = await enabledContext({ outline: vi.fn().mockResolvedValue(outline), parseWeek });
+    const created = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send(input);
+    const sendWeek = () =>
+      request(ctx.app)
+        .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+        .set(auth(ctx.coachToken))
+        .send({
+          weeks: [{ index: 0, cells: [[1, 1, '深蹲 1×8 RPE 6 227.5kg']] }],
+          header_cells: [],
+        });
+    expect((await sendWeek()).body.weeks).toEqual([parsed]);
+    parseWeek.mockResolvedValue({
+      ...parsed,
+      days: [{ weekday: 0, rest: false, exercises: [{ ...exercise, [field]: values }] }],
+    });
+    const response = await sendWeek();
+    expect(response.status).toBe(200);
+    expect(response.body.weeks).toEqual([
+      { index: 0, error: 'PARSE_FAILED', reason: 'BAD_OUTPUT' },
+    ]);
+    expect(parseWeek).toHaveBeenCalledTimes(3);
+  });
   it('ignores empty sheets and sends only the content sheet to the model', async () => {
     const model = { outline: vi.fn().mockResolvedValue(outline), parseWeek: vi.fn() };
     const ctx = await enabledContext(model);
@@ -469,80 +558,89 @@ describe('coach plan imports', () => {
     {
       label: 'RPE digit string 6788',
       cells: ['4*8', 'rpe', '6788'],
-      mode: 'rpe' as const,
+      intensity_kind: 'rpe' as const,
+      weight_values: [],
       sets: 4,
       reps: '8',
-      values: ['6', '7', '8', '8'],
+      intensity_values: ['6', '7', '8', '8'],
       flags: [],
     },
     {
       label: 'RPE digit string 5677',
       cells: ['4*8', 'rpe', '5677'],
-      mode: 'rpe' as const,
+      intensity_kind: 'rpe' as const,
+      weight_values: [],
       sets: 4,
       reps: '8',
-      values: ['5', '6', '7', '7'],
+      intensity_values: ['5', '6', '7', '7'],
       flags: [],
     },
     {
       label: 'RPE range endpoints',
       cells: ['4*8', 'rpe8-9'],
-      mode: 'rpe' as const,
+      intensity_kind: 'rpe' as const,
+      weight_values: [],
       sets: 4,
       reps: '8',
-      values: ['8', '8', '9', '9'],
+      intensity_values: ['8', '8', '9', '9'],
       flags: [],
     },
     {
       label: 'broadcast weight',
       cells: ['4*8', '120'],
-      mode: 'kg' as const,
+      intensity_kind: null,
+      intensity_values: [],
       sets: 4,
       reps: '8',
-      values: ['120', '120', '120', '120'],
+      weight_values: ['120', '120', '120', '120'],
       flags: [],
     },
     {
       label: 'absent weight',
       cells: ['4*8', '120'],
-      mode: 'kg' as const,
+      intensity_kind: null,
+      intensity_values: [],
       sets: 4,
       reps: '8',
-      values: ['125', '125', '125', '125'],
+      weight_values: ['125', '125', '125', '125'],
       flags: ['inferred'],
     },
     {
       label: 'unreadable sets sentinel',
       cells: ['深蹲 力竭'],
-      mode: 'none' as const,
+      intensity_kind: null,
+      weight_values: [],
       sets: 0,
       reps: '',
-      values: [],
+      intensity_values: [],
       flags: [],
     },
-  ])('checks inferred evidence for $label', async ({ cells, mode, sets, reps, values, flags }) => {
-    const parsed = weekResult(0);
-    const exercise = parsed.days[0]?.exercises[0];
-    if (!exercise) throw new Error('missing fixture exercise');
-    Object.assign(exercise, { mode, sets, reps, values });
-    const ctx = await enabledContext({
-      outline: vi.fn().mockResolvedValue(outline),
-      parseWeek: vi.fn().mockResolvedValue(parsed),
-    });
-    const created = await request(ctx.app)
-      .post('/coach/plan-imports')
-      .set(auth(ctx.coachToken))
-      .send(input);
-    const response = await request(ctx.app)
-      .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
-      .set(auth(ctx.coachToken))
-      .send({
-        header_cells: [],
-        weeks: [{ index: 0, cells: cells.map((text, col) => [1, col + 1, text]) }],
+  ])(
+    'checks inferred evidence for $label',
+    async ({ cells, intensity_kind, sets, reps, intensity_values, weight_values, flags }) => {
+      const parsed = weekResult(0);
+      const exercise = parsed.days[0]?.exercises[0];
+      if (!exercise) throw new Error('missing fixture exercise');
+      Object.assign(exercise, { intensity_kind, sets, reps, intensity_values, weight_values });
+      const ctx = await enabledContext({
+        outline: vi.fn().mockResolvedValue(outline),
+        parseWeek: vi.fn().mockResolvedValue(parsed),
       });
-    expect(response.status).toBe(200);
-    expect(response.body.weeks[0].days[0].exercises[0]).toEqual({ ...exercise, flags });
-  });
+      const created = await request(ctx.app)
+        .post('/coach/plan-imports')
+        .set(auth(ctx.coachToken))
+        .send(input);
+      const response = await request(ctx.app)
+        .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+        .set(auth(ctx.coachToken))
+        .send({
+          header_cells: [],
+          weeks: [{ index: 0, cells: cells.map((text, col) => [1, col + 1, text]) }],
+        });
+      expect(response.status).toBe(200);
+      expect(response.body.weeks[0].days[0].exercises[0]).toEqual({ ...exercise, flags });
+    },
+  );
   it('adds inferred for new values, sets or reps using only that week, and preserves model flags', async () => {
     const model: PlanImportModel = {
       outline: vi.fn().mockResolvedValue(outline),
@@ -550,15 +648,15 @@ describe('coach plan imports', () => {
         const result = weekResult(index);
         const exercise = result.days[0]?.exercises[0];
         if (!exercise) throw new Error('missing fixture exercise');
-        if (index === 0) exercise.values = ['120', '120', '120', '120'];
+        if (index === 0) exercise.weight_values = ['120', '120', '120', '120'];
         if (index === 1) {
           exercise.sets = 5;
-          exercise.values = [];
+          exercise.weight_values = [];
         }
         if (index === 2) exercise.reps = '9+';
         if (index === 3) exercise.flags = ['inferred', 'note_fallback'];
         if (index === 4) {
-          exercise.values = ['112.50', '112.50', '112.50', '112.50'];
+          exercise.weight_values = ['112.50', '112.50', '112.50', '112.50'];
         }
         return Promise.resolve(result);
       }),

@@ -18,10 +18,13 @@ export const WEEK_PROMPT = `${CONTEXT}
 如果这块区域不像完整的一周（例如切断了训练日或只有说明表），只返回 {"region_suspect":true}，不要强行编出训练周。
 识别动作名、组×次：4*8、4×8、4组×8、3x5、4组。无结构（如「4组 力竭」）照填已知组数；完全读不出 sets=0。
 reps 用字符串：8、8+、30s 或空串；末组 amrap 在末尾加 +。
-强度 mode 只能为 kg、rpe、none：kg 包括单值及逐组串 110/115/120/120；57.5/65/57.5*2 表示末值重复 2 组。
-rpe8，或 rpe 标记 + 逐组串 6788 表示 6/7/8/8；rpe8-9 拿不准逐组值时保留原文进 note，不擅自补值。
-values 是逐组规范化数字字符串，length 必须等于 sets 或为 0。不得计算/编造原表没有的数值；
-若有铺满各组或展开爬坡（如 80→90 +5）等推断，必须加 inferred；拿不准则 values=[] 并进 note。
+强度与重量分两条线，同一行两样都有就都填，不能二选一或把可识别的数字全放进 note。
+重量（公斤）写入 weight_values，包括「预期重量」「重量」列、单值及逐组串 110/115/120/120；57.5/65/57.5*2 表示末值重复 2 组。
+强度写入 intensity_kind + intensity_values：RPE → rpe，RIR 列 → rir，百分比 → pct（75% 填 "75"）；没写强度则 intensity_kind=null、intensity_values=[]。
+rpe8，或 rpe 标记 + 逐组串 6788 表示 6/7/8/8；RPE 允许半级，如 6.5 填 "6.5"。
+上限「<=6」「≤6」填 "6"；区间「8-9」「rpe8-9」取下限 "8"；原文保留在 note，加 note_fallback。
+intensity_values 与 weight_values 都是逐组规范化数字字符串，不带单位、百分号、比较符或区间；各自 length 必须等于 sets 或为 0，sets=0 时两者均为空。
+不得计算/编造原表没有的数值；若有铺满各组或展开爬坡（如 80→90 +5）等推断，必须加 inferred；某条线拿不准则该数组为空并进 note，另一条线照填。
 「休息」是休息日，rest=true、exercises=[]。同一格「热身激活⏎…」等非正式训练内容进 note 或忽略，不当动作。
 名字为空、只有组次的行是上一个动作的追加组（顶组+退让组），合并成同一动作的不同组值；
 无法在一个 sets/reps 结构表示时作为同名第二个动作，不能丢掉追加组。
@@ -29,4 +32,4 @@ values 是逐组规范化数字字符串，length 必须等于 sets 或为 0。�
 name 保留原表写法并 trim。family_guess 只能是 squat、bench、deadlift 或 null，不要强行匹配。
 weekday 为 0=周一至 6=周日，同一天只出现一次。flags 只能含 note_fallback、inferred，可为空。
 返回如下 JSON 结构，不要添加其他字段：
-{"index":0,"start_date":null,"days":[{"weekday":0,"rest":false,"exercises":[{"name":"低杆深蹲","sets":4,"reps":"8","mode":"kg","values":["112.5","120","120","120"],"note":"节奏 310；60%top","family_guess":"squat","flags":["note_fallback"]}]}]}`;
+{"index":0,"start_date":null,"days":[{"weekday":0,"rest":false,"exercises":[{"name":"低杆深蹲","sets":1,"reps":"8","intensity_kind":"rpe","intensity_values":["6"],"weight_values":["227.5"],"note":"节奏 310；60%top","family_guess":"squat","flags":["note_fallback"]}]}]}`;

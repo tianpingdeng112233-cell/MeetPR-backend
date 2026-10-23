@@ -51,13 +51,18 @@ const ExerciseSchema = z
     name: z.string().trim().min(1),
     sets: z.number().int().nonnegative(),
     reps: z.string().regex(/^(?:\d+(?:\.\d+)?(?:\+|s)?)?$/),
-    mode: z.enum(['kg', 'rpe', 'none']),
-    values: z.array(z.string().regex(/^\d+(?:\.\d+)?$/)),
+    intensity_kind: z.enum(['rpe', 'rir', 'pct']).nullable(),
+    intensity_values: z.array(z.string().regex(/^\d+(?:\.\d+)?$/)),
+    weight_values: z.array(z.string().regex(/^\d+(?:\.\d+)?$/)),
     note: z.string(),
     family_guess: z.enum(['squat', 'bench', 'deadlift']).nullable(),
     flags: z.array(z.enum(['note_fallback', 'inferred'])),
   })
-  .refine((exercise) => exercise.values.length === 0 || exercise.values.length === exercise.sets);
+  .refine((exercise) =>
+    [exercise.intensity_values, exercise.weight_values].every(
+      (values) => values.length === 0 || values.length === exercise.sets,
+    ),
+  );
 
 export const WeekResultSchema = z.object({
   index: z.number().int().nonnegative(),

@@ -476,3 +476,15 @@ node --import tsx scripts/plan-import-eval.ts /absolute/local/sample.xlsx /absol
 - 独立只读审查：Standards 0 findings，Spec 0 findings。本轮仅修改 input、route、route tests、SPEC 一行及本 JOURNAL；未部署。
 - 格式检查首轮仅本 JOURNAL 新增段落的空行未通过，已用 Prettier 修正；最终 `pnpm format:check` 退出 0，0 格式问题。
 - 提交阻塞：按指定消息及 trailer 尝试 git add / commit，因主仓 `.git/worktrees/MeetPR-backend-wt-052/index.lock` 不在当前沙箱可写范围而退出 128；未创建 commit，未 push。需允许写入此 worktree 的 Git 元数据后完成指定原子提交和推送。
+
+## 2026-10-23 · spec 052 强度与重量双轨修复
+
+- 基线 `fa1dedb`，分支 `feat/052-plan-import-ai`，按本轮明确 FIX CARD 续改 PR #320。SPEC 状态仍为 Ready；本轮以已批准修复卡和「强度与重量分两条线」段落为执行依据，不改正典状态。复用现成依赖，只改 plan-import 的 model / inferred / prompts、两个既有测试文件及本文。
+- 输出删除 `mode/values`，改为 `intensity_kind`（rpe / rir / pct / null）、`intensity_values` 和 `weight_values`。两数组各自为 0 或 sets 长度，值继续采用非负十进制数字字符串校验，支持 6.5；不额外增加 spec 未要求的强度上下限。inferred 同时检查两轨，保留 2–6 位纯数字串逐位证据、数字等价比较、sets=0 哨兵以及模型自报 flags。
+- 中文 week prompt 明确两轨并存，预期重量进 weight_values，RPE / RIR / % 进强度轨；上限取数值、区间取下限，原文留 note 并加 note_fallback。某一轨无法解析时仅留空该轨；JSON 示例为 1 组、RPE 6 + 227.5kg。eval 脚本汇总仅统计动作、组与 flags，不读旧 exercise.values，无需改动；其中 page.values 是读表 API，保留。
+- 红→绿：新增路由回归先 9 failed / 27 skipped，均在有效双轨输出被旧 schema 拒绝处失败；长度与非法数值用例先验证同一有效输出可返回，再注入错误并断言一次重试后周级 PARSE_FAILED / BAD_OUTPUT。实现后路由 36 passed。适配器现有请求用例新增三个双轨字段轻量断言，先 1 failed / 14 skipped，更新 prompt 后 15 passed。另覆盖 RIR、pct、缺失强度数值；旧 RPE 串与 sets=0 回归保持通过。
+- 验证：基线 42 passed；最终 `pnpm vitest run tests/plan-imports.test.ts tests/services/plan-import-deepseek.test.ts` 为 2 文件 / 51 passed（路由 36、adapter 15），退出 0。`pnpm typecheck`、`pnpm build`、`pnpm lint` 退出 0；lint 首轮两处测试 URL 的 any 插值已改为显式 String 转换，并重跑 lint / 定向测试通过。测试仅有既有 Vite CJS 弃用提示。红绿与静态检查日志为 `/tmp/meetpr-052-tracks-*.log`。
+- 按 review-loop 进行一轮独立只读审查：Standards 0 findings；Spec 0 findings。仓内缺 Matt tracker 配置，未私建；本地双轴审查以本轮 FIX CARD / SPEC 为源，完整 tracker 流程仍需 `$setup-matt-pocock-skills`。自测与静态审查不代替真实模型识别验收。
+- 未启动或停止服务器、未连接或修改本地数据库；测试仅用原有 pg-mem / 内存请求 helper 和 fake model / fetch。未读取真实表格或凭证，未调用真实模型、部署或运行受监听限制的全量测试。
+- 最终 `pnpm format:check` 退出 0，0 格式问题；`git diff --check` 通过。五项指定验收命令均退出 0。
+- 提交阻塞：首次暂存成功，最终追加 JOURNAL 后按指定消息 `fix(plan-imports): emit intensity and weight as separate tracks` 和 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` 执行 git add / git commit，二者均因主仓 `.git/worktrees/MeetPR-backend-wt-052/index.lock` 不可写而退出 128。HEAD 仍为 fa1dedb，本轮 6 文件改动未提交（5 个代码 / 测试文件已暂存，JOURNAL 未暂存），未 push；未绕过 hook 或尝试提权。

@@ -20,7 +20,8 @@ export function flagInferred(result: WeekResult, cells: Cell[]): WeekResult {
         const missing = [
           exercise.sets === 0 ? '' : String(exercise.sets),
           exercise.reps,
-          ...exercise.values,
+          ...exercise.intensity_values,
+          ...exercise.weight_values,
         ]
           .flatMap((value) => numbers(value))
           .some((value) => !evidence.has(value));

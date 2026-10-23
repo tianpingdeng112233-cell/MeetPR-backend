@@ -151,6 +151,9 @@ describe('DeepSeek plan import adapter', () => {
     expect(url).toBe('https://example.test/v1/chat/completions');
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '');
     expect(body.model).toBe('configured-model');
+    expect(body.messages[0].content).toContain('intensity_kind');
+    expect(body.messages[0].content).toContain('intensity_values');
+    expect(body.messages[0].content).toContain('weight_values');
     expect(JSON.parse(body.messages[1].content)).toEqual({
       index: 0,
       cells: week.cells,
