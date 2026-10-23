@@ -17,9 +17,10 @@ export const OutlineRequestSchema = z
     trainee_id: z.string().uuid(),
     source: z.enum(['file', 'paste']),
     sheets: z
-      .array(z.object({ name: z.string().min(1).max(255), cells: CellsSchema.min(1) }).strict())
+      .array(z.object({ name: z.string().min(1).max(255), cells: CellsSchema }).strict())
       .min(1)
-      .refine((sheets) => new Set(sheets.map((sheet) => sheet.name)).size === sheets.length),
+      .refine((sheets) => new Set(sheets.map((sheet) => sheet.name)).size === sheets.length)
+      .transform((sheets) => sheets.filter((sheet) => sheet.cells.length > 0)),
   })
   .strict();
 export const WeeksRequestSchema = z

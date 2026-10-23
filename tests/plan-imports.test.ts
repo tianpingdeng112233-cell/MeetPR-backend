@@ -77,6 +77,43 @@ afterEach(async () => {
 });
 
 describe('coach plan imports', () => {
+  it('ignores empty sheets and sends only the content sheet to the model', async () => {
+    const model = { outline: vi.fn().mockResolvedValue(outline), parseWeek: vi.fn() };
+    const ctx = await enabledContext(model);
+    const response = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send({
+        ...input,
+        sheets: [
+          { name: 'Empty before', cells: [] },
+          ...input.sheets,
+          { name: 'Empty after', cells: [] },
+        ],
+      });
+    expect(response.status).toBe(200);
+    expect(response.body.weeks).toEqual(outline.weeks);
+    expect(model.outline).toHaveBeenCalledTimes(1);
+    expect(model.outline.mock.calls[0]?.[0]).toEqual({ sheets: input.sheets });
+  });
+  it('rejects all-empty sheets without calling the model or creating a quota row', async () => {
+    const model = { outline: vi.fn().mockResolvedValue(outline), parseWeek: vi.fn() };
+    const ctx = await enabledContext(model);
+    const response = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send({
+        ...input,
+        sheets: [
+          { name: 'Empty one', cells: [] },
+          { name: 'Empty two', cells: [] },
+        ],
+      });
+    expect(response.status).toBe(422);
+    expect(response.body).toEqual({ error: 'NO_TRAINING_WEEKS' });
+    expect(model.outline).not.toHaveBeenCalled();
+    expect(await ctx.db.selectFrom('plan_import_runs').selectAll().execute()).toEqual([]);
+  });
   it.each(['MODEL_BUSY', 'OUTPUT_TOO_LONG'] as const)(
     'returns outline failure reason %s without counting quota',
     async (reason) => {

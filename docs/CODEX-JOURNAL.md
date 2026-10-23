@@ -467,3 +467,12 @@ node --import tsx scripts/plan-import-eval.ts /absolute/local/sample.xlsx /absol
 - 静态验证：开工基线与实现后的 `pnpm typecheck`、`pnpm lint` 均退出 0；最终日志 `.invite-title-b-typecheck.log`、`.invite-title-b-lint.log`。`pnpm exec prettier --check src/app.ts src/handlers/public-invites.ts src/routes/public-invites.ts src/routes/invite-landing-pages.ts tests/unit/app.test.ts docs/CODEX-JOURNAL.md` 全部通过；`git diff --check` 退出 0。
 - 独立 `review-loop` 一轮只读审查：Standards 0 findings；Spec 0 findings，无未决项。仓内缺 `docs/agents/issue-tracker.md`，已提示正式 Matt 流程需 `$setup-matt-pocock-skills`，此次使用不依赖 tracker 的本地双轴审查，结论仅为静态审查，不代替 Opus 验收。
 - 未验证：正式 Supertest、全量测试、真实 PostgreSQL、浏览器/微信卡片和部署。按本轮限制没有尝试监听端口或连接外部服务；Opus 沙箱外待跑 `pnpm test -- tests/unit/app.test.ts tests/coach-applications.test.ts --maxWorkers=1 --minWorkers=1` 与 `pnpm test -- --maxWorkers=1 --minWorkers=1`。本地无端口绿测不等同这些项目通过。
+
+## 2026-10-23 · spec 052 空 sheet 防御修复
+
+- 按本轮 FIX CARD，在 `feat/052-plan-import-ai`（基线 `492b256`）修复：请求 schema 接受零 cells 的 sheet 并过滤；全部为空时在裁剪、模型及配额操作前返回 422 `NO_TRAINING_WEEKS`。SPEC §2.2 只补一行。
+- 红→绿：新增两条既有路由 / fake-model seam 测试，修前 2 failed（实际均 400，预期分别 200 / 422），修后 2 passed；混合请求仅向模型发送内容页，全空不调用模型、不创建配额行。测试使用既有 pg-mem 与内存请求 helper，未操作本地数据库、开发服务器或真实模型，未读取真实凭证。
+- 验证：基线 2 文件 / 40 passed；修后 `pnpm vitest run tests/plan-imports.test.ts tests/services/plan-import-deepseek.test.ts` 为 2 文件 / 42 passed（路由 27、adapter 15），退出 0。`pnpm typecheck`、`pnpm build`、`pnpm lint` 均退出 0，无诊断；仅测试输出既有 Vite CJS 弃用提示。
+- 独立只读审查：Standards 0 findings，Spec 0 findings。本轮仅修改 input、route、route tests、SPEC 一行及本 JOURNAL；未部署。
+- 格式检查首轮仅本 JOURNAL 新增段落的空行未通过，已用 Prettier 修正；最终 `pnpm format:check` 退出 0，0 格式问题。
+- 提交阻塞：按指定消息及 trailer 尝试 git add / commit，因主仓 `.git/worktrees/MeetPR-backend-wt-052/index.lock` 不在当前沙箱可写范围而退出 128；未创建 commit，未 push。需允许写入此 worktree 的 Git 元数据后完成指定原子提交和推送。

@@ -93,6 +93,10 @@ export function planImportsRouter(deps: {
         res.status(404).json({ error: 'TRAINEE_NOT_FOUND' });
         return;
       }
+      if (body.data.sheets.length === 0) {
+        res.status(422).json({ error: 'NO_TRAINING_WEEKS' });
+        return;
+      }
       const inputChars = body.data.sheets.reduce((sum, sheet) => sum + cellChars(sheet.cells), 0);
       if (inputChars > MAX_INPUT_CHARS) {
         res.status(413).json({ error: 'PAYLOAD_TOO_LARGE' });
