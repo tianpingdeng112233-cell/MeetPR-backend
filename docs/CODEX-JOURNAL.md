@@ -488,3 +488,10 @@ node --import tsx scripts/plan-import-eval.ts /absolute/local/sample.xlsx /absol
 - 未启动或停止服务器、未连接或修改本地数据库；测试仅用原有 pg-mem / 内存请求 helper 和 fake model / fetch。未读取真实表格或凭证，未调用真实模型、部署或运行受监听限制的全量测试。
 - 最终 `pnpm format:check` 退出 0，0 格式问题；`git diff --check` 通过。五项指定验收命令均退出 0。
 - 提交阻塞：首次暂存成功，最终追加 JOURNAL 后按指定消息 `fix(plan-imports): emit intensity and weight as separate tracks` 和 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` 执行 git add / git commit，二者均因主仓 `.git/worktrees/MeetPR-backend-wt-052/index.lock` 不可写而退出 128。HEAD 仍为 fa1dedb，本轮 6 文件改动未提交（5 个代码 / 测试文件已暂存，JOURNAL 未暂存），未 push；未绕过 hook 或尝试提权。
+
+## 2026-10-23 · spec 052 广播值不标推断
+
+- 基线 `062e699`，按 FIX CARD 修改 week prompt：已写重量或强度广播到各组不得加 inferred；仅计算或展开出本周 cells 未写的数字才标记。`inferred.ts` 不变。现有路由 broadcast weight 用例已覆盖单格 120、4 组、120×4、模型 flags=[] 与响应 flags=[]，原样保留。
+- 先红后绿：适配器新增轻量 prompt 断言，修前退出 1（1 failed / 14 skipped），修后退出 0（1 passed / 14 skipped）；广播回归退出 0（1 passed / 35 skipped）。最终两文件退出 0，共 51 passed（路由 36、适配器 15）；`pnpm typecheck`、`pnpm lint` 均退出 0。测试仅有既有 Vite CJS 弃用提示。
+- 独立只读审查 Standards 0、Spec 0；只改 prompt、适配器测试及本文。复用现有依赖、pg-mem 与内存请求 helper；未操作服务器或本地数据库，未请求真实模型或部署。
+- `pnpm format:check` 退出 0，0 格式问题。

@@ -154,6 +154,11 @@ describe('DeepSeek plan import adapter', () => {
     expect(body.messages[0].content).toContain('intensity_kind');
     expect(body.messages[0].content).toContain('intensity_values');
     expect(body.messages[0].content).toContain('weight_values');
+    expect(body.messages[0].content).not.toMatch(/若有铺满各组[^。]*必须加 inferred/);
+    expect(body.messages[0].content).toContain('铺满各组不算推断，不得加 inferred');
+    expect(body.messages[0].content).toContain(
+      '只有计算或展开后、在这一周 cells 文本里找不到的数字，才必须加 inferred',
+    );
     expect(JSON.parse(body.messages[1].content)).toEqual({
       index: 0,
       cells: week.cells,
