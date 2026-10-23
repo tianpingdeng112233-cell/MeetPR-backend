@@ -1,0 +1,86 @@
+import { z } from 'zod';
+import type { Cell, Sheet } from './model';
+
+export const MAX_INPUT_CHARS = 400_000;
+export const OUTLINE_TOKEN_BUDGET = 60_000;
+const CellSchema = z.tuple([
+  z.number().int().positive(),
+  z.number().int().positive(),
+  z
+    .string()
+    .min(1)
+    .refine((value) => value === value.trim()),
+]);
+const CellsSchema = z.array(CellSchema).max(MAX_INPUT_CHARS);
+export const OutlineRequestSchema = z
+  .object({
+    trainee_id: z.string().uuid(),
+    source: z.enum(['file', 'paste']),
+    sheets: z
+      .array(z.object({ name: z.string().min(1).max(255), cells: CellsSchema.min(1) }).strict())
+      .min(1)
+      .refine((sheets) => new Set(sheets.map((sheet) => sheet.name)).size === sheets.length),
+  })
+  .strict();
+export const WeeksRequestSchema = z
+  .object({
+    weeks: z
+      .array(z.object({ index: z.number().int().nonnegative(), cells: CellsSchema }).strict())
+      .min(1)
+      .max(12)
+      .refine((weeks) => new Set(weeks.map((week) => week.index)).size === weeks.length),
+    header_cells: CellsSchema,
+  })
+  .strict();
+
+export function cellChars(cells: Cell[]): number {
+  return cells.reduce((sum, cell) => sum + cell[2].length, 0);
+}
+
+function estimatedTokens(value: unknown): number {
+  // Approximate mixed Chinese/ASCII budget, including coordinates/JSON syntax.
+  return Math.ceil(Buffer.byteLength(JSON.stringify(value), 'utf8') / 3);
+}
+
+export function trimOutline(
+  sheets: Sheet[],
+): { sheets: Sheet[]; truncated_rows: number } | undefined {
+  let budget =
+    OUTLINE_TOKEN_BUDGET -
+    estimatedTokens({ sheets: sheets.map((sheet) => ({ name: sheet.name, cells: [] })) });
+  const pages = sheets.map((sheet) => {
+    const byRow = new Map<number, Cell[]>();
+    for (const cell of sheet.cells) {
+      const row = byRow.get(cell[0]) ?? [];
+      row.push(cell);
+      byRow.set(cell[0], row);
+    }
+    const rows = [...byRow.entries()].sort(([a], [b]) => a - b).map(([, cells]) => cells);
+    const headers = rows.slice(0, 40);
+    for (const row of headers) budget -= estimatedTokens(row);
+    return { name: sheet.name, kept: headers, tail: rows.slice(40), totalRows: rows.length };
+  });
+  // Whole rows are indivisible. If mandatory headers alone exceed the budget,
+  // ask for a smaller input instead of silently removing column definitions.
+  if (budget < 0) return undefined;
+  while (pages.some((page) => page.tail.length > 0)) {
+    for (const page of pages) {
+      const row = page.tail.pop();
+      if (!row) continue;
+      const cost = estimatedTokens(row);
+      if (cost > budget) {
+        page.tail = [];
+        continue;
+      }
+      budget -= cost;
+      page.kept.push(row);
+    }
+  }
+  return {
+    sheets: pages.map((page) => ({
+      name: page.name,
+      cells: page.kept.flat().sort((a, b) => a[0] - b[0] || a[1] - b[1]),
+    })),
+    truncated_rows: pages.reduce((sum, page) => sum + page.totalRows - page.kept.length, 0),
+  };
+}

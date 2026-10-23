@@ -386,6 +386,64 @@ David 现场要求欢迎页直接进入教练网页登录，并重写欢迎邮�
 - 本地验证：初次 typecheck/lint 发现路由两种 Zod 校验结果合并后过滤字段类型丢失，已显式声明校验结果的可选字段类型；修正后 `npm run typecheck` 退出 0、`npm run lint` 退出 0。两个生产文件的 Prettier check 及 `git diff --check` 均通过。独立静态 code-review：Standards 0 findings、Spec 0 findings。
 - 与 SPEC 行为契约无已知出入。SPEC 文件仍为 Draft，未擅自更新状态；此前阻塞记录中的“尚未实现”已由本节取代。按本轮分工没有在沙箱重复运行 HTTP/全量测试；36 条是否全绿及 SPEC 验收 8 的全量测试仍需 Claude 在沙箱外给出实际输出，不把静态检查当作绿测或功能验收。未 commit、push、开 PR 或部署。
 
+## 2026-10-22 · Spec 052：表格 AI 导入后端，工作树交付
+
+### 实装与合同版本
+
+- 在 `MeetPR-backend-wt-052` / `feat/052-plan-import-ai` 实装，未 commit、push、开 PR、部署或访问真实学员表。开工 HEAD 为 `ad3a248`；执行期间外部将 HEAD 更新为 `e813f3d`（只追加 SPEC 要求），本轮按该最新版实现每 import 最多 8 次 weeks 调用及四种失败 reason。SPEC 仍标 Ready；用户本轮明确授权实施，未擅改状态。
+- 新增三个教练 API、可注入的 `PlanImportModel`、DeepSeek HTTP factory、中文提示词及 Zod 输出校验。无 key 时 status 返回 disabled，两个 POST 返回 404，且不访问新表。默认 URL/model 由 adapter 提供，其他既有配置与响应不变。
+- outline 成功后才写计数；上海自然日、教练×学员每天 3 次。事务只在最终计数时锁教练行并复查额度，不在模型推理期间持锁。weeks 每批最多 12 周、并发最多 4，每周最多两次模型请求；适配器的 exhausted error 防止路由叠加重试。按最新合同返回 MODEL_BUSY / OUTPUT_TOO_LONG / BAD_OUTPUT / REGION_SUSPECT，并接受前端修改后的 cells。
+- 请求严格拒绝 filename 等额外字段。输入原文只存在请求处理内存和模型请求中，不落库、不写日志；provider/JSON parser 异常不携带原文进入全局 logger。数据库仅保存计数、用量与元数据。服务端 inferred 比对对应周的 values/sets/reps 数字，排除 header 和其他周；保留模型 flags。
+
+### 迁移与环境核验
+
+- 使用 `db/migrations/0076-plan-import-runs.sql`，手工补 `src/db/types.ts`。仅新增表和索引，回退关闭 key / 回旧应用，保留计数表。未应用到任何外部数据库，`db/MIGRATIONS-APPLIED.md` 仍以原有 0075 为最后已应用记录；按该账本“应用后追加”规则，本轮不写已应用记录。
+- 按要求执行 `git fetch origin`，因共享 `.git/worktrees/.../FETCH_HEAD` 不可写被沙箱拒绝；改在 `/tmp/meetpr-052-remote-check.git` fetch，网络代理连接也被拒绝。替代核验：检查本地 276 个 origin 跟踪 ref 的迁移树，无 0076；再通过 GitHub 连接分页读取实时 275 个远端分支，全部分支 SHA 与本地缓存一致，未发现占号。账本最新为 0075。合并/应用前仍需照仓规重新检查占号。
+- `pnpm install --frozen-lockfile` 下载被网络沙箱拒绝。复用本机 `MeetPR-backend-wt-051/node_modules`，该 worktree 的 pnpm-lock.yaml 与当前锁文件逐字节相同；未改 package/lock 文件。`pnpm prepare` 尝试了 husky 初始化，但共享 Git config 写入被拒绝；现有 core.hooksPath 为 `.husky/_`。未绕过任何 commit hook，也未执行 commit。
+
+### 测试与审查证据
+
+- 已约定 seam 保持 HTTP route 与 fake-fetch adapter。新增 HTTP 测试使用仓内现成 `tests/helpers/inMemoryRequest.ts` 经过真实 Express 中间件和路由，配合原 pg-mem helper 与注入 fake model；它避免当前沙箱不允许 supertest 监听端口的问题，未修改共享测试 helper 或旧测试。真实 PostgreSQL 行锁的多连接竞争未在本环境实测。
+- 按行为先红后绿：disabled、成功计次、逐周隔离与并发、inferred、适配器、日志隐私、输入预算；SPEC 更新后补四种 reason / 第 9 次拒绝的红绿。原始日志位于本机 `/tmp/meetpr-052-red-*.log`、`/tmp/meetpr-052-green-*.log`。
+- `pnpm test tests/plan-imports.test.ts tests/services/plan-import-deepseek.test.ts`：**31 passed**，其中 HTTP **17**、adapter **14**，2 个文件通过。覆盖 SPEC §5.1 全部当前有效条目，另含跨边界重试不倍增、12 周/重复 index/400k 字符、前端编辑 cells、配额双维度隔离和上海零点。
+- 全量 `pnpm test`：**767 passed / 523 failed / 1 skipped**，160 文件中 114 通过、46 失败；另报 518 个未处理监听错误。开工基线为 **736 passed / 523 failed / 1 skipped**，158 文件中 112 通过、46 失败。前后失败文件集合完全一致，新增失败文件为 0。错误根因为沙箱 `listen EPERM`，随后 supertest 读取空 server.address().port；不能据此宣称全量验收通过。日志：`/tmp/meetpr-052-baseline.log`、`/tmp/meetpr-052-final-tests.log`。
+- `pnpm typecheck`、`pnpm build` 通过；评估脚本单独使用 `pnpm exec tsc --noEmit --target ES2022 --module commonjs --esModuleInterop --strict --noUncheckedIndexedAccess --exactOptionalPropertyTypes --skipLibCheck scripts/plan-import-eval.ts` 通过。`pnpm lint` 最终退出 0；最终再次执行 typecheck/build 均退出 0。
+- 全仓 `pnpm format:check` 只报告既有 `specs/052-plan-import-ai/SPEC.md` 格式问题。本轮不改外部刚更新的合同文件。全部交付代码和 JOURNAL 的定向 Prettier、`git diff --check` 均通过。
+- 按 review-loop 运行独立只读双轴审查。Standards：0 阻断。Spec 初审：2 阻断（执行中新增的 8 次上限、四类 reason），修复后定向复审 **0 残余阻断**。审查不替代 Opus/David 验收。Matt tracker 缺配置，未私建；使用本地 SPEC 完成 review-loop，完整 Matt tracker 流程需以后调用 `$setup-matt-pocock-skills`。
+
+### 评估脚本
+
+- `scripts/plan-import-eval.ts` 用本机 Python 读取文件：CSV 用标准库；XLSX 用 `openpyxl`，识别 Excel 日期 epoch/样式并转 ISO，读取公式缓存、不执行公式。模型调用复用线上 adapter、裁剪与逐周解析/flags；输出文件序号、周数、训练日/动作/组计数和 flags 计数，不输出路径、文件名或单元格原文。
+- XLSX 本地前置依赖：`python3 -m pip install openpyxl`（本机已装 3.1.5，本轮未安装新依赖）。通过获准凭证通道准备进程环境中的 DEEPSEEK_API_KEY 后，在仓根运行：
+
+```bash
+node --import tsx scripts/plan-import-eval.ts /absolute/local/sample.xlsx /absolute/local/sample.csv
+```
+
+- 不需要 key 的读表检查：在路径前加 `--dry-run`。本轮只使用 `/tmp/meetpr-052-synthetic.xlsx` 与 `.csv` 两个临时合成文件，均成功，均输出 `sheets:1 / input_chars:59 / truncated_rows:0`；缺 key 的正常调用按预期退出 1，未发起模型请求。未尝试获取 key，未读取合同列出的真实样表，未执行真模型验收 §6.3。
+
+### 差异、边界与待确认项
+
+- 最新 SPEC §2.3 为最多 8 次，但 §5.1 仍残留“第 4 次调 weeks 被拒”。按 §2.3 及 §5.1 新增“第 9 次拒绝”执行；待 Opus 清理旧句。
+- 增加 `src/app.ts` 的最小 DI/专用 JSON parser 接线（5 行）：400k 中文可超过既有 1MB，且 body-parser 原始异常可能带原文。仅放宽新路径的传输体积为 32MiB，应用层仍校验 cells 总文本 400k；未放宽旧 API。
+- token 预算以 UTF-8 JSON 字节数 / 3 估算到约 60k。保留每页前 40 个非空行，再按页轮流保留尾部最新整行；如果必留表头自身已超预算，新增 413 `IMPORT_HEADERS_TOO_LARGE`，不静默删除表头。第二步同样限定总文本 400k。真实大表裁剪效果仍待真模型验收。
+- 真实 DeepSeek 连通性、默认 `deepseek-chat` 可用性、真实三份样表正确率尚未验证；默认值严格按合同，可用 env 覆盖。实现请求格式参考 [DeepSeek 官方 API](https://api-docs.deepseek.com/api/create-chat-completion/)。无其他未定产品决策。
+- 待外部可监听端口的环境跑全量测试；待真实 key 和样表完成 §6.3；上线前需先应用 0076 并由 David 配置国内环境。未把开发自测标为功能最终验收。
+
+### 文件清单
+
+- 新增 `src/services/plan-import/`：`model.ts`、`deepseek.ts`、`prompts.ts`、`input.ts`、`json.ts`、`inferred.ts`、`parse-weeks.ts`、`retry.ts`、`runs.ts`。
+- 新增 `src/routes/plan-imports.ts`；修改 `src/routes/index.ts`、`src/app.ts`、`src/config.ts`、`src/db/types.ts`、`.env.example`。
+- 新增 `db/migrations/0076-plan-import-runs.sql`、`tests/plan-imports.test.ts`、`tests/services/plan-import-deepseek.test.ts`、`scripts/plan-import-eval.ts`；追加本文 `docs/CODEX-JOURNAL.md`。共 20 个文件，未改其他模块。
+
+### 2026-10-22 · round 1 rework
+
+- 按 Opus 三项返修卡，仅改指定范围：2–6 位纯数字 token 补逐位证据并保留整值，sets=0 不参与缺失证据判断；DeepSeek 两步请求均设 `max_tokens:8192`；outline 502 增加安全 reason，失败不扣配额；SPEC §2.2 仅补一行契约。
+- 红→绿：inferred 新增 6 例，先 3 failed / 3 passed（两种 RPE 串及 sets=0 误报），修复后 6 passed；范围端点、重量广播、缺失重量原本即绿。输出上限先 1 failed（undefined ≠ 8192），修复后 1 passed。outline 先 2 failed（缺 reason），修复后含既有 BAD_OUTPUT 隐私/配额用例共 3 passed。
+- 最终 `pnpm vitest run tests/plan-imports.test.ts tests/services/plan-import-deepseek.test.ts`：2 文件 / 40 passed（HTTP 25、adapter 15），退出 0。独立只读审查：Standards 0、Spec 0。原始红绿和检查日志 `/tmp/meetpr-052-r1-*.log`；开工快照与本轮 diff 在 `/tmp/meetpr-052-r1-before/`、`/tmp/meetpr-052-r1.diff`。
+- 异常：首次 lint 拒绝直接展开字符串（`no-misused-spread`）；已改为显式提取数字数组，行为不变，随后重跑定向测试和检查。测试仅有既有 Vite CJS 弃用提示。无真实表格、模型请求或部署；未 commit/push。未重跑上轮已记录受监听沙箱限制的全量测试，不声称完整功能验收。
+- 最终 `pnpm typecheck`、`pnpm build`、`pnpm lint`、`pnpm format:check`（包含 SPEC）全部退出 0；文件哈希核对仅上述 6 个实现/测试/契约文件与本 JOURNAL 变化，未触碰其余前轮 WIP。
+
 ## 2026-10-22 · 邀请落地页分享标题（未提交，待外部 Supertest / 全量收货）
 
 - 工作位置固定为当前 `MeetPR-backend-wt-invite-title`，分支 `fix/invite-landing-title`，HEAD 与本地 `origin/staging` 均为 `11ea46d`。依据 David 本轮实施卡及后续明确分工执行；未 commit、push 或部署，无依赖、锁文件、迁移、其他 worktree 或其他业务路由改动。

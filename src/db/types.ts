@@ -843,7 +843,20 @@ export interface AnalyticsFeedbackTable {
   ts_server: TimestampColumn;
 }
 
+export interface PlanImportRunsTable {
+  id: Generated<string>;
+  coach_id: string;
+  trainee_id: string;
+  source: 'file' | 'paste';
+  input_chars: number;
+  week_calls: Generated<number>;
+  prompt_tokens: Generated<number>;
+  completion_tokens: Generated<number>;
+  created_at: TimestampColumn;
+}
+
 export interface Database {
+  plan_import_runs: PlanImportRunsTable;
   users: UsersTable;
   user_identities: UserIdentitiesTable;
   auth_challenges: AuthChallengesTable;
