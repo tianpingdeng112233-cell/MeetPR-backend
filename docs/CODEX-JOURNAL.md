@@ -495,3 +495,14 @@ node --import tsx scripts/plan-import-eval.ts /absolute/local/sample.xlsx /absol
 - 先红后绿：适配器新增轻量 prompt 断言，修前退出 1（1 failed / 14 skipped），修后退出 0（1 passed / 14 skipped）；广播回归退出 0（1 passed / 35 skipped）。最终两文件退出 0，共 51 passed（路由 36、适配器 15）；`pnpm typecheck`、`pnpm lint` 均退出 0。测试仅有既有 Vite CJS 弃用提示。
 - 独立只读审查 Standards 0、Spec 0；只改 prompt、适配器测试及本文。复用现有依赖、pg-mem 与内存请求 helper；未操作服务器或本地数据库，未请求真实模型或部署。
 - `pnpm format:check` 退出 0，0 格式问题。
+
+## 2026-10-23 · spec 052 Day-only 表与简体动作名
+
+- 基线 `a8dcdd5`，分支 `feat/052-plan-import-ai`。按已批准 FIX CARD 执行，SPEC 的 Ready 状态不改；复用现有依赖，只改 plan-import 的 model/prompts、两个既有测试文件及本文。未启动或停止服务器、未操作本地数据库、未调用真实模型，测试仅用既有 pg-mem、内存请求 helper 和 fake model/fetch。
+- outline prompt 将无周结构的 Day1–DayN 表视为恰好一周，日期为空、训练日数按块计、region 覆盖全部块。week schema 新增正整数 day_index 并要求唯一递增；weekday 可空，同周必须全空或全非空且唯一。prompt 补齐简体 name、仅额外原文进 note、下數/組數和 @8/@6/7/8 的语义，并避免把完整 Day-only 区域误报 REGION_SUSPECT。
+- 已读 `inferred.ts`：只对 sets、reps、intensity_values、weight_values 的数字查 cells 证据，不读取 name；繁简转换不影响闸门，原实现未改。新增 Day-only 路由回归使用繁体输入、简体输出，flags 仍为空；既有缺失数值与模型自报 flags 回归继续通过。
+- 红→绿：Day-only 路由新用例先退出 1（1 failed / 36 skipped，旧 schema 返回 BAD_OUTPUT），修后退出 0（1 passed / 36 skipped）；混合 weekday 校验用例先退出 1（1 failed / 37 skipped，错误输出被接受），修后退出 0（1 passed / 37 skipped），同例覆盖重复 weekday、重复/倒序/零 day_index 和重试。adapter 既有用例新增轻量 prompt 断言，先退出 1（1 failed / 14 skipped，缺 Day1），修后随全文件通过。共新增两条测试，红绿日志 `/tmp/meetpr-052-day-{red-route,green-route,red-validation,green-validation,red-prompt,green}.log`。
+- 基线 51 passed；最终 `pnpm vitest run tests/plan-imports.test.ts tests/services/plan-import-deepseek.test.ts` 退出 0，53 passed（路由 38、adapter 15）。`pnpm typecheck`、`pnpm lint` 均退出 0；lint 首轮非空断言和数字插值错误已修正并重跑测试与两项检查。测试只有既有 Vite CJS 弃用提示。未执行真实样表验收或部署。
+- review-loop 独立只读审查：Standards 0，Spec 0。仓内缺 Matt tracker 配置，已提示完整流程需 `$setup-matt-pocock-skills`，本轮使用本地双轴审查；审查不代替 Opus/David 验收。
+- 最终 `pnpm format:check` 退出 0，0 格式问题；`git diff --check` 通过。
+- 提交阻塞：首次暂存四个代码/测试文件成功，最终追加 JOURNAL 后，git add 与按指定消息及 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` 执行的 git commit 均退出 128：主仓 `.git/worktrees/MeetPR-backend-wt-052/index.lock` 被沙箱拒绝写入。HEAD 仍为 a8dcdd5，本轮 uncommitted（四文件已暂存，JOURNAL 未暂存），未 push；未提权或绕过 hook。

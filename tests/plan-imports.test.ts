@@ -40,6 +40,7 @@ const weekResult = (index: number): WeekResult => ({
   days: [
     {
       weekday: 0,
+      day_index: 1,
       rest: false,
       exercises: [
         {
@@ -78,6 +79,85 @@ afterEach(async () => {
 });
 
 describe('coach plan imports', () => {
+  it('returns a day-only week in table order without inferring simplified names', async () => {
+    const day = weekResult(0).days[0];
+    const exercise = day?.exercises[0];
+    const firstWeek = outline.weeks[0];
+    if (!day || !exercise || !firstWeek) throw new Error('Missing week fixture');
+    const parsed = {
+      index: 0,
+      start_date: null,
+      days: [1, 2, 3, 4].map((day_index) => ({
+        ...day,
+        weekday: null,
+        day_index,
+        exercises: [{ ...exercise, name: '杠铃深蹲' }],
+      })),
+    };
+    const dayOutline = {
+      ...outline,
+      weeks: [{ ...firstWeek, training_days: 4, region: { r1: 1, c1: 1, r2: 8, c2: 2 } }],
+    };
+    const cells = [1, 2, 3, 4].flatMap((index) => [
+      [index * 2 - 1, 1, `Day${String(index)}`],
+      [index * 2, 2, '槓鈴深蹲 4×8 112.5'],
+    ]);
+    const ctx = await enabledContext({
+      outline: vi.fn().mockResolvedValue(dayOutline),
+      parseWeek: vi.fn().mockResolvedValue(parsed),
+    });
+    const created = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send({ ...input, sheets: [{ name: '2026', cells }] });
+    expect(created.status).toBe(200);
+    expect(created.body.weeks).toEqual(dayOutline.weeks);
+    const response = await request(ctx.app)
+      .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+      .set(auth(ctx.coachToken))
+      .send({ weeks: [{ index: 0, cells }], header_cells: [] });
+    expect(response.status).toBe(200);
+    expect(response.body.weeks).toEqual([parsed]);
+  });
+  it('rejects mixed weekdays and invalid day order with week BAD_OUTPUT', async () => {
+    const firstDay = { weekday: 0, day_index: 1, rest: true, exercises: [] };
+    const secondDay = { weekday: 2, day_index: 2, rest: true, exercises: [] };
+    const parsed = {
+      index: 0,
+      start_date: null,
+      days: [firstDay, secondDay],
+    };
+    const parseWeek = vi.fn().mockResolvedValue(parsed);
+    const ctx = await enabledContext({ outline: vi.fn().mockResolvedValue(outline), parseWeek });
+    const created = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send(input);
+    const sendWeek = () =>
+      request(ctx.app)
+        .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+        .set(auth(ctx.coachToken))
+        .send({ weeks: [{ index: 0, cells: [[1, 1, '周一、周三休息']] }], header_cells: [] });
+    expect((await sendWeek()).body.weeks).toEqual([parsed]);
+    for (const days of [
+      [{ ...firstDay, weekday: null }, secondDay],
+      [firstDay, { ...secondDay, weekday: 0 }],
+      [firstDay, { ...secondDay, day_index: 1 }],
+      [
+        { ...firstDay, day_index: 2 },
+        { ...secondDay, day_index: 1 },
+      ],
+      [{ ...firstDay, day_index: 0 }, secondDay],
+    ]) {
+      parseWeek.mockClear().mockResolvedValue({ ...parsed, days });
+      const response = await sendWeek();
+      expect(response.status).toBe(200);
+      expect(response.body.weeks).toEqual([
+        { index: 0, error: 'PARSE_FAILED', reason: 'BAD_OUTPUT' },
+      ]);
+      expect(parseWeek).toHaveBeenCalledTimes(2);
+    }
+  });
   it.each([
     { kind: 'rpe', value: '6', cells: '深蹲 1×8 RPE 6 227.5kg', flags: [] },
     { kind: 'rir', value: '2', cells: '深蹲 1×8 RIR 2 227.5kg', flags: [] },
@@ -99,7 +179,10 @@ describe('coach plan imports', () => {
         family_guess: 'squat',
         flags: [],
       };
-      const parsed = { ...result, days: [{ weekday: 0, rest: false, exercises: [exercise] }] };
+      const parsed = {
+        ...result,
+        days: [{ weekday: 0, day_index: 1, rest: false, exercises: [exercise] }],
+      };
       const ctx = await enabledContext({
         outline: vi.fn().mockResolvedValue(outline),
         parseWeek: vi.fn().mockResolvedValue(parsed),
@@ -114,7 +197,10 @@ describe('coach plan imports', () => {
         .send({ weeks: [{ index: 0, cells: [[1, 1, cells]] }], header_cells: [] });
       expect(response.status).toBe(200);
       expect(response.body.weeks).toEqual([
-        { ...parsed, days: [{ weekday: 0, rest: false, exercises: [{ ...exercise, flags }] }] },
+        {
+          ...parsed,
+          days: [{ weekday: 0, day_index: 1, rest: false, exercises: [{ ...exercise, flags }] }],
+        },
       ]);
     },
   );
@@ -138,7 +224,7 @@ describe('coach plan imports', () => {
     const parsed = {
       index: 0,
       start_date: null,
-      days: [{ weekday: 0, rest: false, exercises: [exercise] }],
+      days: [{ weekday: 0, day_index: 1, rest: false, exercises: [exercise] }],
     };
     const parseWeek = vi.fn().mockResolvedValue(parsed);
     const ctx = await enabledContext({ outline: vi.fn().mockResolvedValue(outline), parseWeek });
@@ -157,7 +243,9 @@ describe('coach plan imports', () => {
     expect((await sendWeek()).body.weeks).toEqual([parsed]);
     parseWeek.mockResolvedValue({
       ...parsed,
-      days: [{ weekday: 0, rest: false, exercises: [{ ...exercise, [field]: values }] }],
+      days: [
+        { weekday: 0, day_index: 1, rest: false, exercises: [{ ...exercise, [field]: values }] },
+      ],
     });
     const response = await sendWeek();
     expect(response.status).toBe(200);

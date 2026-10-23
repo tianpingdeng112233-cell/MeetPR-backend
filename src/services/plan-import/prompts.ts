@@ -7,6 +7,7 @@ const CONTEXT = `你在读力量训练教练手写的计划表，只输出 JSON 
 
 export const OUTLINE_PROMPT = `${CONTEXT}
 本阶段只认结构：选出训练计划所在的一个页，列出其中每一周及其单元格范围，不要只列前 12 周。
+有训练日但没有周结构（如只有 Day1–DayN、D1 或第1天，没有周标签、日期或星期）时，整张表恰好算作一周，不能返回空 weeks：start_date=null，training_days=训练日数量，region 覆盖全部训练日块（含各日表头）。
 注意事项、热身说明、营养、RPE 对照表、计算器等页不是计划；多页都有计划时选日期最新的那页。
 sheet 必须是输入中的页名。header_region 是解释列含义（如「组数 次数 重量」）的表头范围；没有则 null。
 region 的 r1/c1 是左上角，r2/c2 是右下角，范围包含边界。周 index 从 0 开始且不重复，training_days 为 0–7。
@@ -15,13 +16,16 @@ region 的 r1/c1 是左上角，r2/c2 是右下角，范围包含边界。周 in
 
 export const WEEK_PROMPT = `${CONTEXT}
 本阶段只解析输入这一周，index 原样返回。header_cells 仅解释列的含义，不能当作这一周的处方。
+只有 Day1–DayN、D1 或第1天而没有周结构的完整训练日块也算完整一周，不能仅因没有周标签、日期或星期而返回 region_suspect。
 如果这块区域不像完整的一周（例如切断了训练日或只有说明表），只返回 {"region_suspect":true}，不要强行编出训练周。
 识别动作名、组×次：4*8、4×8、4组×8、3x5、4组。无结构（如「4组 力竭」）照填已知组数；完全读不出 sets=0。
+繁体表头「訓練動作」是动作名，「下數」是 reps，「組數」是 sets，「教練指示」是 note。
 reps 用字符串：8、8+、30s 或空串；末组 amrap 在末尾加 +。
 强度与重量分两条线，同一行两样都有就都填，不能二选一或把可识别的数字全放进 note。
 重量（公斤）写入 weight_values，包括「预期重量」「重量」列、单值及逐组串 110/115/120/120；57.5/65/57.5*2 表示末值重复 2 组。
 强度写入 intensity_kind + intensity_values：RPE → rpe，RIR 列 → rir，百分比 → pct（75% 填 "75"）；没写强度则 intensity_kind=null、intensity_values=[]。
 rpe8，或 rpe 标记 + 逐组串 6788 表示 6/7/8/8；RPE 允许半级，如 6.5 填 "6.5"。
+「RPE=@」列中的「@8」表示 RPE 8；3 组的「@6/7/8」表示 intensity_kind="rpe"、intensity_values=["6","7","8"]。
 上限「<=6」「≤6」填 "6"；区间「8-9」「rpe8-9」取下限 "8"；原文保留在 note，加 note_fallback。
 intensity_values 与 weight_values 都是逐组规范化数字字符串，不带单位、百分号、比较符或区间；各自 length 必须等于 sets 或为 0，sets=0 时两者均为空。
 表里写的单个重量或强度值铺满各组不算推断，不得加 inferred：如「4×8 · 120」→ weight_values=["120","120","120","120"]；3 组的「rpe8」→ intensity_values=["8","8","8"]。
@@ -30,7 +34,7 @@ intensity_values 与 weight_values 都是逐组规范化数字字符串，不带
 名字为空、只有组次的行是上一个动作的追加组（顶组+退让组），合并成同一动作的不同组值；
 无法在一个 sets/reps 结构表示时作为同名第二个动作，不能丢掉追加组。
 力竭、60%top、节奏 310/500、长暂停2s、降组、周二减7.5 及读不懂的串等无法变成逐组数值的写法，原样进 note，加 note_fallback。
-name 保留原表写法并 trim。family_guess 只能是 squat、bench、deadlift 或 null，不要强行匹配。
-weekday 为 0=周一至 6=周日，同一天只出现一次。flags 只能含 note_fallback、inferred，可为空。
+name 一律输出简体中文并 trim，繁体动作名按常用写法转换：槓鈴深蹲 → 杠铃深蹲、相撲硬舉 → 相扑硬拉。仅当原文包含额外信息时保留在 note，不因繁简转换重复动作名；note 保留原文。family_guess 只能是 squat、bench、deadlift 或 null，不要强行匹配。
+day_index 是表中训练日顺序，从 1 起，按此顺序返回 days，必须唯一且递增。weekday 为 0=周一至 6=周日，仅当表里写了星期或日期时填写；没写时必须为 null，不能把 Day1/D1/第1天推断为周一。同一周要么所有 weekday 非 null 且不重复，要么全部为 null。flags 只能含 note_fallback、inferred，可为空。
 返回如下 JSON 结构，不要添加其他字段：
-{"index":0,"start_date":null,"days":[{"weekday":0,"rest":false,"exercises":[{"name":"低杆深蹲","sets":1,"reps":"8","intensity_kind":"rpe","intensity_values":["6"],"weight_values":["227.5"],"note":"节奏 310；60%top","family_guess":"squat","flags":["note_fallback"]}]}]}`;
+{"index":0,"start_date":null,"days":[{"weekday":null,"day_index":1,"rest":false,"exercises":[{"name":"低杆深蹲","sets":1,"reps":"8","intensity_kind":"rpe","intensity_values":["6"],"weight_values":["227.5"],"note":"节奏 310；60%top","family_guess":"squat","flags":["note_fallback"]}]}]}`;

@@ -28,6 +28,13 @@ describe('DeepSeek plan import adapter', () => {
     await model.outline(input);
     await model.parseWeek({ index: 0, cells: [], header_cells: [] });
     expect(fetch).toHaveBeenCalledTimes(2);
+    const prompts = fetch.mock.calls.map(([, init]) => {
+      const body = JSON.parse(typeof init?.body === 'string' ? init.body : '');
+      return body.messages[0].content as string;
+    });
+    expect(prompts[0]).toContain('Day1');
+    expect(prompts[0]).toContain('一周');
+    expect(prompts[1]).toContain('简体中文');
     for (const [, init] of fetch.mock.calls) {
       const body = JSON.parse(typeof init?.body === 'string' ? init.body : '');
       expect(body.max_tokens).toBe(8192);
@@ -127,7 +134,7 @@ describe('DeepSeek plan import adapter', () => {
     const result = {
       index: 0,
       start_date: null,
-      days: [{ weekday: 0, rest: true, exercises: [] }],
+      days: [{ weekday: 0, day_index: 1, rest: true, exercises: [] }],
     };
     const fetch = vi
       .fn<typeof globalThis.fetch>()

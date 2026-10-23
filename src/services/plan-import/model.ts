@@ -71,14 +71,23 @@ export const WeekResultSchema = z.object({
     .array(
       z
         .object({
-          weekday: z.number().int().min(0).max(6),
+          weekday: z.number().int().min(0).max(6).nullable(),
+          day_index: z.number().int().positive(),
           rest: z.boolean(),
           exercises: z.array(ExerciseSchema),
         })
         .refine((day) => !day.rest || day.exercises.length === 0),
     )
     .max(7)
-    .refine((days) => new Set(days.map((day) => day.weekday)).size === days.length),
+    .refine(
+      (days) =>
+        days.every((day) => day.weekday === null) ||
+        (days.every((day) => day.weekday !== null) &&
+          new Set(days.map((day) => day.weekday)).size === days.length),
+    )
+    .refine((days) =>
+      days.every((day, index) => day.day_index > (days[index - 1]?.day_index ?? 0)),
+    ),
 });
 export type WeekResult = z.infer<typeof WeekResultSchema>;
 
