@@ -68,8 +68,10 @@
 
 > 号段说明:0039 曾被未合的 PR #59(多设备会话)占号,期间 0038 直跳 0040;#59 于 2026-07-17 合并后 0039 落库,号段现已连续(0029/0030 为历史补号)。0043 现由 open PR #77/#79(账本扩展)占号,0044 先行落库,库内号段暂跳 0043——#77/#79 合并应用后回续。0047 已被 open PR #95、0048 已被 #99 占用,因此下一份空号取 0049。
 
-**本账本最后记录的 staging schema head = 0077（2026-10-22 DMS 核对；0076 被 open PR 占号未应用；0069、0071 尚未应用；0073 本分支无此文件）。** 0063–0067 的应用记录见各日期条目，0065 晚于 0066/0067 应用。缺号与 open PR 的现状须在分配新号前重新核实，编号不代表连续应用。
+**本账本最后记录的 staging schema head = 0078（2026-10-22 DMS 核对；0076 被 open PR 占号未应用；0069、0071 尚未应用；0073 本分支无此文件）。** 0063–0067 的应用记录见各日期条目，0065 晚于 0066/0067 应用。缺号与 open PR 的现状须在分配新号前重新核实，编号不代表连续应用。
 (此行 2026-08-02 修正:此前长期停在 0052,0054/0055 只记在变更历史漏更此行。)
+
+**0078 已应用（2026-10-22）**：spec 053 教练自建动作收录，`db/migrations/0078-exercise-adoption.sql`（随 #323 `0840421` 入库）：`exercises` 加 `canonical_exercise_id UUID NULL REFERENCES exercises(id) ON DELETE RESTRICT`、`adopted_at TIMESTAMPTZ NULL` 与部分索引 `exercises_canonical_exercise_id_idx`，纯新增，存量全为 NULL、无回填，不改任何计划 / 训练记录 / 动作 id 与名字。David 经 DMS SQLConsole 整段执行，随后 `information_schema` 核对两列均在（据繁体中文适配会话转述 David 的核对结果）。**迁移前备份：未记录**（RDS 手动快照是否触发未确认）。执行顺序：先应用 0078，再合并 #323，避免新代码先于字段上线。执行人：David。
 
 **0077 已应用（2026-10-22）**：spec 052 繁体中文，`db/migrations/0077-users-preferred-locale.sql`（随 #321 `e493432` 入库）：`users.preferred_locale TEXT NULL` + CHECK（`zh-Hans`/`zh-Hant`/`en`），无回填，不改存量数据（空值=沿用部署默认语言）。David 经 DMS SQLConsole（`meetpr-rds-v01-staging`，库 `meetpr`）整段执行，4/4 语句成功；随后 `information_schema.columns` 查得 `preferred_locale | text | YES`。**迁移前备份：未记录**（DMS 回滚备份未开启；RDS 手动快照是否触发未确认）。执行人：David。号段：0076 被 open PR（`0076-plan-import-runs`）占号，库内暂跳 0076。回滚策略：换回旧镜像，保留该可空列，不 DROP。部署：待与 0078（另一会话 #323）一起部署 staging，部署条目另记。
 
@@ -82,6 +84,8 @@
 **0070 已应用（2026-09-16）**：真实 RDS PostgreSQL 18.3；迁移前逻辑备份通过，持久恢复点为 RDS 手动全量快照任务 `t-0mqie3hpxlx0zw6o6u`（执行成功）。原始 SQL 事务执行后保留 7 条天级行、回填 2 条父批次，seq 无空值且唯一、序列值 7。backend #276 已合并并部署 `d0b919d`；gate 已核验生效，web #101/#53 已换装；实际证据见 [本批部署记录](../docs/deployment-045-web101-53-2026-09-16.md)。0069 与 F-001 contract 迁移未执行。
 
 ## 变更历史
+
+- **2026-10-23（spec 053 + 017 教练动作收录）** — `sha-de8f31ff06bae2bcb67ade6fb240d0c7c258548c`（=staging HEAD，含 #323 spec 053 收录接口与可见性规则，及 #329 web/ 换装 plan-web main `f81f3c6`：spec 017 后台动作库「教练自建」与收录、教练端被收录动作只改名；同时带上 #327 已上的 spec 016 后台重做与 spec 018 繁体），入口 `assets/index-CEjmpDvS.js`；依赖迁移 0078（见上，已先行应用）。[部署 run 39897032154](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/39897032154)（`migrations_applied=true`）绿。curl 实证：/health 200；连续 3 次 GET / 均回新入口；线上 JS 与本地 `VITE_API_BASE=''` 构建 sha256 一致（`eff5e981f0c800a1…`）；`/admin/custom-exercises` 与 `/exercises` 无 token 回 401（路由在线）；`/auth/login` 校验正常。env 未动。登录态真实数据下的收录 → 教练端 → 撤销走查待做。
 
 - **2026-10-22（spec 014 按天排）** — `sha-6600381`（#322，仅换 web/ 产物：plan-web #125 `0a78687` 计划编排加「按天排」排版，行 = 星期、列 = 周，左上角切换，默认仍按周排），入口 `assets/index-Ca6vKyNa.js`：无迁移；[部署 run 39784751979](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/39784751979)（`migrations_applied=true`，与上次部署 07a8ed3 相比只差 web/），/health 200、首页入口哈希一致、线上 JS 与构建产物 sha256 相同（`fd0094a2…`）。登录态真实数据下的验收待 David 在 staging 上看。
 - **2026-10-19（spec 013）** — `sha-68bc5f3ffed31afec374aefc93b749186d43a5f1`（#316，仅换 web/ 产物：plan-web #121 `4c45e76` 视频反馈并入计划编排、积木视频标记、「显示实际」开关、聊天浮窗、总览待看 / 未读两列，删「反馈工作区」tab），入口 `assets/index-B3P--U5z.js`：无迁移；[ACR build run 39272628222](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/39272628222)、[部署 run 39273173040](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/39273173040)，/health 200、首页入口哈希一致、线上 JS 与构建产物 sha256 相同。
