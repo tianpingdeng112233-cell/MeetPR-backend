@@ -78,8 +78,9 @@
       "name": "低杆深蹲",               // 原表写法，trim
       "sets": 4,                        // 无结构（如「4组 力竭」只有组数）照填；完全读不出 → 0
       "reps": "8" | "8+" | "30s" | "",  // 末组 amrap → 末尾「+」
-      "mode": "kg" | "rpe" | "none",
-      "values": ["112.5","120","120","120"],   // 逐组；规范化字符串；length = sets 或 0
+      "intensity_kind": "rpe" | "rir" | "pct" | null,  // 表里写的强度类型；没写 → null
+      "intensity_values": ["6"],                       // 逐组强度值；length = sets 或 0
+      "weight_values": ["227.5"],                      // 逐组公斤；length = sets 或 0
       "note": "节奏 310；60%top",        // 力竭 / %top / 节奏 / 降组 / 暂停 / 读不懂的串（Q8）
       "family_guess": "squat" | "bench" | "deadlift" | null,   // 给自动新建自定义动作用
       "flags": ["note_fallback" | "inferred"]
@@ -91,8 +92,10 @@
 ### 2.4 存疑标记（flags，Q12）
 
 - `note_fallback`：有单元格内容没能结构化、被放进了 `note`。
-- `inferred`：`values` 里出现了原单元格文本里**找不到**的数字（例如一个重量铺满 4 组、爬坡「80→90 +5」展开）。**服务端确定性校验**：把这一周 cells 文本里的所有数字收集起来，`values`/`sets`/`reps` 中任何数字不在其中 → 必加 `inferred`；模型自报的也保留。这一条是防模型编数的闸门，不靠模型自觉。
+- `inferred`：`intensity_values` / `weight_values` 里出现了原单元格文本里**找不到**的数字（例如一个重量铺满 4 组、爬坡「80→90 +5」展开）。**服务端确定性校验**：把这一周 cells 文本里的所有数字收集起来，`intensity_values`/`weight_values`/`sets`/`reps` 中任何数字不在其中 → 必加 `inferred`；模型自报的也保留。这一条是防模型编数的闸门，不靠模型自觉。
 - 「动作名没对上」「某周没日期」由前端判断，不在这里。
+
+**强度与重量分两条线**（2026-10-23 本地实测补）：教练表常同时写 RPE 和预期重量（如 RPE 6 + 227.5 kg），旧的单一 `mode/values` 让模型只能二选一，实测整行放弃、数字全进备注。改为 `intensity_kind` + `intensity_values` 与 `weight_values` 两条线，两样都有就都填。上限「≤6」填 6、原文留 note；区间「8-9」「rpe8-9」取下限、原文留 note；RIR 列 → `rir`；百分比 → `pct`（「75%」填 75）。
 
 ## 3. 模型调用
 
@@ -100,7 +103,7 @@
 - 封装成接口 `PlanImportModel { outline(input): Promise<Outline>; parseWeek(input): Promise<WeekResult> }`，HTTP 实现 `DeepSeekPlanImportModel`；路由经依赖注入拿到它，测试换假实现。
 - **系统提示要点**（写进 `src/services/plan-import/prompts.ts`，中文）：
   - 你在读力量训练教练手写的计划表。表格版式各不相同：可能一周占一个横向块（每天占若干列），也可能从上往下一行一个动作；日期可能是 Excel 序列已转 ISO、「W1 周一」、「第1周」或没有。
-  - 识别：动作名；组×次（`4*8`、`4×8`、`4组×8`、`3x5`、`4组`）；强度：kg 重量（单值、逐组 `110/115/120/120`、`57.5/65/57.5*2` = 末值重复 2 组）、RPE（`rpe8`、`rpe` 标记 + 逐组串 `6788` = 6/7/8/8、`rpe8-9`）；`amrap`。
+  - 识别：动作名；组×次（`4*8`、`4×8`、`4组×8`、`3x5`、`4组`）；重量 → `weight_values`（单值、逐组 `110/115/120/120`、`57.5/65/57.5*2` = 末值重复 2 组；「预期重量」「重量」列）；强度 → `intensity_kind` + `intensity_values`（RPE：`rpe8`、`rpe` 标记 + 逐组串 `6788` = 6/7/8/8；RIR 列；百分比）；同一行两样都有就都填；`amrap`。
   - 「休息」= 休息日。同一格里「热身激活⏎…」这种非正式训练内容进 note 或忽略，不当动作。名字为空、只有组次的行 = 上一个动作的追加组（如顶组 + 退让组），合并成同一个动作的不同组值；合不了就作为同名第二个动作。
   - 力竭、`60%top`、节奏 `310`/`500`、`长暂停2s`、降组、`周二减7.5` 等无法变成逐组数值的写法 → 原样进 note，加 `note_fallback`。
   - **不得编造数字**；拿不准就留空并进 note。
