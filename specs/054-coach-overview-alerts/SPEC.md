@@ -1,6 +1,6 @@
 # 054 — 教练总览「待处理」提醒汇总接口
 
-- **状态**: Draft（2026-10-22 /grill 共识「确认」）
+- **状态**: Done（2026-10-24 #328 合并，0079 已应用，部署 staging `447d1ea`）
 - **来源**: David 2026-10-22「网页端把学员申请做进总览 tab，删掉学员申请 tab」+「总览该有的提醒：计划快结束 / RPE 超 1 或未完成 / 留言」。逐题记录 `~/Projects/scratch/overview-inbox-grill-20261022.md`。
 - **产品正典**: `meetpr-plan-web` 仓 `specs/019-overview-inbox/SPEC.md`。本 spec 只定 wire 契约与判定口径。
 - **级别 / 节奏**: T2 / P1（新路由 + 1 个迁移）。分支 `feat/054-overview-alerts` → `staging`。合并后必须部署 staging（不许只合不部署）。
