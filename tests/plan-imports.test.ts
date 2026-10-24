@@ -46,6 +46,7 @@ const weekResult = (index: number): WeekResult => ({
       exercises: [
         {
           source_cells: [],
+          unparsed: [],
           name: '深蹲',
           sets: 4,
           reps: '8',
@@ -81,6 +82,108 @@ afterEach(async () => {
 });
 
 describe('coach plan imports', () => {
+  it.each([
+    {
+      label: 'empty reps with unparsed reps',
+      unparsed: [{ field: 'reps', text: '力竭' }],
+      expected: [{ field: 'reps', text: '力竭' }],
+    },
+    {
+      label: 'unknown field dropped alongside valid reps',
+      unparsed: [
+        { field: 'sets', text: 'PRIVATE_UNKNOWN_CELL' },
+        { field: 'reps', text: '力竭' },
+      ],
+      expected: [{ field: 'reps', text: '力竭' }],
+    },
+    { label: 'missing unparsed defaults to empty', unparsed: undefined, expected: [] },
+    {
+      label: '40-character text accepted',
+      unparsed: [{ field: 'weight', text: '文'.repeat(40) }],
+      expected: [{ field: 'weight', text: '文'.repeat(40) }],
+    },
+    { label: 'empty text rejected', unparsed: [{ field: 'reps', text: '' }], expected: null },
+    { label: 'blank text rejected', unparsed: [{ field: 'reps', text: '  ' }], expected: null },
+    {
+      label: '41-character text rejected',
+      unparsed: [{ field: 'reps', text: '文'.repeat(41) }],
+      expected: null,
+    },
+  ])('validates unparsed: $label', async ({ unparsed, expected }) => {
+    const parsed = weekResult(0);
+    const exercise = parsed.days[0]?.exercises[0];
+    if (!exercise) throw new Error('Missing week fixture');
+    Object.assign(exercise, { reps: '', unparsed, note: '力竭' });
+    const ctx = await enabledContext({
+      outline: vi.fn().mockResolvedValue(outline),
+      parseWeek: vi.fn().mockResolvedValue(parsed),
+    });
+    const created = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send(input);
+    const response = await request(ctx.app)
+      .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+      .set(auth(ctx.coachToken))
+      .send({ header_cells: [], weeks: [{ index: 0, cells: [[1, 1, '深蹲 4组 力竭 112.5']] }] });
+    expect(response.status).toBe(200);
+    const week = response.body.weeks[0];
+    if (expected === null) {
+      expect(week.days[0].exercises).toEqual([]);
+      expect(week.unreadable).toEqual([
+        { day_index: 1, weekday: 0, source_cells: [], reason: 'OTHER', detail: null },
+      ]);
+    } else {
+      expect(week.days[0].exercises).toEqual([{ ...exercise, unparsed: expected }]);
+      expect(week.unreadable).toEqual([]);
+    }
+    expect(response.text).not.toContain('PRIVATE_UNKNOWN_CELL');
+  });
+  it('returns trimmed unparsed text per field without logging it', async () => {
+    const parsed = weekResult(0);
+    const exercise = parsed.days[0]?.exercises[0];
+    if (!exercise) throw new Error('Missing week fixture');
+    Object.assign(exercise, {
+      unparsed: [
+        { field: 'reps', text: ' 力竭 ' },
+        { field: 'intensity', text: '60%top' },
+        { field: 'weight', text: '周二减7.5' },
+      ],
+      note: '力竭；60%top；周二减7.5',
+      flags: ['note_fallback'],
+    });
+    const logs: string[] = [];
+    const logger = pino({ level: 'info' }, { write: (line) => logs.push(line) });
+    const ctx = await enabledContext(
+      {
+        outline: vi.fn().mockResolvedValue(outline),
+        parseWeek: vi.fn().mockResolvedValue(parsed),
+      },
+      logger,
+    );
+    const created = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send(input);
+    const response = await request(ctx.app)
+      .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+      .set(auth(ctx.coachToken))
+      .send({
+        header_cells: [],
+        weeks: [{ index: 0, cells: [[1, 1, '深蹲 4×8 112.5 力竭 60%top 周二减7.5']] }],
+      });
+    expect(response.status).toBe(200);
+    expect(response.body.weeks[0].days[0].exercises[0]).toMatchObject({
+      unparsed: [
+        { field: 'reps', text: '力竭' },
+        { field: 'intensity', text: '60%top' },
+        { field: 'weight', text: '周二减7.5' },
+      ],
+      note: '力竭；60%top；周二减7.5',
+      flags: ['note_fallback'],
+    });
+    expect(logs.join('')).not.toMatch(/力竭|60%top|周二减7.5/);
+  });
   it.each([
     {
       label: 'single weight for three sets',
@@ -603,6 +706,7 @@ describe('coach plan imports', () => {
       const result = weekResult(0);
       const exercise = {
         source_cells: [],
+        unparsed: [],
         name: '深蹲',
         sets: 1,
         reps: '8',
@@ -677,6 +781,7 @@ describe('coach plan imports', () => {
     },
   ])('isolates malformed $field: $values as $reason', async ({ field, values, reason, detail }) => {
     const exercise = {
+      unparsed: [],
       name: '深蹲',
       sets: 1,
       reps: '8',

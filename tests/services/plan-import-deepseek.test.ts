@@ -23,6 +23,55 @@ afterEach(() => {
 });
 
 describe('DeepSeek plan import adapter', () => {
+  it.each(['valid', 'invalid-json', 'invalid-schema', 'http-error'])(
+    'keeps unparsed cell text out of week debug dumps for %s responses',
+    async (kind) => {
+      const directory = await mkdtemp(join(tmpdir(), 'plan-import-unparsed-test-'));
+      vi.stubEnv('NODE_ENV', 'development');
+      vi.stubEnv('PLAN_IMPORT_DEBUG_DIR', directory);
+      const text = 'PRIVATE_UNPARSED_CELL';
+      const exercise = { unparsed: [{ field: 'reps', text }], note: text };
+      const result = {
+        index: 0,
+        start_date: null,
+        days: [{ weekday: 0, day_index: 1, rest: false, exercises: [exercise] }],
+      };
+      const content =
+        kind === 'invalid-json'
+          ? `${text}{`
+          : JSON.stringify(kind === 'invalid-schema' ? { ...result, index: text } : result);
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockImplementation(() =>
+          Promise.resolve(
+            Response.json(
+              { choices: [{ message: { content } }] },
+              { status: kind === 'http-error' ? 503 : 200 },
+            ),
+          ),
+        );
+      try {
+        const model = createDeepSeekPlanImportModel({ apiKey: 'test-placeholder', fetch });
+        const pending = model.parseWeek({ index: 0, cells: [], header_cells: [] });
+        if (kind === 'valid') await expect(pending).resolves.toEqual(result);
+        else await expect(pending).rejects.toMatchObject({ message: 'PARSE_FAILED' });
+        const files = await readdir(directory);
+        expect(files).toHaveLength(kind === 'valid' ? 1 : 2);
+        for (const file of files) {
+          const dump = await readFile(join(directory, file), 'utf8');
+          expect(dump).not.toContain(text);
+          expect(JSON.parse(dump)).toEqual({
+            stage: 'week',
+            raw_response: null,
+            validation_error:
+              kind === 'valid' ? null : kind === 'http-error' ? 'MODEL_BUSY' : 'BAD_OUTPUT',
+          });
+        }
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
   it('normalizes a day-only response with all empty hints together', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(() =>
       Promise.resolve(
@@ -150,7 +199,7 @@ describe('DeepSeek plan import adapter', () => {
           expect(dumps).toEqual(
             expect.arrayContaining([
               { stage: 'outline', raw_response: responses[0], validation_error: null },
-              { stage: 'week', raw_response: responses[1], validation_error: null },
+              { stage: 'week', raw_response: null, validation_error: null },
             ]),
           );
           expect(JSON.stringify(dumps)).not.toContain('test-placeholder');
@@ -476,6 +525,7 @@ describe('DeepSeek plan import adapter', () => {
     expect(body.messages[0].content).toContain('intensity_values');
     expect(body.messages[0].content).toContain('weight_values');
     expect(body.messages[0].content).toContain('source_cells');
+    expect(body.messages[0].content).toContain('unparsed');
     expect(body.messages[0].content).not.toMatch(/若有铺满各组[^。]*必须加 inferred/);
     expect(body.messages[0].content).toContain('铺满各组不算推断，不得加 inferred');
     expect(body.messages[0].content).toContain(

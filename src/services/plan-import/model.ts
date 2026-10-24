@@ -66,9 +66,18 @@ export type Outline = z.infer<typeof OutlineSchema>;
 
 export const SourceCellSchema = z.tuple([z.number().int().positive(), z.number().int().positive()]);
 
+const UnparsedFieldSchema = z.object({ field: z.enum(['reps', 'intensity', 'weight']) });
+
 export const ExerciseSchema = z
   .object({
     source_cells: z.array(SourceCellSchema).default([]),
+    unparsed: z.preprocess(
+      (value) =>
+        Array.isArray(value)
+          ? value.filter((item) => UnparsedFieldSchema.safeParse(item).success)
+          : value,
+      z.array(UnparsedFieldSchema.extend({ text: z.string().trim().min(1).max(40) })).default([]),
+    ),
     name: z.string().trim().min(1),
     sets: z.number().int().nonnegative(),
     reps: z.string().regex(/^(?:\d+(?:\.\d+)?(?:\+|s)?)?$/),

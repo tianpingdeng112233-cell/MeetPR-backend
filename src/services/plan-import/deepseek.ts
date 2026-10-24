@@ -46,7 +46,12 @@ async function dumpResponse(
     const filename = `${new Date().toISOString().replace(/:/g, '-')}-${stage}-${randomUUID()}.json`;
     await writeFile(
       join(directory, filename),
-      JSON.stringify({ stage, raw_response: rawResponse, validation_error: validationError }),
+      JSON.stringify({
+        stage,
+        // Week responses and parser errors can contain unparsed text, including in note.
+        raw_response: stage === 'week' ? null : rawResponse,
+        validation_error: validationError,
+      }),
       { encoding: 'utf8', mode: 0o600, flag: 'wx' },
     );
   } catch {
@@ -115,7 +120,14 @@ export function createDeepSeekPlanImportModel(options: {
         if (content === undefined || content === null) throw new PlanImportModelError('BAD_OUTPUT');
         return validate(JSON.parse(content) as unknown);
       } catch (error) {
-        validationError = error instanceof Error ? error.message : 'BAD_OUTPUT';
+        validationError =
+          stage === 'week'
+            ? error instanceof PlanImportModelError
+              ? error.reason
+              : 'BAD_OUTPUT'
+            : error instanceof Error
+              ? error.message
+              : 'BAD_OUTPUT';
         throw error;
       } finally {
         clearTimeout(timer);

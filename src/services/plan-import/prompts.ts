@@ -36,7 +36,9 @@ intensity_values 与 weight_values 都是逐组规范化数字字符串，不带
 名字为空、只有组次的行是上一个动作的追加组（顶组+退让组），合并成同一动作的不同组值；
 无法在一个 sets/reps 结构表示时作为同名第二个动作，不能丢掉追加组。
 力竭、60%top、节奏 310/500、长暂停2s、降组、周二减7.5 及读不懂的串等无法变成逐组数值的写法，原样进 note，加 note_fallback。
+每个动作带 unparsed 数组，无未解析内容时为 []。次数、强度、重量栏的单元格（或合并写法中对应次数、强度、重量的部分）有无法变成数字的文本时，必须同时在 unparsed 中报告原本所属栏：field 只能是 reps、intensity、weight；text 取该栏或对应部分的原文，仅 trim，不改写，非空且最多 40 字符。仍按上面的规则同时保留在 note 并加 note_fallback。
+例如次数栏「力竭」→ {"field":"reps","text":"力竭"}，reps 留空串；强度栏「60%top」→ {"field":"intensity","text":"60%top"}；重量栏「周二减7.5」→ {"field":"weight","text":"周二减7.5"}。只有备注中的文本不要猜成某个数字栏。
 name 一律输出简体中文并 trim，繁体动作名按常用写法转换：槓鈴深蹲 → 杠铃深蹲、相撲硬舉 → 相扑硬拉。仅当原文包含额外信息时保留在 note，不因繁简转换重复动作名；note 保留原文。family_guess 只能是 squat、bench、deadlift 或 null，不要强行匹配。
 day_index 是表中训练日顺序，从 1 起，按此顺序返回 days，必须唯一且递增。weekday 为 0=周一至 6=周日，仅当表里写了星期或日期时填写；没写时必须为 null，不能把 Day1/D1/第1天推断为周一。同一周要么所有 weekday 非 null 且不重复，要么全部为 null。flags 只能含 note_fallback、inferred，可为空。
 返回如下 JSON 结构，不要添加其他字段：
-{"index":0,"start_date":null,"days":[{"weekday":null,"day_index":1,"rest":false,"exercises":[{"source_cells":[[3,1],[3,2]],"name":"低杆深蹲","sets":1,"reps":"8","intensity_kind":"rpe","intensity_values":["6"],"weight_values":["227.5"],"note":"节奏 310；60%top","family_guess":"squat","flags":["note_fallback"]}]}]}`;
+{"index":0,"start_date":null,"days":[{"weekday":null,"day_index":1,"rest":false,"exercises":[{"source_cells":[[3,1],[3,2]],"name":"低杆深蹲","sets":1,"reps":"8","intensity_kind":"rpe","intensity_values":["6"],"weight_values":["227.5"],"unparsed":[{"field":"intensity","text":"60%top"}],"note":"节奏 310；60%top","family_guess":"squat","flags":["note_fallback"]}]}]}`;
