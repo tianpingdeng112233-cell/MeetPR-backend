@@ -112,6 +112,8 @@
 - 整周失败（`PARSE_FAILED`）只剩：上游忙 / 超时、输出被截断、整体不是合法 JSON 或周 / 天骨架不合格、`REGION_SUSPECT`。
 - `inferred` 闸门照旧按整周格子取证。
 
+**读不成数字的写法要标明原本在哪一栏**（2026-10-24 David：同类问题归组、改一次全部生效，1A）：每个动作新增 `unparsed: [{ field: 'reps'|'intensity'|'weight', text }]`——原表在该栏写的、没能变成数字的原文（如 次数栏「力竭」、强度栏「60%top」、重量栏「周二减7.5」）。`text` 取原表原文（trim，不改写），仍按原规则同时进 note。`reps` 为空且 `unparsed` 里有 reps 项时，该动作不进 `unreadable`。网页按 `field + text` 跨周归组，教练一次处理。
+
 ## 3. 模型调用
 
 - OpenAI 兼容 `POST {BASE_URL}/chat/completions`，`response_format: { type: 'json_object' }`，`temperature: 0`，单次超时 60s。输出用 zod 校验，不合格重试 1 次。
