@@ -37,6 +37,7 @@ const input = {
 const weekResult = (index: number): WeekResult => ({
   index,
   start_date: null,
+  unreadable: [],
   days: [
     {
       weekday: 0,
@@ -44,6 +45,7 @@ const weekResult = (index: number): WeekResult => ({
       rest: false,
       exercises: [
         {
+          source_cells: [],
           name: '深蹲',
           sets: 4,
           reps: '8',
@@ -79,6 +81,209 @@ afterEach(async () => {
 });
 
 describe('coach plan imports', () => {
+  it.each([false, true])('drops out-of-region source cells for unreadable=%s', async (broken) => {
+    const parsed = weekResult(0);
+    const day = parsed.days[0];
+    const original = day?.exercises[0];
+    if (!day || !original) throw new Error('Missing week fixture');
+    const exercise = {
+      ...original,
+      source_cells: [
+        [2, 2],
+        [4, 4],
+        [3, 3],
+        [1, 2],
+        [5, 2],
+        [2, 1],
+        [2, 5],
+        [0, 2],
+        [2.5, 2],
+        ['2', 2],
+        [2, 2, 'PRIVATE_CELL_TEXT'],
+      ],
+      ...(broken ? { intensity_values: ['6'] } : {}),
+    };
+    const model = {
+      outline: vi.fn().mockResolvedValue(outline),
+      parseWeek: vi
+        .fn()
+        .mockResolvedValue({ ...parsed, days: [{ ...day, exercises: [exercise] }] }),
+    };
+    const ctx = await enabledContext(model);
+    const created = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send(input);
+    const response = await request(ctx.app)
+      .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+      .set(auth(ctx.coachToken))
+      .send({
+        header_cells: [
+          [1, 2, 'RPE'],
+          [9, 9, 'header'],
+        ],
+        weeks: [
+          {
+            index: 0,
+            cells: [
+              [2, 2, '深蹲 4×8 112.5'],
+              [4, 4, '6'],
+            ],
+          },
+        ],
+      });
+    const source_cells = [
+      [2, 2],
+      [4, 4],
+      [3, 3],
+    ];
+    expect(response.body.weeks).toEqual([
+      {
+        ...parsed,
+        days: [{ ...day, exercises: broken ? [] : [{ ...exercise, source_cells }] }],
+        unreadable: broken
+          ? [
+              {
+                day_index: 1,
+                weekday: 0,
+                source_cells,
+                reason: 'SETS_VALUES_MISMATCH',
+                detail: { track: 'intensity', sets: 4, got: 1 },
+              },
+            ]
+          : [],
+      },
+    ]);
+    expect(model.parseWeek).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    { fields: { name: undefined }, reason: 'MISSING_NAME' },
+    { fields: { name: '   ' }, reason: 'MISSING_NAME' },
+    { fields: { sets: undefined }, reason: 'MISSING_SETS' },
+    { fields: { family_guess: 'PRIVATE_CELL_TEXT' }, reason: 'OTHER' },
+  ])('locates $reason without leaking the failed exercise', async ({ fields, reason }) => {
+    const parsed = weekResult(0);
+    const day = parsed.days[0];
+    if (!day) throw new Error('Missing week fixture');
+    const model = {
+      outline: vi.fn().mockResolvedValue(outline),
+      parseWeek: vi.fn().mockResolvedValue({
+        ...parsed,
+        days: [
+          {
+            ...day,
+            weekday: null,
+            exercises: [
+              {
+                ...day.exercises[0],
+                ...fields,
+                note: 'PRIVATE_CELL_TEXT',
+                source_cells: [[1, 1]],
+              },
+            ],
+          },
+        ],
+      }),
+    };
+    const ctx = await enabledContext(model);
+    const created = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send(input);
+    const response = await request(ctx.app)
+      .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+      .set(auth(ctx.coachToken))
+      .send({ header_cells: [], weeks: [{ index: 0, cells: input.sheets[0]?.cells }] });
+    expect(response.body.weeks).toEqual([
+      {
+        ...parsed,
+        days: [{ ...day, weekday: null, exercises: [] }],
+        unreadable: [{ day_index: 1, weekday: null, source_cells: [[1, 1]], reason, detail: null }],
+      },
+    ]);
+    expect(response.text).not.toContain('PRIVATE_CELL_TEXT');
+    expect(model.parseWeek).toHaveBeenCalledTimes(1);
+  });
+  it.each(['fake model', 'HTTP adapter'])(
+    'keeps readable exercises and locates a sets/intensity mismatch without retrying via %s',
+    async (boundary) => {
+      const parsed = weekResult(0);
+      const day = parsed.days[0];
+      const original = day?.exercises[0];
+      if (!day || !original) throw new Error('Missing week fixture');
+      const readable = { ...original, source_cells: [[2, 1]] };
+      const broken = {
+        ...readable,
+        intensity_kind: 'rpe',
+        intensity_values: ['6', '7', '8'],
+        source_cells: [
+          [3, 1],
+          [3, 4],
+        ],
+      };
+      const output = {
+        ...parsed,
+        days: [{ ...day, exercises: [readable, broken, readable] }],
+      };
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockImplementation(() =>
+          Promise.resolve(
+            Response.json({ choices: [{ message: { content: JSON.stringify(output) } }] }),
+          ),
+        );
+      const adapter = createDeepSeekPlanImportModel({ apiKey: 'test-placeholder', fetch });
+      const model = {
+        outline: vi.fn().mockResolvedValue(outline),
+        parseWeek:
+          boundary === 'HTTP adapter'
+            ? vi.fn(adapter.parseWeek)
+            : vi.fn().mockResolvedValue(output),
+      };
+      const ctx = await enabledContext(model);
+      const created = await request(ctx.app)
+        .post('/coach/plan-imports')
+        .set(auth(ctx.coachToken))
+        .send(input);
+      const response = await request(ctx.app)
+        .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+        .set(auth(ctx.coachToken))
+        .send({
+          header_cells: [],
+          weeks: [
+            {
+              index: 0,
+              cells: [
+                [2, 1, '深蹲 4×8 112.5'],
+                [3, 1, '卧推 4×8'],
+                [3, 4, '6/7/8'],
+              ],
+            },
+          ],
+        });
+      expect(response.status).toBe(200);
+      expect(response.body.weeks).toEqual([
+        {
+          ...parsed,
+          days: [{ ...day, exercises: [readable, readable] }],
+          unreadable: [
+            {
+              day_index: 1,
+              weekday: 0,
+              source_cells: [
+                [3, 1],
+                [3, 4],
+              ],
+              reason: 'SETS_VALUES_MISMATCH',
+              detail: { track: 'intensity', sets: 4, got: 3 },
+            },
+          ],
+        },
+      ]);
+      expect(model.parseWeek).toHaveBeenCalledTimes(1);
+      expect(fetch).toHaveBeenCalledTimes(boundary === 'HTTP adapter' ? 1 : 0);
+    },
+  );
   it('drops date-only weeks and renumbers the remaining training weeks', async () => {
     const weeks = [0, 1, 2, 3].map((index) => ({
       index,
@@ -220,6 +425,7 @@ describe('coach plan imports', () => {
     const parsed = {
       index: 0,
       start_date: null,
+      unreadable: [],
       days: [1, 2, 3, 4].map((day_index) => ({
         ...day,
         weekday: null,
@@ -258,6 +464,7 @@ describe('coach plan imports', () => {
     const parsed = {
       index: 0,
       start_date: null,
+      unreadable: [],
       days: [firstDay, secondDay],
     };
     const parseWeek = vi.fn().mockResolvedValue(parsed);
@@ -302,6 +509,7 @@ describe('coach plan imports', () => {
     async ({ kind, value, cells, flags }) => {
       const result = weekResult(0);
       const exercise = {
+        source_cells: [],
         name: '深蹲',
         sets: 1,
         reps: '8',
@@ -338,11 +546,43 @@ describe('coach plan imports', () => {
     },
   );
   it.each([
-    { field: 'intensity_values', values: ['6', '6'] },
-    { field: 'weight_values', values: ['227.5', '227.5'] },
-    { field: 'intensity_values', values: ['<=6'] },
-    { field: 'intensity_values', values: ['8-9'] },
-  ])('rejects malformed $field: $values with week BAD_OUTPUT', async ({ field, values }) => {
+    {
+      field: 'intensity_values',
+      values: ['6', '6'],
+      reason: 'SETS_VALUES_MISMATCH',
+      detail: { track: 'intensity', sets: 1, got: 2 },
+    },
+    {
+      field: 'weight_values',
+      values: ['227.5', '227.5'],
+      reason: 'SETS_VALUES_MISMATCH',
+      detail: { track: 'weight', sets: 1, got: 2 },
+    },
+    {
+      field: 'intensity_values',
+      values: ['<=6'],
+      reason: 'INVALID_NUMBER',
+      detail: { track: 'intensity', value: null },
+    },
+    {
+      field: 'intensity_values',
+      values: ['8-9'],
+      reason: 'INVALID_NUMBER',
+      detail: { track: 'intensity', value: null },
+    },
+    {
+      field: 'weight_values',
+      values: ['-5'],
+      reason: 'INVALID_NUMBER',
+      detail: { track: 'weight', value: '-5' },
+    },
+    {
+      field: 'weight_values',
+      values: ['PRIVATE_CELL_TEXT'],
+      reason: 'INVALID_NUMBER',
+      detail: { track: 'weight', value: null },
+    },
+  ])('isolates malformed $field: $values as $reason', async ({ field, values, reason, detail }) => {
     const exercise = {
       name: '深蹲',
       sets: 1,
@@ -353,11 +593,13 @@ describe('coach plan imports', () => {
       note: '',
       family_guess: 'squat',
       flags: [],
+      source_cells: [[1, 1]],
     };
     const parsed = {
       index: 0,
       start_date: null,
       days: [{ weekday: 0, day_index: 1, rest: false, exercises: [exercise] }],
+      unreadable: [],
     };
     const parseWeek = vi.fn().mockResolvedValue(parsed);
     const ctx = await enabledContext({ outline: vi.fn().mockResolvedValue(outline), parseWeek });
@@ -383,9 +625,14 @@ describe('coach plan imports', () => {
     const response = await sendWeek();
     expect(response.status).toBe(200);
     expect(response.body.weeks).toEqual([
-      { index: 0, error: 'PARSE_FAILED', reason: 'BAD_OUTPUT' },
+      {
+        ...parsed,
+        days: [{ ...parsed.days[0], exercises: [] }],
+        unreadable: [{ day_index: 1, weekday: 0, source_cells: [[1, 1]], reason, detail }],
+      },
     ]);
-    expect(parseWeek).toHaveBeenCalledTimes(3);
+    expect(response.text).not.toContain('PRIVATE_CELL_TEXT');
+    expect(parseWeek).toHaveBeenCalledTimes(2);
   });
   it('ignores empty sheets and sends only the content sheet to the model', async () => {
     const model = { outline: vi.fn().mockResolvedValue(outline), parseWeek: vi.fn() };

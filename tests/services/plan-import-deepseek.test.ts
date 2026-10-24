@@ -475,6 +475,7 @@ describe('DeepSeek plan import adapter', () => {
     expect(body.messages[0].content).toContain('intensity_kind');
     expect(body.messages[0].content).toContain('intensity_values');
     expect(body.messages[0].content).toContain('weight_values');
+    expect(body.messages[0].content).toContain('source_cells');
     expect(body.messages[0].content).not.toMatch(/若有铺满各组[^。]*必须加 inferred/);
     expect(body.messages[0].content).toContain('铺满各组不算推断，不得加 inferred');
     expect(body.messages[0].content).toContain(

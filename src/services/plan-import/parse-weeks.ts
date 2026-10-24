@@ -1,5 +1,5 @@
 import {
-  WeekResultSchema,
+  WeekSkeletonSchema,
   type PlanImportModel,
   type UsageObserver,
   type WeekInput,
@@ -7,6 +7,7 @@ import {
 } from './model';
 import { PlanImportModelError, runModelCall, type ModelFailureReason } from './retry';
 import { flagInferred } from './inferred';
+import { validateExercises } from './validate-exercises';
 
 export async function parseWeeks(
   model: PlanImportModel,
@@ -26,9 +27,9 @@ export async function parseWeeks(
         if (!input) return;
         try {
           results[position] = await runModelCall(async () => {
-            const result = WeekResultSchema.parse(await model.parseWeek(input, onUsage));
+            const result = WeekSkeletonSchema.parse(await model.parseWeek(input, onUsage));
             if (result.index !== input.index) throw new Error('INVALID_WEEK_INDEX');
-            return flagInferred(result, input.cells);
+            return flagInferred(validateExercises(result, input.cells), input.cells);
           });
         } catch (error) {
           results[position] = {

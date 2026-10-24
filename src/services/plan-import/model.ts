@@ -64,8 +64,11 @@ export interface TokenUsage {
 export type UsageObserver = (usage: TokenUsage) => void;
 export type Outline = z.infer<typeof OutlineSchema>;
 
-const ExerciseSchema = z
+export const SourceCellSchema = z.tuple([z.number().int().positive(), z.number().int().positive()]);
+
+export const ExerciseSchema = z
   .object({
+    source_cells: z.array(SourceCellSchema).default([]),
     name: z.string().trim().min(1),
     sets: z.number().int().nonnegative(),
     reps: z.string().regex(/^(?:\d+(?:\.\d+)?(?:\+|s)?)?$/),
@@ -76,13 +79,20 @@ const ExerciseSchema = z
     family_guess: z.enum(['squat', 'bench', 'deadlift']).nullable(),
     flags: z.array(z.enum(['note_fallback', 'inferred'])),
   })
-  .refine((exercise) =>
-    [exercise.intensity_values, exercise.weight_values].every(
-      (values) => values.length === 0 || values.length === exercise.sets,
-    ),
-  );
+  .superRefine((exercise, ctx) => {
+    for (const field of ['intensity_values', 'weight_values'] as const) {
+      const values = exercise[field];
+      if (values.length !== 0 && values.length !== exercise.sets)
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: 'SETS_VALUES_MISMATCH',
+        });
+    }
+  });
 
-export const WeekResultSchema = z.object({
+// The model boundary validates structure only; exercise failures are handled separately.
+export const WeekSkeletonSchema = z.object({
   index: z.number().int().nonnegative(),
   start_date: DateSchema,
   days: z
@@ -92,7 +102,7 @@ export const WeekResultSchema = z.object({
           weekday: z.number().int().min(0).max(6).nullable(),
           day_index: z.number().int().positive(),
           rest: z.boolean(),
-          exercises: z.array(ExerciseSchema),
+          exercises: z.array(z.unknown()),
         })
         .refine((day) => !day.rest || day.exercises.length === 0),
     )
@@ -107,9 +117,29 @@ export const WeekResultSchema = z.object({
       days.every((day, index) => day.day_index > (days[index - 1]?.day_index ?? 0)),
     ),
 });
-export type WeekResult = z.infer<typeof WeekResultSchema>;
+export type WeekSkeleton = z.infer<typeof WeekSkeletonSchema>;
+export type Exercise = z.infer<typeof ExerciseSchema>;
+export type UnreadableExercise = {
+  day_index: number;
+  weekday: number | null;
+  source_cells: [number, number][];
+} & (
+  | {
+      reason: 'SETS_VALUES_MISMATCH';
+      detail: { track: 'intensity' | 'weight'; sets: number; got: number };
+    }
+  | {
+      reason: 'INVALID_NUMBER';
+      detail: { track: 'intensity' | 'weight' | 'reps'; value: number | string | null };
+    }
+  | { reason: 'MISSING_NAME' | 'MISSING_SETS' | 'OTHER'; detail: null }
+);
+export type WeekResult = Omit<WeekSkeleton, 'days'> & {
+  days: (Omit<WeekSkeleton['days'][number], 'exercises'> & { exercises: Exercise[] })[];
+  unreadable: UnreadableExercise[];
+};
 
 export interface PlanImportModel {
   outline: (input: OutlineInput, onUsage?: UsageObserver) => Promise<Outline>;
-  parseWeek: (input: WeekInput, onUsage?: UsageObserver) => Promise<WeekResult>;
+  parseWeek: (input: WeekInput, onUsage?: UsageObserver) => Promise<WeekSkeleton>;
 }

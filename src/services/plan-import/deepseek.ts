@@ -3,7 +3,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 
-import { OutlineSchema, WeekResultSchema, type PlanImportModel, type UsageObserver } from './model';
+import {
+  OutlineSchema,
+  WeekSkeletonSchema,
+  type PlanImportModel,
+  type UsageObserver,
+} from './model';
 import { OUTLINE_PROMPT, WEEK_PROMPT } from './prompts';
 import { PlanImportModelError, runModelCall } from './retry';
 
@@ -141,7 +146,7 @@ export function createDeepSeekPlanImportModel(options: {
         (value) => {
           if (z.object({ region_suspect: z.literal(true) }).safeParse(value).success)
             throw new PlanImportModelError('REGION_SUSPECT');
-          const result = WeekResultSchema.parse(value);
+          const result = WeekSkeletonSchema.parse(value);
           if (result.index !== input.index) throw new Error('MODEL_UNKNOWN_WEEK');
           return result;
         },

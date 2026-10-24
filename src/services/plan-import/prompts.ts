@@ -17,6 +17,7 @@ region 的 r1/c1 是左上角，r2/c2 是右下角，范围包含边界。周 in
 
 export const WEEK_PROMPT = `${CONTEXT}
 本阶段只解析输入这一周，index 原样返回。header_cells 仅解释列的含义，不能当作这一周的处方。
+每个动作必须带 source_cells: [[row, col], ...]，标出该动作取自哪些单元格，坐标从 1 开始；只能引用这一周 cells 范围内的格子，不能引用 header_cells 或其他周，不要在 source_cells 中返回单元格文本。
 只有 Day1–DayN、D1 或第1天而没有周结构的完整训练日块也算完整一周，不能仅因没有周标签、日期或星期而返回 region_suspect。
 如果这块区域不像完整的一周（例如切断了训练日或只有说明表），只返回 {"region_suspect":true}，不要强行编出训练周。
 识别动作名、组×次：4*8、4×8、4组×8、3x5、4组。无结构（如「4组 力竭」）照填已知组数；完全读不出 sets=0。
@@ -38,4 +39,4 @@ intensity_values 与 weight_values 都是逐组规范化数字字符串，不带
 name 一律输出简体中文并 trim，繁体动作名按常用写法转换：槓鈴深蹲 → 杠铃深蹲、相撲硬舉 → 相扑硬拉。仅当原文包含额外信息时保留在 note，不因繁简转换重复动作名；note 保留原文。family_guess 只能是 squat、bench、deadlift 或 null，不要强行匹配。
 day_index 是表中训练日顺序，从 1 起，按此顺序返回 days，必须唯一且递增。weekday 为 0=周一至 6=周日，仅当表里写了星期或日期时填写；没写时必须为 null，不能把 Day1/D1/第1天推断为周一。同一周要么所有 weekday 非 null 且不重复，要么全部为 null。flags 只能含 note_fallback、inferred，可为空。
 返回如下 JSON 结构，不要添加其他字段：
-{"index":0,"start_date":null,"days":[{"weekday":null,"day_index":1,"rest":false,"exercises":[{"name":"低杆深蹲","sets":1,"reps":"8","intensity_kind":"rpe","intensity_values":["6"],"weight_values":["227.5"],"note":"节奏 310；60%top","family_guess":"squat","flags":["note_fallback"]}]}]}`;
+{"index":0,"start_date":null,"days":[{"weekday":null,"day_index":1,"rest":false,"exercises":[{"source_cells":[[3,1],[3,2]],"name":"低杆深蹲","sets":1,"reps":"8","intensity_kind":"rpe","intensity_values":["6"],"weight_values":["227.5"],"note":"节奏 310；60%top","family_guess":"squat","flags":["note_fallback"]}]}]}`;
