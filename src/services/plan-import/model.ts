@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-const DateSchema = z.string().date().nullable();
+// Dates are optional model hints; keep only real ISO calendar dates.
+const DateSchema = z.string().date().nullable().catch(null);
 export const RegionSchema = z
   .object({
     r1: z.number().int().positive(),
@@ -12,18 +13,35 @@ export const RegionSchema = z
 
 export const OutlineSchema = z.object({
   sheet: z.string().min(1),
-  header_region: RegionSchema.nullable(),
+  header_region: z.preprocess(
+    (value) =>
+      value === undefined ||
+      (typeof value === 'object' &&
+        value !== null &&
+        !Array.isArray(value) &&
+        Object.keys(value).length === 0)
+        ? null
+        : value,
+    RegionSchema.nullable(),
+  ),
   weeks: z
     .array(
       z.object({
         index: z.number().int().nonnegative(),
-        label: z.string().trim().min(1),
+        label: z.string().trim().nullable(),
         start_date: DateSchema,
         training_days: z.number().int().min(0).max(7),
         region: RegionSchema,
       }),
     )
-    .refine((weeks) => new Set(weeks.map((week) => week.index)).size === weeks.length),
+    .refine((weeks) => new Set(weeks.map((week) => week.index)).size === weeks.length)
+    .transform((weeks) =>
+      weeks.map((week, index) => ({
+        ...week,
+        index,
+        label: week.label === null || week.label === '' ? `W${String(index + 1)}` : week.label,
+      })),
+    ),
 });
 
 export type Cell = [number, number, string];

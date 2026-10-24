@@ -99,6 +99,7 @@ export const ConfigSchema = z
     DEEPSEEK_API_KEY: z.string().trim().optional(),
     DEEPSEEK_BASE_URL: HttpsUrlSchema.optional(),
     DEEPSEEK_MODEL: z.string().trim().min(1).optional(),
+    PLAN_IMPORT_DEBUG_DIR: z.string().trim().min(1).optional(),
     EMAIL_FROM: z.string().min(1).optional(),
     SIWA_KEY_ID: z.string().min(1).optional(),
     SIWA_TEAM_ID: z.string().min(1).optional(),
@@ -181,6 +182,14 @@ export const ConfigSchema = z
     }
 
     if (config.NODE_ENV !== 'production') return;
+
+    if (config.PLAN_IMPORT_DEBUG_DIR !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PLAN_IMPORT_DEBUG_DIR'],
+        message: 'PLAN_IMPORT_DEBUG_DIR is dev-only and must be unset in production',
+      });
+    }
 
     // HTTPS is a go-live blocker, not an immediate deploy gate: these checks
     // only run once FORCE_HTTPS is switched on, so a pre-TLS production build

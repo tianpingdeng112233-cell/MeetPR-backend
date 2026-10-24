@@ -506,3 +506,15 @@ node --import tsx scripts/plan-import-eval.ts /absolute/local/sample.xlsx /absol
 - review-loop 独立只读审查：Standards 0，Spec 0。仓内缺 Matt tracker 配置，已提示完整流程需 `$setup-matt-pocock-skills`，本轮使用本地双轴审查；审查不代替 Opus/David 验收。
 - 最终 `pnpm format:check` 退出 0，0 格式问题；`git diff --check` 通过。
 - 提交阻塞：首次暂存四个代码/测试文件成功，最终追加 JOURNAL 后，git add 与按指定消息及 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` 执行的 git commit 均退出 128：主仓 `.git/worktrees/MeetPR-backend-wt-052/index.lock` 被沙箱拒绝写入。HEAD 仍为 a8dcdd5，本轮 uncommitted（四文件已暂存，JOURNAL 未暂存），未 push；未提权或绕过 hook。
+
+## 2026-10-23 · spec 052 outline 容错与开发环境诊断
+
+- 基线 `14999f5`、分支 `feat/052-plan-import-ai`，开工工作区干净。已读 CONTEXT、SPEC §2.2 /「只有 Day1–DayN」、仓规、历史 journal 与 FOLLOWUPS；本次无 FOLLOWUPS 触发。SPEC 仍标 Ready，按 David 明确 FIX CARD 续修，不改正典状态、不另建分支。复用已安装依赖；遵守仅限指定路径及禁止服务器/本地数据库操作，未重装依赖或跑全量集成测试。
+- 已证实：fake fetch 的空/null/空白标签、空/非法日期、空/缺失表头可在旧 schema 触发重试后的 BAD_OUTPUT；真实模型原始输出未留存，不能认定实际失败字段。索引旧实现可接受 1 起始但不归一化，因此另补输出断言。采用 adapter 公开 seam，未调用真实模型、读取凭证或真实表格。
+- 实现：标签空/null 时生成 W1…；日期只保留有效 ISO 日历日期，outline/week 共用 null 兜底；header_region 仅空对象或缺失转 null；唯一非负整数周索引按数组顺序重排，不排序，默认标签使用最终索引。缺失/未知 sheet、重复索引、负数/小数索引、残缺或反向区域仍拒绝，已有有效标签/日期/区域保持。
+- `PLAN_IMPORT_DEBUG_DIR` 为可选配置，生产配置显式拒绝；adapter 每次落盘前独立检查实际 NODE_ENV 与目录 env，生产始终不写。开发开启后每次响应（含重试）写入 timestamp + stage + UUID JSON，保存完整响应文本及校验错误，成功时错误为 null；不写请求、Authorization 或 key，不记录到日志。新目录 0700、文件 0600，独占创建；诊断写盘失败静默忽略，不影响解析与重试。`.env.example` 仅增加注释示例，建议目录在仓外。未设置真实开发 env、未重启现有服务。
+- 红→绿命令均为 `pnpm vitest run tests/services/plan-import-deepseek.test.ts -t '<pattern>'`：`defaults a day-only` 3 failed → 3 passed；`normalizes invalid start_date` 5 failed → 5 passed；`defaults an empty or missing` 2 failed → 2 passed；`renumbers unique` 3 failed → 3 passed；`debug` 4 failed / 2 passed → 6 passed。红测全部退出 1，绿测全部退出 0；原始日志 `/tmp/meetpr-052-tolerance-{red,green}-{label,date,header,index,debug}.log`。随后增加组合 Day-only 输入及严格结构回归；临时 dump 均在测试临时目录并由 finally 清理。
+- 基线两文件 53 passed、typecheck/lint 退出 0。实现后新增 21 条 adapter 测试；config 的新开关测试位于允许修改的 adapter 测试文件，未改 config.test.ts 或路由测试。lint 首轮 8 条（空标签 ||、fake fetch 无 await 的 async）已定向修正，无逻辑改变。
+- review-loop 独立只读审查一轮：Standards 0 findings；Spec 0 findings。仓内缺 Matt tracker 配置，已提示完整流程需 `$setup-matt-pocock-skills`；本轮本地双轴审查不依赖 tracker，记录于本文。自测/审查不代表真实样表验收或已部署。
+- 最终验收：两份 plan-import 测试 74 passed（路由 38 / adapter 36），`pnpm vitest run tests/unit/config.test.ts` 25 passed；`pnpm typecheck`、`pnpm lint`、`pnpm format:check` 均退出 0，格式 0 问题。`git diff --check` 通过。测试只有既有 Vite CJS 弃用提示；未操作服务器、数据库或部署。
+- 提交阻塞：按指定消息与 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` 准备 git add / commit，git add 因主仓 `.git/worktrees/MeetPR-backend-wt-052/index.lock` 被沙箱拒绝写入而退出 128，commit 未执行；HEAD 仍为 `14999f5`。本轮 6 文件 uncommitted，未 push；未提权或绕过 hook。

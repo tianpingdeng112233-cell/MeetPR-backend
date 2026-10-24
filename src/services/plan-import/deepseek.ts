@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { z } from 'zod';
 
 import { OutlineSchema, WeekResultSchema, type PlanImportModel, type UsageObserver } from './model';
@@ -25,6 +28,27 @@ const CompletionSchema = z.object({
     .optional(),
 });
 
+async function dumpResponse(
+  stage: 'outline' | 'week',
+  rawResponse: string,
+  validationError: string | null,
+): Promise<void> {
+  // Check the runtime env too: direct adapter callers can bypass loadConfig.
+  const directory = process.env.PLAN_IMPORT_DEBUG_DIR?.trim();
+  if (process.env.NODE_ENV === 'production' || !directory) return;
+  try {
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const filename = `${new Date().toISOString().replace(/:/g, '-')}-${stage}-${randomUUID()}.json`;
+    await writeFile(
+      join(directory, filename),
+      JSON.stringify({ stage, raw_response: rawResponse, validation_error: validationError }),
+      { encoding: 'utf8', mode: 0o600, flag: 'wx' },
+    );
+  } catch {
+    // Debug I/O must never affect retries or leak response content via logs.
+  }
+}
+
 export function createDeepSeekPlanImportModel(options: {
   apiKey: string;
   baseUrl?: string | undefined;
@@ -35,6 +59,7 @@ export function createDeepSeekPlanImportModel(options: {
   const url = `${(options.baseUrl ?? DEFAULT_DEEPSEEK_BASE_URL).replace(/\/+$/, '')}/chat/completions`;
 
   async function complete<T>(
+    stage: 'outline' | 'week',
     prompt: string,
     input: unknown,
     validate: (value: unknown) => T,
@@ -46,6 +71,8 @@ export function createDeepSeekPlanImportModel(options: {
         controller.abort();
       }, DEEPSEEK_TIMEOUT_MS);
       timer.unref();
+      let rawResponse: string | undefined;
+      let validationError: string | null = null;
       try {
         const response = await fetch(url, {
           method: 'POST',
@@ -67,15 +94,14 @@ export function createDeepSeekPlanImportModel(options: {
         }).catch(() => {
           throw new PlanImportModelError('MODEL_BUSY');
         });
+        rawResponse = await response.text().catch(() => {
+          throw new PlanImportModelError('MODEL_BUSY');
+        });
         if (!response.ok)
           throw new PlanImportModelError(
             response.status === 429 || response.status >= 500 ? 'MODEL_BUSY' : 'BAD_OUTPUT',
           );
-        const raw: unknown = await response.json().catch((error: unknown) => {
-          throw new PlanImportModelError(
-            error instanceof SyntaxError ? 'BAD_OUTPUT' : 'MODEL_BUSY',
-          );
-        });
+        const raw: unknown = JSON.parse(rawResponse);
         const completion = CompletionSchema.parse(raw);
         if (completion.usage) onUsage?.(completion.usage);
         if (completion.choices[0]?.finish_reason === 'length')
@@ -83,8 +109,12 @@ export function createDeepSeekPlanImportModel(options: {
         const content = completion.choices[0]?.message.content;
         if (content === undefined || content === null) throw new PlanImportModelError('BAD_OUTPUT');
         return validate(JSON.parse(content) as unknown);
+      } catch (error) {
+        validationError = error instanceof Error ? error.message : 'BAD_OUTPUT';
+        throw error;
       } finally {
         clearTimeout(timer);
+        if (rawResponse !== undefined) await dumpResponse(stage, rawResponse, validationError);
       }
     });
   }
@@ -92,6 +122,7 @@ export function createDeepSeekPlanImportModel(options: {
   return {
     outline: (input, onUsage) =>
       complete(
+        'outline',
         OUTLINE_PROMPT,
         { sheets: input.sheets.map(({ name, cells }) => ({ name, cells })) },
         (value) => {
@@ -104,6 +135,7 @@ export function createDeepSeekPlanImportModel(options: {
       ),
     parseWeek: (input, onUsage) =>
       complete(
+        'week',
         WEEK_PROMPT,
         { index: input.index, cells: input.cells, header_cells: input.header_cells },
         (value) => {
