@@ -81,6 +81,99 @@ afterEach(async () => {
 });
 
 describe('coach plan imports', () => {
+  it.each([
+    {
+      label: 'single weight for three sets',
+      cells: '深蹲 3×8 120kg',
+      sets: 3,
+      intensity_values: [],
+      weight_values: ['120'],
+      expectedIntensity: [],
+      expectedWeight: ['120', '120', '120'],
+      unreadable: [],
+    },
+    {
+      label: 'single intensity for four sets',
+      cells: '深蹲 4×8 RPE 6',
+      sets: 4,
+      intensity_values: ['6'],
+      weight_values: [],
+      expectedIntensity: ['6', '6', '6', '6'],
+      expectedWeight: [],
+      unreadable: [],
+    },
+    {
+      label: 'two weights for three sets',
+      cells: '深蹲 3×8 120/125kg',
+      sets: 3,
+      intensity_values: [],
+      weight_values: ['120', '125'],
+      expectedIntensity: [],
+      expectedWeight: [],
+      unreadable: [
+        {
+          day_index: 1,
+          weekday: 0,
+          source_cells: [],
+          reason: 'SETS_VALUES_MISMATCH',
+          detail: { track: 'weight', sets: 3, got: 2 },
+        },
+      ],
+    },
+  ])('normalizes written values: $label', async (fixture) => {
+    const parsed = weekResult(0);
+    const day = parsed.days[0];
+    const original = day?.exercises[0];
+    if (!day || !original) throw new Error('Missing week fixture');
+    const exercise = {
+      ...original,
+      sets: fixture.sets,
+      intensity_kind: fixture.intensity_values.length ? 'rpe' : null,
+      intensity_values: fixture.intensity_values,
+      weight_values: fixture.weight_values,
+    };
+    const model = {
+      outline: vi.fn().mockResolvedValue(outline),
+      parseWeek: vi
+        .fn()
+        .mockResolvedValue({ ...parsed, days: [{ ...day, exercises: [exercise] }] }),
+    };
+    const ctx = await enabledContext(model);
+    const created = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send(input);
+    const response = await request(ctx.app)
+      .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+      .set(auth(ctx.coachToken))
+      .send({
+        header_cells: [],
+        weeks: [{ index: 0, cells: [[1, 1, fixture.cells]] }],
+      });
+    expect(response.status).toBe(200);
+    expect(response.body.weeks).toEqual([
+      {
+        ...parsed,
+        days: [
+          {
+            ...day,
+            exercises: fixture.unreadable.length
+              ? []
+              : [
+                  {
+                    ...exercise,
+                    intensity_values: fixture.expectedIntensity,
+                    weight_values: fixture.expectedWeight,
+                    flags: [],
+                  },
+                ],
+          },
+        ],
+        unreadable: fixture.unreadable,
+      },
+    ]);
+    expect(model.parseWeek).toHaveBeenCalledTimes(1);
+  });
   it.each([false, true])('drops out-of-region source cells for unreadable=%s', async (broken) => {
     const parsed = weekResult(0);
     const day = parsed.days[0];
@@ -101,7 +194,7 @@ describe('coach plan imports', () => {
         ['2', 2],
         [2, 2, 'PRIVATE_CELL_TEXT'],
       ],
-      ...(broken ? { intensity_values: ['6'] } : {}),
+      ...(broken ? { intensity_values: ['6', '6'] } : {}),
     };
     const model = {
       outline: vi.fn().mockResolvedValue(outline),
@@ -148,7 +241,7 @@ describe('coach plan imports', () => {
                 weekday: 0,
                 source_cells,
                 reason: 'SETS_VALUES_MISMATCH',
-                detail: { track: 'intensity', sets: 4, got: 1 },
+                detail: { track: 'intensity', sets: 4, got: 2 },
               },
             ]
           : [],

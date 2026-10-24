@@ -34,7 +34,21 @@ export function validateExercises(week: WeekSkeleton, cells: Cell[]): WeekResult
               : [];
           })
         : [];
-      const parsed = ExerciseSchema.safeParse({ ...fields, source_cells });
+      const normalized: Record<string, unknown> = { ...fields, source_cells };
+      const shape = ExerciseSchema.innerType().shape;
+      const sets = shape.sets.safeParse(fields.sets);
+      if (sets.success && sets.data > 1) {
+        for (const field of ['intensity_values', 'weight_values'] as const) {
+          const values = fields[field];
+          if (!Array.isArray(values) || values.length !== 1) continue;
+          const value = shape[field].element.safeParse(values[0]);
+          if (value.success) {
+            // Repeating a written value is normal; inferred evidence is checked separately.
+            normalized[field] = Array.from({ length: sets.data }, () => value.data);
+          }
+        }
+      }
+      const parsed = ExerciseSchema.safeParse(normalized);
       if (parsed.success) return [parsed.data];
       const location = { day_index: day.day_index, weekday: day.weekday, source_cells };
       const invalidNumber = parsed.error.issues.find(
