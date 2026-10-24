@@ -7,7 +7,7 @@ import { hasAcceptedBond } from '../db/bonds';
 import type { Database } from '../db/types';
 import type { Logger } from '../logger';
 import { requireRole } from '../middleware/auth';
-import { OutlineSchema, type PlanImportModel } from '../services/plan-import/model';
+import { OutlineSchema, type Outline, type PlanImportModel } from '../services/plan-import/model';
 import {
   claimWeekCall,
   DAILY_LIMIT,
@@ -16,6 +16,7 @@ import {
   shanghaiDay,
 } from '../services/plan-import/runs';
 import { parseWeeks } from '../services/plan-import/parse-weeks';
+import { filterOutlineWeeks } from '../services/plan-import/filter-outline';
 import { createDeepSeekPlanImportModel } from '../services/plan-import/deepseek';
 import { PlanImportModelError, runModelCall } from '../services/plan-import/retry';
 import {
@@ -114,7 +115,7 @@ export function planImportsRouter(deps: {
         return;
       }
       const usage = { prompt_tokens: 0, completion_tokens: 0 };
-      let result;
+      let result: Outline;
       try {
         result = await runModelCall(async () => {
           const output = OutlineSchema.parse(
@@ -145,6 +146,10 @@ export function planImportsRouter(deps: {
         res.status(502).json({ error: 'PARSE_FAILED', reason });
         return;
       }
+      result = filterOutlineWeeks(
+        result,
+        body.data.sheets.find((sheet) => sheet.name === result.sheet)?.cells ?? [],
+      );
       if (result.weeks.length === 0) {
         res.status(422).json({ error: 'NO_TRAINING_WEEKS' });
         return;

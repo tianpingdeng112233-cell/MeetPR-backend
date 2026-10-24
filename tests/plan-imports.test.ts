@@ -79,6 +79,139 @@ afterEach(async () => {
 });
 
 describe('coach plan imports', () => {
+  it('drops date-only weeks and renumbers the remaining training weeks', async () => {
+    const weeks = [0, 1, 2, 3].map((index) => ({
+      index,
+      label: `W${String(index + 1)}`,
+      start_date: null,
+      training_days: 5,
+      region: { r1: index * 3 + 1, c1: 2, r2: index * 3 + 3, c2: 4 },
+    }));
+    const model = { outline: vi.fn().mockResolvedValue({ ...outline, weeks }), parseWeek: vi.fn() };
+    const ctx = await enabledContext(model);
+    const response = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send({
+        ...input,
+        sheets: [
+          {
+            name: '2026',
+            cells: [
+              [1, 2, '2026-01-05'],
+              [2, 3, '休息'],
+              [3, 4, '112.5'],
+              [4, 2, '卧推'],
+              [7, 2, '1/19'],
+              [7, 3, '星期一'],
+              [8, 2, '休息'],
+              [7, 1, '区域外动作'],
+              [8, 5, '区域外动作'],
+              [12, 4, '深蹲 4×8'],
+            ],
+          },
+          {
+            name: 'Other',
+            cells: [
+              [1, 2, '其他页的动作'],
+              [7, 2, '其他页的动作'],
+            ],
+          },
+        ],
+      });
+    expect(response.status).toBe(200);
+    expect(response.body.weeks).toEqual([
+      { ...weeks[1], index: 0 },
+      { ...weeks[3], index: 1 },
+    ]);
+    expect(await ctx.db.selectFrom('plan_import_runs').selectAll().execute()).toHaveLength(1);
+  });
+  it('rejects outlines containing only calendar labels, rest and numbers without a quota row', async () => {
+    const model = { outline: vi.fn().mockResolvedValue(outline), parseWeek: vi.fn() };
+    const ctx = await enabledContext(model);
+    const labels = [
+      '2026-01-05',
+      '46027',
+      '1/5',
+      '01/05',
+      '周一',
+      '周日',
+      '星期天',
+      '星期三',
+      'Mon',
+      'Tuesday',
+      'Wed.',
+      'Thursday',
+      'Fri',
+      'Saturday',
+      'Sun',
+      'Day1',
+      'Day 2',
+      'D3',
+      '第4天',
+      '休息',
+      '112.5',
+      '-3',
+      '+2',
+      '0',
+    ];
+    for (const label of labels) {
+      const response = await request(ctx.app)
+        .post('/coach/plan-imports')
+        .set(auth(ctx.coachToken))
+        .send({ ...input, sheets: [{ name: '2026', cells: [[1, 1, label]] }] });
+      expect(response.status, label).toBe(422);
+      expect(response.body).toEqual({ error: 'NO_TRAINING_WEEKS' });
+    }
+    expect(model.outline).toHaveBeenCalledTimes(labels.length);
+    expect(await ctx.db.selectFrom('plan_import_runs').selectAll().execute()).toEqual([]);
+    const status = await request(ctx.app)
+      .get(`/coach/plan-imports/status?trainee_id=${ids.trainee}`)
+      .set(auth(ctx.coachToken));
+    expect(status.body.remaining_today).toBe(3);
+  });
+  it.each([
+    { layout: 'horizontal', reported: 5, expected: 2 },
+    { layout: 'vertical', reported: 5, expected: 2 },
+    { layout: 'horizontal', reported: 1, expected: 1 },
+    { layout: 'uncovered', reported: 5, expected: 5 },
+  ])(
+    'bounds impossible training_days for $layout blocks ($reported -> $expected)',
+    async ({ layout, reported, expected }) => {
+      const cells: [number, number, string][] = [
+        [1, 1, 'Day1'],
+        [1, 3, 'Day2'],
+        [1, 5, 'Day3'],
+        [2, 1, '深蹲'],
+        [2, 3, '卧推'],
+        [2, 5, '休息'],
+      ];
+      if (layout === 'vertical') {
+        for (const cell of cells) [cell[0], cell[1]] = [cell[1], cell[0]];
+      }
+      if (layout === 'uncovered') {
+        for (const cell of cells) cell[0] += 1;
+        cells.push([1, 1, '未归入日块的硬拉']);
+      }
+      const week = {
+        index: 0,
+        label: 'W1',
+        start_date: null,
+        training_days: reported,
+        region: { r1: 1, c1: 1, r2: 6, c2: 6 },
+      };
+      const ctx = await enabledContext({
+        outline: vi.fn().mockResolvedValue({ ...outline, weeks: [week] }),
+        parseWeek: vi.fn(),
+      });
+      const response = await request(ctx.app)
+        .post('/coach/plan-imports')
+        .set(auth(ctx.coachToken))
+        .send({ ...input, sheets: [{ name: '2026', cells }] });
+      expect(response.status).toBe(200);
+      expect(response.body.weeks).toEqual([{ ...week, training_days: expected }]);
+    },
+  );
   it('returns a day-only week in table order without inferring simplified names', async () => {
     const day = weekResult(0).days[0];
     const exercise = day?.exercises[0];
