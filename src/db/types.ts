@@ -277,6 +277,8 @@ export interface SessionsTable {
 }
 
 export interface ExercisesTable {
+  canonical_exercise_id: NullableColumn<string>;
+  adopted_at: NullableColumn<Date>;
   id: Generated<string>;
   name: string;
   name_en: NullableColumn<string>;

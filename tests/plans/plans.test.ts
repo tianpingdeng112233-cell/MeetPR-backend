@@ -283,6 +283,7 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
     );
   `);
 
+  mem.public.none(fs.readFileSync('db/migrations/0078-exercise-adoption.sql', 'utf8'));
   const { Pool } = mem.adapters.createPg();
   const pool = new Pool();
   const db = createDb(pool);

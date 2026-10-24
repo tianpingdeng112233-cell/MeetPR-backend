@@ -1305,3 +1305,92 @@ describe('spec 051 exercise history detail', () => {
     },
   );
 });
+
+describe('spec 053 adopted exercise statistics', () => {
+  it('merges official and sibling alias histories without crossing coach/student scope', async () => {
+    const ctx = await makeContext();
+    const aliasA = '53000000-0000-4000-8000-000000000001';
+    const aliasB = '53000000-0000-4000-8000-000000000002';
+    await addExercise(ctx, COMPETITION_SQUAT_ID, 'Official Squat', 'squat');
+    for (const alias of [aliasA, aliasB]) {
+      await addExercise(ctx, alias, 'Coach Alias', 'bench', { isCompetitionLift: false });
+      await ctx.db
+        .updateTable('exercises')
+        .set({
+          created_by_coach_id: ids.coach,
+          canonical_exercise_id: COMPETITION_SQUAT_ID,
+          adopted_at: new Date(),
+        })
+        .where('id', '=', alias)
+        .execute();
+    }
+    for (const [index, exerciseId] of [COMPETITION_SQUAT_ID, aliasA, aliasB].entries()) {
+      const rows = await addPlanExercise(ctx, exerciseId);
+      await ctx.db
+        .insertInto('set_logs')
+        .values({
+          student_id: ids.trainee,
+          plan_exercise_id: itemAt(rows, 0),
+          exercise_id: exerciseId,
+          logged_date: daysFromToday(index === 0 ? -1 : -2),
+          set_index: 0,
+          weight_kg: String(100 + index * 10),
+          reps: 5,
+          rpe: '8',
+          completed: true,
+          logged_at: atTenUtc(daysFromToday(index === 0 ? -1 : -2)),
+        })
+        .execute();
+    }
+    const foreignRows = await addPlanExercise(ctx, aliasA, ids.otherCoach);
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: itemAt(foreignRows, 0),
+        exercise_id: aliasA,
+        logged_date: daysFromToday(-1),
+        set_index: 0,
+        weight_kg: '999',
+        reps: 5,
+        completed: true,
+        logged_at: atTenUtc(daysFromToday(-1)),
+      })
+      .execute();
+    const detail = async (exerciseId: string) => {
+      const response = await request(ctx.app)
+        .get(`/coach/students/${ids.trainee}/exercise-stats`)
+        .query({ exercise_id: exerciseId })
+        .set(auth(ctx.coachToken));
+      expect(response.status).toBe(200);
+      return response.body as Record<string, unknown>;
+    };
+    const official = await detail(COMPETITION_SQUAT_ID);
+    expect(official.rep_prs).toEqual([expect.objectContaining({ reps: 5, weight_kg: '120.00' })]);
+    expect(official.recent_sessions).toHaveLength(2);
+    expect(official.recent_sessions).toEqual([
+      expect.objectContaining({ sets: expect.any(Array) }),
+      expect.objectContaining({
+        sets: expect.arrayContaining([
+          expect.objectContaining({ weight_kg: '110.00' }),
+          expect.objectContaining({ weight_kg: '120.00' }),
+        ]),
+      }),
+    ]);
+    expect(await detail(aliasA)).toEqual(official);
+    expect(await detail(aliasB)).toEqual(official);
+    const overview = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/exercise-stats`)
+      .set(auth(ctx.coachToken));
+    expect(overview.status).toBe(200);
+    expect(overview.body.exercises).toEqual([
+      {
+        exercise_id: COMPETITION_SQUAT_ID,
+        name: 'Official Squat',
+        session_count: 2,
+        last_logged_at: atTenUtc(daysFromToday(-1)).toISOString(),
+      },
+    ]);
+    await ctx.db.destroy();
+  });
+});
