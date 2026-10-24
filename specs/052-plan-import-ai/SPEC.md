@@ -102,6 +102,8 @@
 
 **繁体转简体**：`name` 一律输出简体中文（槓鈴深蹲 → 杠铃深蹲、相撲硬舉 → 相扑硬拉 这类按常用写法转），便于匹配动作库；note 保留原文。
 
+**只列有训练内容的周**（2026-10-24 本地实测补；旧 002 解析器本有「空周滤掉」）：Monster 宇这类模版会把全年每周的日期表头预先填好、只写了前几个月。outline 必须只返回含动作内容的周；**服务端硬校验**：某周 region 内的 cells 去掉日期（ISO/序列/月日）、星期、「休息」、纯数字后若没有任何文字，则从 outline 中剔除并按顺序重编 index；剔除后为空 → 422 `NO_TRAINING_WEEKS`（不扣次数）。`training_days` 以服务端能确认的为准，不信模型对空周的报数。
+
 ## 3. 模型调用
 
 - OpenAI 兼容 `POST {BASE_URL}/chat/completions`，`response_format: { type: 'json_object' }`，`temperature: 0`，单次超时 60s。输出用 zod 校验，不合格重试 1 次。
