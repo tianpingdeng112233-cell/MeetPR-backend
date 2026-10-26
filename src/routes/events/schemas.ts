@@ -78,7 +78,7 @@ function ev<N extends string, T extends z.ZodRawShape>(name: N, props: z.ZodObje
 
 // name enum allowlist + per-event strict props (SPEC §8). props are ids/int/bool/
 // enum ONLY — never free text or measured values.
-export const EventSchema = z.discriminatedUnion('name', [
+const EventByNameSchema = z.discriminatedUnion('name', [
   ev('coach_application_submitted', z.object({})),
   ev('coach_application_approved', z.object({})),
   ev('coach_password_set', z.object({})),
@@ -106,6 +106,19 @@ export const EventSchema = z.discriminatedUnion('name', [
   ev('onboarding_step', z.object({ step_index: int, step_name: z.enum(STEP_NAMES) })),
   ev('onboarding_complete', z.object({ n_steps_filled: int, used_draft_resume: bool })),
   ev('bind_coach_action', z.object({ stage: z.enum(['invite_open', 'submitted', 'accepted']) })),
+  ev('bind_welcome_viewed', z.object({})),
+  ev('bind_welcome_continue', z.object({})),
+  ev('first_plan_viewed', z.object({ plan_id: uuid })),
+  ev('first_plan_start', z.object({ plan_id: uuid })),
+  ev('first_plan_dismiss', z.object({ plan_id: uuid })),
+  ev(
+    'notification_permission_action',
+    z.object({
+      source: z.enum(['pending_bind', 'welcome']),
+      stage: z.enum(['clicked', 'resolved']),
+      result: z.enum(['allowed', 'denied']).optional(),
+    }),
+  ),
   ev('plan_viewed', z.object({ plan_id: uuid })),
   ev('progress_viewed', z.object({ tab: z.enum(['e1rm', 'volume', 'history']) })),
   ev('coach_open_student', z.object({ student_id: uuid })),
@@ -153,6 +166,18 @@ export const EventSchema = z.discriminatedUnion('name', [
     }),
   ),
 ]);
+
+export const EventSchema = EventByNameSchema.superRefine((event, ctx) => {
+  if (event.name !== 'notification_permission_action') return;
+  const { stage, result } = event.props;
+  if ((stage === 'resolved') !== (result !== undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['props', 'result'],
+      message: 'result is required for resolved and forbidden for clicked',
+    });
+  }
+});
 
 export type ParsedEvent = z.infer<typeof EventSchema>;
 
