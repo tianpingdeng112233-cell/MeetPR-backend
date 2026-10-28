@@ -114,6 +114,13 @@
 
 **读不成数字的写法要标明原本在哪一栏**（2026-10-24 David：同类问题归组、改一次全部生效，1A）：每个动作新增 `unparsed: [{ field: 'reps'|'intensity'|'weight', text }]`——原表在该栏写的、没能变成数字的原文（如 次数栏「力竭」、强度栏「60%top」、重量栏「周二减7.5」）。`text` 取原表原文（trim，不改写），仍按原规则同时进 note。`reps` 为空且 `unparsed` 里有 reps 项时，该动作不进 `unreadable`。网页按 `field + text` 跨周归组，教练一次处理。
 
+### 2.5 多 block（2026-10-28 David：11 / 11a A / 11b A，产品正典见 plan-web 015 §2.0.5）
+
+- outline 不再只「选日期最新的那页」，而是返回 `blocks: [{ id, sheets: [name...], label, weeks: [...同现有 weeks 结构...] }]`：一页一个 block；结构相同、按周或按天拆分的多页（「第N周」「D1…」）合成一个 block，`weeks` 跨页按顺序编号，`region` 增加 `sheet` 字段指明所在页。非计划页（说明、计算器、RPE 表、动作库）不成 block。
+- 兼容：响应仍保留顶层 `sheet` / `weeks` / `header_region`，取值为默认 block（日期最新者），旧网页照旧工作；新网页读 `blocks`。
+- 第二步 `weeks` 请求的每周 cells 由前端按 `region.sheet` 从对应页截取；`header_cells` 允许按页给出。
+- 每日次数：仍在 outline 成功时扣一次；同一 `import_id` 下教练改选别的 block 不另扣（同一次导入）。
+
 ## 3. 模型调用
 
 - OpenAI 兼容 `POST {BASE_URL}/chat/completions`，`response_format: { type: 'json_object' }`，`temperature: 0`，单次超时 60s。输出用 zod 校验，不合格重试 1 次。
