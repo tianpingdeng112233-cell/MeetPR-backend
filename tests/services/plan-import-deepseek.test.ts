@@ -688,3 +688,44 @@ it('1028e makes only one provider attempt for a failed corrective call', async (
   ).rejects.toMatchObject({ reason: 'MODEL_BUSY' });
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+it('1028f adapter recovers duplicate weekdays before rejecting the model response', async () => {
+  const cells: [number, number, string][] = [
+    [1, 1, 'Mon'],
+    [1, 4, 'Thu'],
+    [2, 1, '合成动作甲'],
+    [2, 4, '合成动作乙'],
+  ];
+  const days = ['合成动作甲', '合成动作乙'].map((name, index) => ({
+    weekday: 0,
+    day_index: index + 1,
+    rest: false,
+    exercises: [
+      {
+        name,
+        source_cells: [[2, index * 3 + 1]],
+        sets: 2,
+        reps: '11',
+        intensity_kind: null,
+        intensity_values: [],
+        weight_values: [],
+        note: '',
+        family_guess: null,
+        flags: [],
+        unparsed: [],
+      },
+    ],
+  }));
+  const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(() =>
+    Promise.resolve(
+      Response.json({
+        choices: [{ message: { content: JSON.stringify({ index: 0, start_date: null, days }) } }],
+      }),
+    ),
+  );
+  const model = createDeepSeekPlanImportModel({ apiKey: 'test-placeholder', fetch });
+  const result = await model.parseWeek({ index: 0, cells, header_cells: [] });
+  expect(result.days.map((day) => day.weekday)).toEqual([0, 3]);
+  expect(result.days.flatMap((day) => day.exercises)).toEqual(days.flatMap((day) => day.exercises));
+  expect(fetch).toHaveBeenCalledTimes(1);
+});

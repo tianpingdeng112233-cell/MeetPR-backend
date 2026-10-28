@@ -1,3 +1,4 @@
+import { ordinalHeaders } from './day-cycles';
 import { normalizeDateCells } from './input';
 import type { Cell, Exercise, WeekResult } from './model';
 import { PlanImportModelError } from './retry';
@@ -58,7 +59,7 @@ function suspect(): never {
   throw new PlanImportModelError('REGION_SUSPECT');
 }
 
-function dayBlocks(cells: Cell[]) {
+function dayBlocks(cells: Cell[], allowOrdinal = false) {
   const normalized = normalizeDateCells(cells);
   const anchors = new Set(
     normalized.flatMap(([, , text]) => {
@@ -69,10 +70,13 @@ function dayBlocks(cells: Cell[]) {
   // Template cycles need not coincide with a calendar week. Ambiguous headers
   // provide no authority to overwrite model hints or reject the whole week.
   if (anchors.size > 1) return undefined;
-  const headers = normalized.flatMap(([row, col, text]) => {
-    const header = dayHeader(text, [...anchors][0]);
-    return header ? [{ row, col, ...header }] : [];
-  });
+  const ordinal = allowOrdinal ? ordinalHeaders(cells) : undefined;
+  const headers = ordinal
+    ? ordinal.headers.map(({ row, col }) => ({ row, col, weekday: null, monday: null }))
+    : normalized.flatMap(([row, col, text]) => {
+        const header = dayHeader(text, [...anchors][0]);
+        return header ? [{ row, col, ...header }] : [];
+      });
   headers.sort((a, b) => a.row - b.row || a.col - b.col);
   const first = headers[0];
   if (!first) return undefined;
@@ -80,8 +84,9 @@ function dayBlocks(cells: Cell[]) {
   const vertical = headers.every((header) => header.col === first.col);
   if (!horizontal && !vertical) return undefined;
   if (
-    headers.some((header) => header.weekday === null) ||
-    new Set(headers.map((header) => header.weekday)).size !== headers.length
+    !ordinal &&
+    (headers.some((header) => header.weekday === null) ||
+      new Set(headers.map((header) => header.weekday)).size !== headers.length)
   )
     return undefined;
   const sorted = headers.sort((a, b) => (horizontal ? a.col - b.col : a.row - b.row));
@@ -297,15 +302,34 @@ function groundExercises(
   return { ...week, days, unreadable };
 }
 
-export function groundWeek(week: WeekResult, cells: Cell[], headerCells: Cell[] = []): WeekResult {
-  const candidateBlocks = dayBlocks(cells);
+export function groundWeek(
+  week: WeekResult,
+  cells: Cell[],
+  headerCells: Cell[] = [],
+  regroupDays = false,
+): WeekResult {
+  const candidateBlocks = dayBlocks(cells, regroupDays);
   const locations = [...week.days.flatMap((day) => day.exercises), ...week.unreadable];
   const blocks =
     candidateBlocks &&
     !locations.some((item) => item.source_cells.some((ref) => candidateBlocks.locate(ref) < 0))
       ? candidateBlocks
       : undefined;
-  week = groundExercises(week, cells, blocks, headerCells);
+  // Recovery needs positive source evidence for every exercise; normal grounding
+  // retains its existing fallback when a sheet has no unambiguous day layout.
+  if (
+    regroupDays &&
+    (!blocks ||
+      locations.some(
+        (item) =>
+          item.source_cells.length === 0 ||
+          !item.source_cells.some(([row, col]) => cells.some(([r, c]) => r === row && c === col)),
+      ))
+  )
+    return suspect();
+  // Sibling prescriptions may have been split across model days. Recovery must
+  // assemble their source day before checking the collective coverage.
+  if (!regroupDays) week = groundExercises(week, cells, blocks, headerCells);
   // Empty model slots have no source evidence; the importer fills absent weekdays as rest.
   const diagnosedDays = new Set(week.unreadable.map((item) => item.day_index));
   week = {
@@ -325,7 +349,7 @@ export function groundWeek(week: WeekResult, cells: Cell[], headerCells: Cell[] 
     ];
     return new Set(locations.flatMap((item) => item.source_cells.map(blocks.locate)));
   });
-  const regroup = dayIndices.some((indices) => indices.size > 1);
+  const regroup = regroupDays || dayIndices.some((indices) => indices.size > 1);
   if (regroup) {
     const groups = new Map<number, WeekResult['days'][number]>();
     const locate = (source: [number, number][]) => {
@@ -333,7 +357,7 @@ export function groundWeek(week: WeekResult, cells: Cell[], headerCells: Cell[] 
       const index = [...indices][0];
       if (indices.size !== 1 || index === undefined || index < 0) return suspect();
       const header = blocks.headers[index];
-      if (header?.weekday == null) return suspect();
+      if (!header || (!regroupDays && header.weekday === null)) return suspect();
       let group = groups.get(index);
       if (!group) {
         group = { day_index: index + 1, weekday: header.weekday, rest: false, exercises: [] };
@@ -350,15 +374,20 @@ export function groundWeek(week: WeekResult, cells: Cell[], headerCells: Cell[] 
       item.weekday = group.weekday;
     }
     const days = [...groups.entries()].sort(([a], [b]) => a - b).map(([, day]) => day);
-    if (new Set(days.map((day) => day.weekday)).size !== days.length) return suspect();
+    if (
+      !days.every((day) => day.weekday === null) &&
+      new Set(days.map((day) => day.weekday)).size !== days.length
+    )
+      return suspect();
     const indices = new Map(days.map((day, index) => [day.day_index, index + 1]));
     for (const item of unreadable) item.day_index = indices.get(item.day_index) ?? item.day_index;
-    return {
+    const regrouped = {
       ...week,
       start_date: [...mondays][0] ?? week.start_date,
       days: days.map((day, index) => ({ ...day, day_index: index + 1 })),
       unreadable,
     };
+    return regroupDays ? groundExercises(regrouped, cells, blocks, headerCells) : regrouped;
   }
   const days = week.days.map((day, index) => {
     const indices = dayIndices[index] ?? new Set<number>();

@@ -3,16 +3,11 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 
-import {
-  OutlineSchema,
-  SourceCellSchema,
-  WeekSkeletonSchema,
-  type PlanImportModel,
-  type UsageObserver,
-} from './model';
+import { OutlineSchema, SourceCellSchema, type PlanImportModel, type UsageObserver } from './model';
 import { OUTLINE_PROMPT, WEEK_PROMPT } from './prompts';
 import { PlanImportModelError, runModelCall } from './retry';
-import { normalizeOrdinalWeek, prepareCycleOutline } from './day-cycles';
+import { prepareCycleOutline } from './day-cycles';
+import { parseWeekSkeleton } from './week-skeleton';
 
 export const DEEPSEEK_TIMEOUT_MS = 60_000;
 export const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
@@ -164,7 +159,7 @@ export function createDeepSeekPlanImportModel(options: {
         (value) => {
           if (z.object({ region_suspect: z.literal(true) }).safeParse(value).success)
             throw new PlanImportModelError('REGION_SUSPECT');
-          const result = WeekSkeletonSchema.parse(normalizeOrdinalWeek(value, input.cells));
+          const result = parseWeekSkeleton(value, input.cells, input.header_cells);
           if (result.index !== input.index) throw new Error('MODEL_UNKNOWN_WEEK');
           return result;
         },

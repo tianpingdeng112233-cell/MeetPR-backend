@@ -118,32 +118,36 @@ export const ExerciseSchema = z
     }
   });
 
-// The model boundary validates structure only; exercise failures are handled separately.
-export const WeekSkeletonSchema = z.object({
+// Recovery may relax only day count and weekday uniqueness, never day structure.
+const DaySkeletonSchema = z
+  .object({
+    weekday: z.number().int().min(0).max(6).nullable(),
+    day_index: z.number().int().positive(),
+    rest: z.boolean(),
+    exercises: z.array(z.unknown()),
+  })
+  .refine((day) => !day.rest || day.exercises.length === 0);
+
+export const RegroupableWeekSkeletonSchema = z.object({
   index: z.number().int().nonnegative(),
   start_date: DateSchema,
   days: z
-    .array(
-      z
-        .object({
-          weekday: z.number().int().min(0).max(6).nullable(),
-          day_index: z.number().int().positive(),
-          rest: z.boolean(),
-          exercises: z.array(z.unknown()),
-        })
-        .refine((day) => !day.rest || day.exercises.length === 0),
-    )
-    .max(7)
+    .array(DaySkeletonSchema)
     .refine(
       (days) =>
-        days.every((day) => day.weekday === null) ||
-        (days.every((day) => day.weekday !== null) &&
-          new Set(days.map((day) => day.weekday)).size === days.length),
-    )
-    .refine((days) =>
-      days.every((day, index) => day.day_index > (days[index - 1]?.day_index ?? 0)),
+        (days.every((day) => day.weekday === null) || days.every((day) => day.weekday !== null)) &&
+        days.every((day, index) => day.day_index > (days[index - 1]?.day_index ?? 0)),
     ),
 });
+
+// The model boundary validates structure only; exercise failures are handled separately.
+export const WeekSkeletonSchema = RegroupableWeekSkeletonSchema.refine(
+  (week) => week.days.length <= 7,
+).refine(
+  (week) =>
+    week.days.every((day) => day.weekday === null) ||
+    new Set(week.days.map((day) => day.weekday)).size === week.days.length,
+);
 export type WeekSkeleton = z.infer<typeof WeekSkeletonSchema>;
 export type Exercise = z.infer<typeof ExerciseSchema>;
 export type UnreadableExercise = {

@@ -2807,3 +2807,167 @@ it('1028e preserves weight repeats across cells beside an explicit set prescript
   expect(result.unreadable).toEqual([]);
   expect(result.days[0]?.exercises).toHaveLength(1);
 });
+
+function regroupFixture(calendar = false) {
+  const headings: [number, number, string][] = ['Mon', 'Tue', 'Thu', 'Sat'].map((label, i) => [
+    2,
+    i * 4 + 2,
+    calendar ? label : `D${String(i + 1)}`,
+  ]);
+  const body: [number, number, string][] = [];
+  const days: WeekResult['days'] = Array.from({ length: 9 }, (_, i) => {
+    const block = i % 4;
+    const row = 4 + Math.floor(i / 4);
+    const col = block * 4 + 2;
+    const name = `合成动作${String(i)}`;
+    body.push([row, col, name], [row, col + 1, '2×11']);
+    return {
+      weekday: calendar ? 0 : null,
+      day_index: i + 1,
+      rest: false,
+      exercises: [
+        groundingExercise(
+          [
+            [row, col],
+            [row, col + 1],
+          ],
+          name,
+        ),
+      ],
+    };
+  });
+  return { headings, body, days };
+}
+
+it.each([false, true])(
+  '1028f case 1 regroups nine containers by four header blocks (calendar=%s)',
+  async (calendar) => {
+    const { headings, body, days } = regroupFixture(calendar);
+    const result = await groundingResponse(days, [...headings, ...body]);
+    expect(result).not.toHaveProperty('error');
+    expect(result.days.map((day) => day.exercises.map((exercise) => exercise.name))).toEqual([
+      ['合成动作0', '合成动作4', '合成动作8'],
+      ['合成动作1', '合成动作5'],
+      ['合成动作2', '合成动作6'],
+      ['合成动作3', '合成动作7'],
+    ]);
+    expect(result.days.map((day) => day.weekday)).toEqual(
+      calendar ? [0, 1, 3, 5] : [null, null, null, null],
+    );
+    expect(result.days.map((day) => day.day_index)).toEqual([1, 2, 3, 4]);
+    expect(result.unreadable).toEqual([]);
+  },
+);
+
+it('1028f case 2 requires source headers to recover the same valid exercises', async () => {
+  const { headings, body, days } = regroupFixture();
+  expect(await groundingResponse(days, body)).toEqual({
+    index: 0,
+    error: 'PARSE_FAILED',
+    reason: 'BAD_OUTPUT',
+  });
+  const recoverable = await groundingResponse(days, [...headings, ...body]);
+  expect(recoverable).not.toHaveProperty('error');
+  expect(recoverable.days).toHaveLength(4);
+});
+
+it('1028f case 3 rejects other structure errors despite sufficient header evidence', async () => {
+  const { headings, body, days } = regroupFixture(true);
+  const malformedDays = [
+    days.map((day, i) => (i === 0 ? { ...day, rest: 'false' } : day)),
+    days.map((day, i) => (i === 0 ? { ...day, weekday: 7 } : day)),
+    days.map((day, i) => (i === 0 ? { ...day, weekday: null } : day)),
+    days.map((day, i) => (i === 1 ? { ...day, day_index: 1 } : day)),
+    days.map((day, i) =>
+      i === 0
+        ? {
+            ...day,
+            exercises: day.exercises.map((exercise) => ({ ...exercise, sets: 'invalid' })),
+          }
+        : day,
+    ),
+    days.map((day, i) =>
+      i === 0
+        ? {
+            ...day,
+            exercises: day.exercises.map((exercise) => ({ ...exercise, source_cells: [] })),
+          }
+        : day,
+    ),
+    days.map((day, i) =>
+      i === 0
+        ? {
+            ...day,
+            exercises: day.exercises.map((exercise) => ({
+              ...exercise,
+              source_cells: [
+                [4, 2],
+                [4, 6],
+              ],
+            })),
+          }
+        : day,
+    ),
+  ];
+  for (const malformed of malformedDays) {
+    expect(await groundingResponse(malformed, [...headings, ...body])).toEqual({
+      index: 0,
+      error: 'PARSE_FAILED',
+      reason: 'BAD_OUTPUT',
+    });
+  }
+  const recoverable = await groundingResponse(days, [...headings, ...body]);
+  expect(recoverable).not.toHaveProperty('error');
+  expect(recoverable.days).toHaveLength(4);
+});
+
+it.each(['rest slot', 'normalized intensity', 'blank reference'] as const)(
+  '1028f recovers valid exercises with %s',
+  async (variant) => {
+    const { headings, body, days } = regroupFixture(true);
+    if (variant === 'rest slot')
+      days.push({ weekday: 6, day_index: 10, rest: true, exercises: [] });
+    const first = days[0]?.exercises[0];
+    if (!first) throw new Error('missing synthetic exercise');
+    if (variant === 'normalized intensity') {
+      first.intensity_kind = 'rpe';
+      first.intensity_values = ['6'];
+    }
+    if (variant === 'blank reference') first.source_cells.push([4, 4]);
+    const result = await groundingResponse(days, [...headings, ...body]);
+    expect(result).not.toHaveProperty('error');
+    expect(result.days).toHaveLength(4);
+    expect(result.days.flatMap((day) => day.exercises)).toHaveLength(9);
+    expect(result.unreadable).toEqual([]);
+    if (variant === 'normalized intensity')
+      expect(result.days[0]?.exercises[0]?.intensity_values).toEqual(['6', '6']);
+  },
+);
+
+it('1028f regroups split prescriptions before checking same-day coverage', async () => {
+  const refs: [number, number][] = [
+    [2, 1],
+    [2, 2],
+  ];
+  const exercises = [
+    { ...groundingExercise(refs), sets: 1, reps: '5', weight_values: ['71'] },
+    { ...groundingExercise(refs), sets: 1, reps: '3', weight_values: ['83'] },
+  ];
+  const result = await groundingResponse(
+    exercises.map((exercise, i) => ({
+      weekday: 0,
+      day_index: i + 1,
+      rest: false,
+      exercises: [exercise],
+    })),
+    [
+      [1, 1, 'Mon'],
+      [2, 1, '合成动作甲'],
+      [2, 2, '71x5/83x3'],
+    ],
+  );
+  expect(result).not.toHaveProperty('error');
+  expect(result.days).toHaveLength(1);
+  expect(result.days[0]?.exercises).toEqual(exercises);
+  expect(result.unreadable).toEqual([]);
+});

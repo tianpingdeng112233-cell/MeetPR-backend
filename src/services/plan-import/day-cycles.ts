@@ -5,7 +5,7 @@ const ORDINAL = /^(?:day\s*|d\s*|第\s*)(\d+)\s*(?:天)?$/i;
 const CALENDAR =
   /^(?:\d{4}-\d{2}-\d{2}|(?:周|星期)[一二三四五六日天]|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)\.?$/i;
 
-function ordinalHeaders(cells: Cell[]) {
+export function ordinalHeaders(cells: Cell[]) {
   const headers = cells.flatMap(([row, col, text]) => {
     const match = ORDINAL.exec(text);
     const day = Number(match?.[1]);
