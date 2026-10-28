@@ -674,7 +674,7 @@ describe('coach plan imports', () => {
         .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
         .set(auth(ctx.coachToken))
         .send({ weeks: [{ index: 0, cells: [[1, 1, '周一、周三休息']] }], header_cells: [] });
-    expect((await sendWeek()).body.weeks).toEqual([parsed]);
+    expect((await sendWeek()).body.weeks).toEqual([{ ...parsed, days: [] }]);
     for (const days of [
       [{ ...firstDay, weekday: null }, secondDay],
       [firstDay, { ...secondDay, weekday: 0 }],
@@ -758,26 +758,26 @@ describe('coach plan imports', () => {
     {
       field: 'intensity_values',
       values: ['<=6'],
-      reason: 'INVALID_NUMBER',
-      detail: { track: 'intensity', value: null },
+      reason: 'OTHER',
+      detail: null,
     },
     {
       field: 'intensity_values',
       values: ['8-9'],
-      reason: 'INVALID_NUMBER',
-      detail: { track: 'intensity', value: null },
+      reason: 'OTHER',
+      detail: null,
     },
     {
       field: 'weight_values',
       values: ['-5'],
-      reason: 'INVALID_NUMBER',
-      detail: { track: 'weight', value: '-5' },
+      reason: 'OTHER',
+      detail: null,
     },
     {
       field: 'weight_values',
       values: ['PRIVATE_CELL_TEXT'],
-      reason: 'INVALID_NUMBER',
-      detail: { track: 'weight', value: null },
+      reason: 'OTHER',
+      detail: null,
     },
   ])('isolates malformed $field: $values as $reason', async ({ field, values, reason, detail }) => {
     const exercise = {
@@ -1287,7 +1287,14 @@ describe('coach plan imports', () => {
       const parsed = weekResult(0);
       const exercise = parsed.days[0]?.exercises[0];
       if (!exercise) throw new Error('missing fixture exercise');
-      Object.assign(exercise, { intensity_kind, sets, reps, intensity_values, weight_values });
+      Object.assign(exercise, {
+        intensity_kind,
+        sets,
+        reps,
+        intensity_values,
+        weight_values,
+        ...(sets === 0 ? { unparsed: [{ field: 'reps', text: '力竭' }] } : {}),
+      });
       const ctx = await enabledContext({
         outline: vi.fn().mockResolvedValue(outline),
         parseWeek: vi.fn().mockResolvedValue(parsed),
@@ -1432,5 +1439,783 @@ describe('coach plan imports', () => {
       const response = await request(ctx.app).post(path).set(auth(ctx.coachToken)).send({});
       expect(response.status).toBe(404);
     }
+  });
+});
+
+// All grounding fixtures are invented; no source workbook data is used here.
+const groundingExercise = (source_cells: [number, number][], name = '合成动作甲') => ({
+  name,
+  source_cells,
+  unparsed: [],
+  sets: 2,
+  reps: '11',
+  intensity_kind: null,
+  intensity_values: [],
+  weight_values: [],
+  note: '',
+  family_guess: null,
+  flags: [],
+});
+
+async function groundingResponse(
+  days: unknown[],
+  cells: [number, number, string][],
+  start_date: string | null = null,
+) {
+  const model = {
+    outline: vi.fn().mockResolvedValue(outline),
+    parseWeek: vi.fn().mockResolvedValue({ index: 0, start_date, days }),
+  };
+  const ctx = await enabledContext(model);
+  const created = await request(ctx.app)
+    .post('/coach/plan-imports')
+    .set(auth(ctx.coachToken))
+    .send(input);
+  const response = await request(ctx.app)
+    .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+    .set(auth(ctx.coachToken))
+    .send({ header_cells: [], weeks: [{ index: 0, cells }] });
+  expect(response.status).toBe(200);
+  return response.body.weeks[0] as WeekResult;
+}
+
+describe('sheet grounding', () => {
+  it('grounding case 1 normalizes serial dates only at model inputs', async () => {
+    const cells: [number, number, string][] = [
+      [1, 1, '36526'],
+      [2, 1, '合成动作甲'],
+      [2, 2, '2×11'],
+    ];
+    const model = {
+      outline: vi.fn().mockResolvedValue(outline),
+      parseWeek: vi.fn().mockResolvedValue(weekResult(0)),
+    };
+    const ctx = await enabledContext(model);
+    const created = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send({ ...input, sheets: [{ name: '2026', cells }] });
+    expect(created.status).toBe(200);
+    await request(ctx.app)
+      .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+      .set(auth(ctx.coachToken))
+      .send({ header_cells: [[9, 9, '73050']], weeks: [{ index: 0, cells }] });
+    expect(model.outline.mock.calls[0]?.[0]).toMatchObject({
+      sheets: [{ cells: [[1, 1, '2000-01-01'], ...cells.slice(1)] }],
+    });
+    expect(model.parseWeek.mock.calls[0]?.[0]).toMatchObject({
+      cells: [[1, 1, '2000-01-01'], ...cells.slice(1)],
+      header_cells: [[9, 9, '2099-12-31']],
+    });
+    expect(cells[0]?.[2]).toBe('36526');
+  });
+  it('grounding case 2 anchors weekdays across an empty horizontal column block', async () => {
+    const week = await groundingResponse(
+      [
+        {
+          weekday: 0,
+          day_index: 1,
+          rest: false,
+          exercises: [
+            groundingExercise([
+              [2, 1],
+              [2, 2],
+            ]),
+          ],
+        },
+        {
+          weekday: 1,
+          day_index: 2,
+          rest: false,
+          exercises: [
+            groundingExercise([
+              [2, 7],
+              [2, 8],
+            ]),
+          ],
+        },
+      ],
+      [
+        [1, 1, '2032-03-01'],
+        [1, 4, '2032-03-02'],
+        [1, 7, '2032-03-03'],
+        [2, 1, '合成动作甲'],
+        [2, 2, '2×11'],
+        [2, 7, '合成动作甲'],
+        [2, 8, '2×11'],
+      ],
+      '2032-04-05',
+    );
+    expect(week.days.map((day) => day.weekday)).toEqual([0, 2]);
+    expect(week.start_date).toBe('2032-03-01');
+    expect(week.unreadable).toEqual([]);
+  });
+
+  it('grounding case 3 regroups four day blocks scattered across seven model days', async () => {
+    const cells: [number, number, string][] = [
+      [1, 1, 'Mon'],
+      [1, 4, 'Wed'],
+      [1, 7, 'Fri'],
+      [1, 10, 'Sun'],
+    ];
+    const exercises = Array.from({ length: 8 }, (_, index) => {
+      const row = index < 4 ? 2 : 3;
+      const col = (index % 4) * 3 + 1;
+      cells.push([row, col, '合成动作甲'], [row, col + 1, '2×11']);
+      return groundingExercise([
+        [row, col],
+        [row, col + 1],
+      ]);
+    });
+    const days = Array.from({ length: 7 }, (_, index) => ({
+      weekday: index,
+      day_index: index + 1,
+      rest: false,
+      exercises: index === 6 ? exercises.slice(6) : [exercises[index]],
+    }));
+    const week = await groundingResponse(days, cells);
+    expect(
+      week.days.map((day) => ({
+        weekday: day.weekday,
+        day_index: day.day_index,
+        count: day.exercises.length,
+      })),
+    ).toEqual([0, 2, 4, 6].map((weekday, index) => ({ weekday, day_index: index + 1, count: 2 })));
+    expect(week.unreadable).toEqual([]);
+  });
+
+  it('grounding case 4 locates an exercise that swallowed another named row', async () => {
+    const source: [number, number][] = [
+      [2, 1],
+      [2, 2],
+      [3, 1],
+      [3, 2],
+    ];
+    const week = await groundingResponse(
+      [{ weekday: 0, day_index: 1, rest: false, exercises: [groundingExercise(source)] }],
+      [
+        [1, 1, 'Mon'],
+        [1, 5, 'Thu'],
+        [2, 1, '合成动作甲'],
+        [2, 2, '2×11'],
+        [3, 1, '合成动作乙'],
+        [3, 2, '2×11'],
+        [2, 5, '合成动作丙'],
+      ],
+    );
+    expect(week.days[0]?.exercises).toEqual([]);
+    expect(week.unreadable).toEqual([
+      { day_index: 1, weekday: 0, source_cells: source, reason: 'OTHER', detail: null },
+    ]);
+  });
+
+  it('grounding case 5 locates continuation sets relegated to a note', async () => {
+    const source: [number, number][] = [
+      [2, 1],
+      [2, 2],
+      [3, 2],
+    ];
+    const week = await groundingResponse(
+      [
+        {
+          weekday: null,
+          day_index: 1,
+          rest: false,
+          exercises: [{ ...groundingExercise(source), note: '追加组：5×9' }],
+        },
+      ],
+      [
+        [2, 1, '合成动作甲'],
+        [2, 2, '2×11'],
+        [3, 2, '5×9'],
+      ],
+    );
+    expect(week.days[0]?.exercises).toEqual([]);
+    expect(week.unreadable).toEqual([
+      { day_index: 1, weekday: null, source_cells: source, reason: 'OTHER', detail: null },
+    ]);
+  });
+
+  it('grounding case 6 reports numeric errors only with a supported track and source text', async () => {
+    const week = await groundingResponse(
+      [
+        {
+          weekday: null,
+          day_index: 1,
+          rest: false,
+          exercises: [
+            {
+              ...groundingExercise([
+                [2, 1],
+                [2, 2],
+              ]),
+              reps: '17m',
+            },
+            {
+              ...groundingExercise([
+                [3, 1],
+                [3, 2],
+              ]),
+              weight_values: [null],
+            },
+            {
+              ...groundingExercise([
+                [4, 1],
+                [4, 2],
+              ]),
+              intensity_kind: 'rpe',
+              intensity_values: ['<=4'],
+            },
+          ],
+        },
+      ],
+      [
+        [2, 1, '合成动作甲'],
+        [2, 2, '17m'],
+        [3, 1, '合成动作甲'],
+        [3, 2, '随意'],
+        [4, 1, '合成动作甲'],
+        [4, 2, '<=4'],
+      ],
+    );
+    expect(week.unreadable.map(({ reason, detail }) => ({ reason, detail }))).toEqual([
+      { reason: 'OTHER', detail: null },
+      { reason: 'OTHER', detail: null },
+      { reason: 'INVALID_NUMBER', detail: { track: 'intensity', value: '<=4' } },
+    ]);
+  });
+
+  it('grounding case 7 moves zero-set warmups to located unreadable entries', async () => {
+    const source: [number, number][] = [[2, 1]];
+    const week = await groundingResponse(
+      [
+        {
+          weekday: null,
+          day_index: 1,
+          rest: false,
+          exercises: [{ ...groundingExercise(source, '合成热身准备'), sets: 0 }],
+        },
+      ],
+      [[2, 1, '合成热身准备']],
+    );
+    expect(week.days[0]?.exercises).toEqual([]);
+    expect(week.unreadable).toEqual([
+      { day_index: 1, weekday: null, source_cells: source, reason: 'MISSING_SETS', detail: null },
+    ]);
+  });
+  it('grounds unordered vertical headers and partial dates from a source year', async () => {
+    const week = await groundingResponse(
+      [
+        {
+          weekday: 0,
+          day_index: 1,
+          rest: false,
+          exercises: [
+            groundingExercise([
+              [2, 2],
+              [2, 3],
+            ]),
+          ],
+        },
+        {
+          weekday: 1,
+          day_index: 2,
+          rest: false,
+          exercises: [
+            groundingExercise([
+              [5, 2],
+              [5, 3],
+            ]),
+          ],
+        },
+        {
+          weekday: 2,
+          day_index: 3,
+          rest: false,
+          exercises: [
+            groundingExercise([
+              [8, 2],
+              [8, 3],
+            ]),
+          ],
+        },
+      ],
+      [
+        [7, 1, '3月5日'],
+        [4, 1, '3/3'],
+        [1, 1, '2032-03-01'],
+        [2, 2, '合成动作甲'],
+        [2, 3, '2×11'],
+        [5, 2, '合成动作甲'],
+        [5, 3, '2×11'],
+        [8, 2, '合成动作甲'],
+        [8, 3, '2×11'],
+      ],
+      '2032-04-05',
+    );
+    expect(week.days.map((day) => day.weekday)).toEqual([0, 2, 4]);
+    expect(week.start_date).toBe('2032-03-01');
+  });
+
+  it.each([
+    {
+      label: 'duplicate corrected weekday',
+      headers: [
+        [1, 1, 'Mon'],
+        [1, 4, '周一'],
+      ],
+      refs: [[[2, 1]], [[2, 4]]],
+    },
+    {
+      label: 'one exercise across blocks',
+      headers: [
+        [1, 1, 'Mon'],
+        [1, 4, 'Thu'],
+      ],
+      refs: [
+        [
+          [2, 1],
+          [2, 4],
+        ],
+      ],
+    },
+    {
+      label: 'unaligned day headers',
+      headers: [
+        [1, 1, 'Mon'],
+        [4, 4, 'Thu'],
+      ],
+      refs: [[[2, 1]], [[5, 4]]],
+    },
+    {
+      label: 'conflicting source weeks',
+      headers: [
+        [1, 1, '2032-03-01'],
+        [1, 4, '2032-03-09'],
+      ],
+      refs: [[[2, 1]], [[2, 4]]],
+    },
+  ])('rejects ambiguous grounding: $label', async ({ headers, refs }) => {
+    const cells = headers as [number, number, string][];
+    for (const source of refs)
+      for (const [row, col] of source as [number, number][]) cells.push([row, col, '合成动作甲']);
+    const week = await groundingResponse(
+      refs.map((source, index) => ({
+        weekday: index,
+        day_index: index + 1,
+        rest: false,
+        exercises: [groundingExercise(source as [number, number][])],
+      })),
+      cells,
+    );
+    expect(week).toEqual({ index: 0, error: 'PARSE_FAILED', reason: 'REGION_SUSPECT' });
+  });
+
+  it('keeps model dates when yearless headers provide no year', async () => {
+    const week = await groundingResponse(
+      [{ weekday: 3, day_index: 1, rest: false, exercises: [groundingExercise([[2, 1]])] }],
+      [
+        [1, 1, '3/3'],
+        [2, 1, '合成动作甲'],
+      ],
+      '2032-04-05',
+    );
+    expect(week.days[0]?.weekday).toBe(3);
+    expect(week.start_date).toBe('2032-04-05');
+  });
+
+  it('detects names within each horizontal block and keeps unnamed continuation exercises', async () => {
+    const week = await groundingResponse(
+      [
+        { weekday: 0, day_index: 1, rest: false, exercises: [groundingExercise([[2, 1]])] },
+        {
+          weekday: 3,
+          day_index: 2,
+          rest: false,
+          exercises: [
+            groundingExercise(
+              [
+                [2, 5],
+                [2, 6],
+              ],
+              '合成动作乙',
+            ),
+            { ...groundingExercise([[3, 6]], '合成动作乙'), sets: 5, reps: '9' },
+            groundingExercise(
+              [
+                [4, 5],
+                [5, 5],
+              ],
+              '合成动作丙',
+            ),
+          ],
+        },
+      ],
+      [
+        [1, 1, 'Mon'],
+        [1, 5, 'Thu'],
+        [2, 1, '合成动作甲'],
+        [2, 5, '合成动作乙'],
+        [2, 6, '2×11'],
+        [3, 6, '5×9'],
+        [4, 5, '合成动作丙'],
+        [5, 5, '合成动作丁'],
+      ],
+    );
+    expect(week.days.map((day) => day.exercises.length)).toEqual([1, 2]);
+    expect(week.unreadable).toEqual([
+      {
+        day_index: 2,
+        weekday: 3,
+        source_cells: [
+          [4, 5],
+          [5, 5],
+        ],
+        reason: 'OTHER',
+        detail: null,
+      },
+    ]);
+  });
+
+  it.each([
+    { name: '合成激活准备', reps: 'invalid', weight_values: [], unparsed: [] },
+    { name: '合成Warm准备', reps: '', weight_values: ['43'], unparsed: [] },
+    { name: '合成说明句子', reps: '', weight_values: [], unparsed: [] },
+  ])('reports missing sets before validating zero-set non-exercises: $name', async (fields) => {
+    const week = await groundingResponse(
+      [
+        {
+          weekday: null,
+          day_index: 1,
+          rest: false,
+          exercises: [{ ...groundingExercise([[2, 1]]), ...fields, sets: 0 }],
+        },
+      ],
+      [[2, 1, fields.name]],
+    );
+    expect(week.days[0]?.exercises).toEqual([]);
+    expect(week.unreadable[0]?.reason).toBe('MISSING_SETS');
+  });
+  it.each(['rpe4', 'RIR1'])(
+    'does not treat a numeric intensity marker as another name: %s',
+    async (marker) => {
+      const week = await groundingResponse(
+        [
+          {
+            weekday: null,
+            day_index: 1,
+            rest: false,
+            exercises: [
+              groundingExercise([
+                [2, 1],
+                [2, 2],
+                [3, 2],
+              ]),
+            ],
+          },
+        ],
+        [
+          [2, 1, '合成动作甲'],
+          [2, 2, '2×11'],
+          [3, 2, marker],
+        ],
+      );
+      expect(week.days[0]?.exercises).toHaveLength(1);
+      expect(week.unreadable).toEqual([]);
+    },
+  );
+
+  it('grounds a Chinese weekday with a trailing period without returning a negative index', async () => {
+    const week = await groundingResponse(
+      [{ weekday: 0, day_index: 1, rest: false, exercises: [groundingExercise([[2, 1]])] }],
+      [
+        [1, 1, '星期五.'],
+        [2, 1, '合成动作甲'],
+      ],
+    );
+    expect(week.days[0]?.weekday).toBe(4);
+  });
+  it('recognizes continuation notation even when the model changes the multiplication glyph', async () => {
+    const week = await groundingResponse(
+      [
+        {
+          weekday: null,
+          day_index: 1,
+          rest: false,
+          exercises: [
+            {
+              ...groundingExercise([
+                [2, 1],
+                [2, 2],
+                [3, 2],
+              ]),
+              note: '追加组 5x9',
+            },
+          ],
+        },
+      ],
+      [
+        [2, 1, '合成动作甲'],
+        [2, 2, '2×11'],
+        [3, 2, '5×9'],
+      ],
+    );
+    expect(week.days[0]?.exercises).toEqual([]);
+    expect(week.unreadable[0]?.reason).toBe('OTHER');
+  });
+  it.each([
+    { rest: true, regroup: false },
+    { rest: false, regroup: false },
+    { rest: true, regroup: true },
+    { rest: false, regroup: true },
+  ])(
+    'grounding D1 drops information-free days: rest=$rest regroup=$regroup',
+    async ({ rest, regroup }) => {
+      const first = groundingExercise([
+        [2, 1],
+        [2, 2],
+      ]);
+      const last = groundingExercise([
+        [2, 5],
+        [2, 6],
+      ]);
+      const training = regroup
+        ? [{ weekday: 0, day_index: 1, rest: false, exercises: [first, last] }]
+        : [
+            { weekday: 0, day_index: 1, rest: false, exercises: [first] },
+            { weekday: 1, day_index: 2, rest: false, exercises: [last] },
+          ];
+      const week = await groundingResponse(
+        [...training, { weekday: 5, day_index: 3, rest, exercises: [] }],
+        [
+          [1, 1, 'Mon'],
+          [1, 5, 'Sat'],
+          [2, 1, '合成动作甲'],
+          [2, 2, '2×11'],
+          [2, 5, '合成动作甲'],
+          [2, 6, '2×11'],
+        ],
+      );
+      expect(week.days.map((day) => [day.weekday, day.exercises.length])).toEqual([
+        [0, 1],
+        [5, 1],
+      ]);
+      expect(week.unreadable).toEqual([]);
+    },
+  );
+
+  it('grounding D1 drops empty days without headers', async () => {
+    const week = await groundingResponse(
+      [{ weekday: null, day_index: 1, rest: false, exercises: [] }],
+      [[2, 1, '合成说明']],
+    );
+    expect(week.days).toEqual([]);
+    expect(week.unreadable).toEqual([]);
+  });
+
+  it('grounding D1 retains days containing only unreadable entries', async () => {
+    const week = await groundingResponse(
+      [
+        {
+          weekday: 0,
+          day_index: 4,
+          rest: false,
+          exercises: [{ ...groundingExercise([[2, 1]]), reps: 'unsupported' }],
+        },
+      ],
+      [
+        [1, 1, 'Sat'],
+        [2, 1, '合成动作甲'],
+      ],
+    );
+    expect(week.days).toEqual([{ weekday: 5, day_index: 4, rest: false, exercises: [] }]);
+    expect(week.unreadable).toEqual([
+      { weekday: 5, day_index: 4, source_cells: [[2, 1]], reason: 'OTHER', detail: null },
+    ]);
+  });
+
+  it.each([
+    { label: 'empty note', weight: '73*3/61', values: ['73', '73', '73', '61'], note: '' },
+    {
+      label: 'prescription-only note',
+      weight: '73*3/61',
+      values: ['73', '73', '73', '61'],
+      note: '处方 4×6',
+    },
+    {
+      label: 'weight-list note',
+      weight: '73*3/61',
+      values: ['73', '73', '73', '61'],
+      note: '重量 73*3/61',
+    },
+    {
+      label: 'standalone repeated load',
+      weight: '73*4',
+      values: ['73', '73', '73', '73'],
+      note: '重量 73*4',
+    },
+  ])('grounding D2 keeps a split back-off exercise: $label', async ({ weight, values, note }) => {
+    const source: [number, number][] = [
+      [4, 8],
+      [4, 9],
+    ];
+    const week = await groundingResponse(
+      [
+        {
+          weekday: null,
+          day_index: 1,
+          rest: false,
+          exercises: [
+            { ...groundingExercise(source), sets: 4, reps: '6', weight_values: values, note },
+          ],
+        },
+      ],
+      [
+        [4, 8, '4*6'],
+        [4, 9, weight],
+      ],
+    );
+    expect(week.days[0]?.exercises).toHaveLength(1);
+    expect(week.days[0]?.exercises[0]).toMatchObject({
+      source_cells: source,
+      sets: 4,
+      reps: '6',
+      weight_values: values,
+      note,
+    });
+    expect(week.unreadable).toEqual([]);
+  });
+
+  it('grounding D2 excludes marked intensity notation from prescriptions', async () => {
+    const week = await groundingResponse(
+      [
+        {
+          weekday: null,
+          day_index: 1,
+          rest: false,
+          exercises: [
+            {
+              ...groundingExercise([
+                [4, 8],
+                [4, 9],
+              ]),
+              sets: 4,
+              reps: '6',
+              intensity_kind: 'rpe',
+              intensity_values: ['4', '4', '4', '4'],
+              note: 'RPE4*4',
+            },
+          ],
+        },
+      ],
+      [
+        [4, 8, '4*6'],
+        [4, 9, 'RPE4*4'],
+      ],
+    );
+    expect(week.days[0]?.exercises).toHaveLength(1);
+    expect(week.unreadable).toEqual([]);
+  });
+
+  it.each([
+    { label: 'empty note', note: '', unreadable: false },
+    { label: 'only the structured prescription in note', note: '处方 4×6', unreadable: false },
+    { label: 'extra prescription in note', note: '追加 2×9', unreadable: true },
+  ])(
+    'grounding D2 requires the extra prescription in note: $label',
+    async ({ note, unreadable }) => {
+      const week = await groundingResponse(
+        [
+          {
+            weekday: null,
+            day_index: 1,
+            rest: false,
+            exercises: [
+              {
+                ...groundingExercise([
+                  [4, 8],
+                  [5, 8],
+                ]),
+                sets: 4,
+                reps: '6',
+                note,
+              },
+            ],
+          },
+        ],
+        [
+          [4, 8, '4*6'],
+          [5, 8, '2*9'],
+        ],
+      );
+      expect(week.days[0]?.exercises).toHaveLength(unreadable ? 0 : 1);
+      expect(week.unreadable.map((item) => item.reason)).toEqual(unreadable ? ['OTHER'] : []);
+    },
+  );
+  it.each([
+    { label: 'matched low-load repeat', text: '23*4', value: '23', unreadable: false },
+    {
+      label: 'extra prescription with coincident load but different count',
+      text: '2*9',
+      value: '2',
+      unreadable: true,
+    },
+  ])('grounding low-load repeat: $label', async ({ text, value, unreadable }) => {
+    const week = await groundingResponse(
+      [
+        {
+          weekday: null,
+          day_index: 1,
+          rest: false,
+          exercises: [
+            {
+              ...groundingExercise([
+                [4, 8],
+                [4, 9],
+              ]),
+              sets: 4,
+              reps: '6',
+              weight_values: [value, value, value, value],
+              note: text,
+            },
+          ],
+        },
+      ],
+      [
+        [4, 8, '4*6'],
+        [4, 9, text],
+      ],
+    );
+    expect(week.days[0]?.exercises).toHaveLength(unreadable ? 0 : 1);
+    expect(week.unreadable.map((item) => item.reason)).toEqual(unreadable ? ['OTHER'] : []);
+  });
+  it('grounding explicit-set markers cannot be treated as weight repeats', async () => {
+    const week = await groundingResponse(
+      [
+        {
+          weekday: null,
+          day_index: 1,
+          rest: false,
+          exercises: [
+            {
+              ...groundingExercise([
+                [4, 8],
+                [5, 8],
+              ]),
+              sets: 4,
+              reps: '6',
+              weight_values: ['2', '2', '2', '2'],
+              note: '追加 2组×4',
+            },
+          ],
+        },
+      ],
+      [
+        [4, 8, '4*6'],
+        [5, 8, '2组×4'],
+      ],
+    );
+    expect(week.days[0]?.exercises).toEqual([]);
+    expect(week.unreadable.map((item) => item.reason)).toEqual(['OTHER']);
   });
 });

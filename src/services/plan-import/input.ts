@@ -34,6 +34,17 @@ export const WeeksRequestSchema = z
   })
   .strict();
 
+export function normalizeDateCells(cells: Cell[]): Cell[] {
+  return cells.map(([row, col, text]) => {
+    const serial = /^\d+$/.test(text) ? Number(text) : NaN;
+    const normalized =
+      serial >= 36526 && serial <= 73050
+        ? new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000).toISOString().slice(0, 10)
+        : text;
+    return [row, col, normalized];
+  });
+}
+
 export function cellChars(cells: Cell[]): number {
   return cells.reduce((sum, cell) => sum + cell[2].length, 0);
 }
@@ -51,7 +62,7 @@ export function trimOutline(
     estimatedTokens({ sheets: sheets.map((sheet) => ({ name: sheet.name, cells: [] })) });
   const pages = sheets.map((sheet) => {
     const byRow = new Map<number, Cell[]>();
-    for (const cell of sheet.cells) {
+    for (const cell of normalizeDateCells(sheet.cells)) {
       const row = byRow.get(cell[0]) ?? [];
       row.push(cell);
       byRow.set(cell[0], row);

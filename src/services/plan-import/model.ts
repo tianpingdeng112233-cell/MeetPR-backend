@@ -139,7 +139,7 @@ export type UnreadableExercise = {
     }
   | {
       reason: 'INVALID_NUMBER';
-      detail: { track: 'intensity' | 'weight' | 'reps'; value: number | string | null };
+      detail: { track: 'intensity' | 'weight'; value: string };
     }
   | { reason: 'MISSING_NAME' | 'MISSING_SETS' | 'OTHER'; detail: null }
 );

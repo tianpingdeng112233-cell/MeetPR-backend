@@ -48,9 +48,32 @@ export function validateExercises(week: WeekSkeleton, cells: Cell[]): WeekResult
           }
         }
       }
-      const parsed = ExerciseSchema.safeParse(normalized);
-      if (parsed.success) return [parsed.data];
       const location = { day_index: day.day_index, weekday: day.weekday, source_cells };
+      const name = shape.name.safeParse(fields.name);
+      if (
+        sets.success &&
+        sets.data === 0 &&
+        name.success &&
+        /热身|激活|拉伸|warm/i.test(name.data)
+      ) {
+        unreadable.push({ ...location, reason: 'MISSING_SETS', detail: null });
+        return [];
+      }
+      const parsed = ExerciseSchema.safeParse(normalized);
+      if (parsed.success) {
+        const exercise = parsed.data;
+        if (
+          exercise.sets === 0 &&
+          exercise.reps === '' &&
+          exercise.intensity_values.length === 0 &&
+          exercise.weight_values.length === 0 &&
+          exercise.unparsed.length === 0
+        ) {
+          unreadable.push({ ...location, reason: 'MISSING_SETS', detail: null });
+          return [];
+        }
+        return [exercise];
+      }
       const invalidNumber = parsed.error.issues.find(
         (issue) =>
           ((issue.path[0] === 'intensity_values' || issue.path[0] === 'weight_values') &&
@@ -69,26 +92,25 @@ export function validateExercises(week: WeekSkeleton, cells: Cell[]): WeekResult
         const value: unknown = Array.isArray(entries)
           ? entries[Number(invalidNumber.path[1])]
           : entries;
-        // Invalid strings can contain original cell text. Only echo numeric scalars.
-        const safeValue =
-          typeof value === 'number' && Number.isFinite(value)
-            ? value
-            : typeof value === 'string' && /^[+-]?\d+(?:\.\d+)?$/.test(value)
-              ? value
-              : null;
-        unreadable.push({
-          ...location,
-          reason: 'INVALID_NUMBER',
-          detail: {
-            track:
-              field === 'intensity_values'
-                ? 'intensity'
-                : field === 'weight_values'
-                  ? 'weight'
-                  : 'reps',
-            value: safeValue,
-          },
-        });
+        const sourceText =
+          typeof value === 'string'
+            ? cells.find(
+                ([row, col, text]) =>
+                  text === value.trim() && source_cells.some(([r, c]) => r === row && c === col),
+              )?.[2]
+            : undefined;
+        if (field !== 'reps' && sourceText) {
+          unreadable.push({
+            ...location,
+            reason: 'INVALID_NUMBER',
+            detail: {
+              track: field === 'intensity_values' ? 'intensity' : 'weight',
+              value: sourceText,
+            },
+          });
+        } else {
+          unreadable.push({ ...location, reason: 'OTHER', detail: null });
+        }
       } else if (mismatch && Array.isArray(values) && typeof fields.sets === 'number') {
         unreadable.push({
           ...location,
