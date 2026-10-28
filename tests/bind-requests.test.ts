@@ -1,5 +1,6 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import pino from 'pino';
+import { describe, expect, it, vi } from 'vitest';
 
 import { auth, ids, makeContext, type TestContext } from './helpers/bindEval';
 
@@ -15,6 +16,184 @@ async function makeCode(
 }
 
 describe('student bind requests', () => {
+  it.each([true, false])(
+    'enqueues bind_accepted once for the student (skip_evaluation=%s)',
+    async (skipEvaluation) => {
+      const ctx = await makeContext(undefined, { PUSH_ENABLED: true });
+      const code = await makeCode(ctx);
+      const created = await request(ctx.app)
+        .post('/bind-requests')
+        .set(auth(ctx.freeStudentToken))
+        .send({ code, display_name: '陈某' });
+      const requestId = created.body.id as string;
+      const accept = () =>
+        request(ctx.app)
+          .post(`/coach/bind-requests/${requestId}/accept`)
+          .set(auth(ctx.coachToken))
+          .send({ skip_evaluation: skipEvaluation });
+
+      const accepted = await accept();
+      expect(accepted.status).toBe(200);
+      expect(accepted.body.bind_request.status).toBe('accepted');
+      expect(accepted.body.evaluation_period === null).toBe(skipEvaluation);
+      const rows = await ctx.db
+        .selectFrom('notification_outbox')
+        .selectAll()
+        .where('event_type', '=', 'bind_accepted')
+        .execute();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        aggregate_id: created.body.id,
+        recipient_id: ids.freeStudent,
+        status: 'pending',
+        payload: {
+          coach_name: 'Coach A',
+          student_id: ids.freeStudent,
+          request_id: created.body.id,
+        },
+      });
+
+      expect((await accept()).status).toBe(409);
+      expect(
+        await ctx.db
+          .selectFrom('notification_outbox')
+          .selectAll()
+          .where('event_type', '=', 'bind_accepted')
+          .execute(),
+      ).toHaveLength(1);
+    },
+  );
+
+  it('logs an outbox insert error and keeps the successful accept response unchanged', async () => {
+    const warn = vi.fn();
+    const logger = pino({ level: 'silent' });
+    logger.warn = warn;
+    const ctx = await makeContext(logger, { PUSH_ENABLED: true });
+    const code = await makeCode(ctx);
+    const created = await request(ctx.app)
+      .post('/bind-requests')
+      .set(auth(ctx.freeStudentToken))
+      .send({ code, display_name: '陈某' });
+    const requestId = created.body.id as string;
+    await ctx.db.schema.dropTable('notification_outbox').execute();
+
+    const accepted = await request(ctx.app)
+      .post(`/coach/bind-requests/${requestId}/accept`)
+      .set(auth(ctx.coachToken))
+      .send({ skip_evaluation: true });
+
+    expect(accepted.status).toBe(200);
+    expect(accepted.body).toEqual({
+      bind_request: {
+        id: created.body.id,
+        student_id: ids.freeStudent,
+        coach_id: ids.coach,
+        coach_display_name: null,
+        status: 'accepted',
+        submitted_at: created.body.submitted_at,
+        responded_at: expect.any(String),
+        expired_at: created.body.expired_at,
+        invite_code_id: created.body.invite_code_id,
+        skip_evaluation: true,
+        skip_reason: null,
+      },
+      evaluation_period: null,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(Error), eventType: 'bind_accepted' }),
+      'push_outbox_enqueue_failed',
+    );
+    const roster = await request(ctx.app).get('/coach/students').set(auth(ctx.coachToken));
+    expect(roster.body.students).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: ids.freeStudent })]),
+    );
+  });
+
+  it.each(['reject', 'expire', 'cancel'] as const)(
+    'does not enqueue bind_accepted after %s',
+    async (action) => {
+      const ctx = await makeContext(undefined, { PUSH_ENABLED: true });
+      const code = await makeCode(ctx);
+      const created = await request(ctx.app)
+        .post('/bind-requests')
+        .set(auth(ctx.freeStudentToken))
+        .send({ code, display_name: '陈某' });
+      const requestId = created.body.id as string;
+      if (action === 'reject') {
+        const rejected = await request(ctx.app)
+          .post(`/coach/bind-requests/${requestId}/reject`)
+          .set(auth(ctx.coachToken))
+          .send({});
+        expect(rejected.status).toBe(200);
+      } else if (action === 'cancel') {
+        const cancelled = await request(ctx.app)
+          .delete(`/bind-requests/${requestId}`)
+          .set(auth(ctx.freeStudentToken));
+        expect(cancelled.status).toBe(204);
+      } else {
+        await ctx.db
+          .updateTable('bind_requests')
+          .set({ expired_at: new Date(Date.now() - 1000) })
+          .where('id', '=', created.body.id)
+          .execute();
+      }
+      const accepted = await request(ctx.app)
+        .post(`/coach/bind-requests/${requestId}/accept`)
+        .set(auth(ctx.coachToken))
+        .send({ skip_evaluation: true });
+      expect(accepted.status).toBe(409);
+      expect(
+        await ctx.db
+          .selectFrom('notification_outbox')
+          .selectAll()
+          .where('event_type', '=', 'bind_accepted')
+          .execute(),
+      ).toEqual([]);
+    },
+  );
+
+  it('keeps the push gate disabled by default when accepting', async () => {
+    const ctx = await makeContext();
+    const code = await makeCode(ctx);
+    const created = await request(ctx.app)
+      .post('/bind-requests')
+      .set(auth(ctx.freeStudentToken))
+      .send({ code, display_name: '陈某' });
+    const requestId = created.body.id as string;
+    const accepted = await request(ctx.app)
+      .post(`/coach/bind-requests/${requestId}/accept`)
+      .set(auth(ctx.coachToken))
+      .send({ skip_evaluation: true });
+    expect(accepted.status).toBe(200);
+    expect(await ctx.db.selectFrom('notification_outbox').selectAll().execute()).toEqual([]);
+  });
+
+  it('enqueues bind_accepted with a missing coach profile for localized fallback', async () => {
+    const ctx = await makeContext(undefined, { PUSH_ENABLED: true });
+    const code = await makeCode(ctx);
+    const created = await request(ctx.app)
+      .post('/bind-requests')
+      .set(auth(ctx.freeStudentToken))
+      .send({ code, display_name: '陈某' });
+    const requestId = created.body.id as string;
+    await ctx.db.deleteFrom('coach_profiles').where('user_id', '=', ids.coach).execute();
+    const accepted = await request(ctx.app)
+      .post(`/coach/bind-requests/${requestId}/accept`)
+      .set(auth(ctx.coachToken))
+      .send({ skip_evaluation: true });
+    expect(accepted.status).toBe(200);
+    const row = await ctx.db
+      .selectFrom('notification_outbox')
+      .selectAll()
+      .where('event_type', '=', 'bind_accepted')
+      .executeTakeFirstOrThrow();
+    expect(row.payload).toEqual({
+      coach_name: null,
+      student_id: ids.freeStudent,
+      request_id: created.body.id,
+    });
+  });
+
   it('enqueues bind_request for the invite-code coach after creation', async () => {
     const ctx = await makeContext(undefined, { PUSH_ENABLED: true });
     const code = await makeCode(ctx);

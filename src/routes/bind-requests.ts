@@ -213,6 +213,25 @@ export function coachBindRequestsRouter(deps: BindRequestsRouterDeps): ExpressRo
         return;
       }
 
+      if (deps.pushEnabled) {
+        await tryEnqueuePushOutbox(deps.db, deps.logger, 'bind_accepted', async () => {
+          const coach = await deps.db
+            .selectFrom('coach_profiles')
+            .select('display_name')
+            .where('user_id', '=', result.bindRequest.coach_id)
+            .executeTakeFirst();
+          return {
+            aggregateId: result.bindRequest.id,
+            recipientId: result.bindRequest.student_id,
+            payload: {
+              coach_name: coach?.display_name ?? null,
+              student_id: result.bindRequest.student_id,
+              request_id: result.bindRequest.id,
+            },
+          };
+        });
+      }
+
       res.status(200).json({
         bind_request: result.bindRequest,
         evaluation_period: result.evaluationPeriod,

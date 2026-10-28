@@ -127,6 +127,14 @@ const BindRequestSchema = z
   })
   .strict();
 
+const BindAcceptedSchema = z
+  .object({
+    coach_name: z.string().trim().nullish(),
+    student_id: UuidSchema,
+    request_id: UuidSchema,
+  })
+  .strict();
+
 const PlanShiftSchema = z
   .object({
     student_name: DisplayNameSchema,
@@ -297,6 +305,31 @@ export const PUSH_PAYLOAD_BUILDERS = {
             },
       threadId: 'bind_request',
       custom: { kind: 'bind_request', request_id: value.request_id },
+    };
+  },
+  bind_accepted: (payload, locale = 'zh') => {
+    const value = BindAcceptedSchema.parse(decodedPayload(payload));
+    const coachName = value.coach_name;
+    return {
+      alert:
+        locale === 'en'
+          ? {
+              title: `${coachName && cjkFree(coachName) ? coachName : 'Your coach'} accepted your request`,
+              body: "Open MeetPR to see what's next",
+            }
+          : {
+              title: coachName
+                ? copy(locale, '{0}已接受你的申请', [coachName])
+                : copy(locale, '教练已接受你的申请'),
+              body: copy(locale, '打开 MeetPR 看看接下来做什么'),
+            },
+      collapseId: `bind-accepted-${value.request_id}`,
+      threadId: 'bind_accepted',
+      custom: {
+        kind: 'bind_accepted',
+        student_id: value.student_id,
+        request_id: value.request_id,
+      },
     };
   },
   plan_shift: (payload, locale = 'zh') => {
