@@ -12,6 +12,7 @@ import {
 import { isIsoCalendarDate } from '../../utils/date';
 import {
   intensityState,
+  usesLegacyIntensityShape,
   usesNewIntensityShape,
   validateIntensityState,
   validateIntensityValues,
@@ -271,7 +272,7 @@ const PlanSetBodySchema = z.object({
 
 export const CreatePlanSetBodySchema = PlanSetBodySchema.superRefine((data, ctx) => {
   validateSetCommon(data, ctx);
-  if (usesNewIntensityShape(data)) {
+  if (usesNewIntensityShape(data) && !usesLegacyIntensityShape(data)) {
     if (data.load_mode === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -303,7 +304,7 @@ export const CreatePlanSetBodySchema = PlanSetBodySchema.superRefine((data, ctx)
 
 export const PatchPlanSetBodySchema = PlanSetBodySchema.partial().superRefine((data, ctx) => {
   validateSetCommon(data, ctx);
-  if (usesNewIntensityShape(data)) {
+  if (usesNewIntensityShape(data) && !usesLegacyIntensityShape(data)) {
     addIntensityIssues(validateIntensityValues(intensityState(data)), ctx);
   } else {
     validateLegacyIntensity(data, ctx);

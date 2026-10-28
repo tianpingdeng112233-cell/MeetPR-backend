@@ -40,6 +40,107 @@ export interface IntensityInput {
   target_weight?: DecimalInput;
 }
 
+interface BodyweightWriteInput extends IntensityInput {
+  intensity_mode?: 'weight' | 'rpe' | null | undefined;
+  target_value?: DecimalInput;
+  coach_note?: string | null | undefined;
+}
+
+// Keep this token boundary/removal identical to migration 0080. Only the first
+// standalone marker is protocol; whitespace and free-text mentions are data.
+const BODYWEIGHT_MARKER = /(^|\s)(自重|bodyweight)(\s|$)/i;
+
+export function bodyweightCoachNote(note: string | null): string {
+  if (BODYWEIGHT_MARKER.test(note ?? '')) return note ?? '自重';
+  return `自重${note === null ? '' : /^\s/.test(note) ? note : ` ${note}`}`;
+}
+
+export function normalizeLegacyBodyweightSets<T extends BodyweightWriteInput>(sets: T[]): T[] {
+  if (
+    sets.length === 0 ||
+    !sets.every(
+      (set) =>
+        set.load_mode == null &&
+        set.intensity_mode === 'rpe' &&
+        Number(set.target_value) === 10 &&
+        BODYWEIGHT_MARKER.test(set.coach_note ?? ''),
+    )
+  )
+    return sets;
+  return sets.map((set) => {
+    const note = (set.coach_note ?? '').replace(BODYWEIGHT_MARKER, '$1$3');
+    return { ...set, load_mode: 'bodyweight', coach_note: note === '' ? null : note };
+  });
+}
+
+// An explicit null load_mode is also used by old clients. Do not treat that
+// alone as a new-system prescription, or per-row validation cannot run later.
+export function usesLegacyIntensityShape(input: BodyweightWriteInput): boolean {
+  return (
+    input.load_mode == null &&
+    input.intensity_mode != null &&
+    input.target_value != null &&
+    !NEW_INTENSITY_FIELDS.some((field) => field !== 'load_mode' && hasOwn(input, field))
+  );
+}
+
+// Old clients edit the projected fields. Let those edits leave the new modes,
+// while metadata-only patches continue to preserve the actual prescription.
+export function legacyIntensityPatch(
+  existing: Selectable<PlanSetsTable>,
+  patch: BodyweightWriteInput,
+): Updateable<PlanSetsTable> | null {
+  if (
+    patch.load_mode != null ||
+    NEW_INTENSITY_FIELDS.some((field) => field !== 'load_mode' && hasOwn(patch, field)) ||
+    (patch.intensity_mode === undefined && patch.target_value === undefined)
+  )
+    return null;
+  const noLoad = existing.load_mode === 'bodyweight' || existing.load_mode === 'free_weight';
+  if (!noLoad && patch.load_mode !== null) return null;
+  const note =
+    patch.coach_note !== undefined
+      ? patch.coach_note
+      : existing.load_mode === 'bodyweight'
+        ? bodyweightCoachNote(existing.coach_note)
+        : existing.coach_note;
+  const mode = patch.intensity_mode ?? (noLoad ? 'rpe' : existing.intensity_mode);
+  const value =
+    patch.target_value === undefined
+      ? noLoad
+        ? '10.00'
+        : existing.target_value
+      : patch.target_value;
+  const projectedNote =
+    existing.load_mode === 'bodyweight'
+      ? bodyweightCoachNote(existing.coach_note)
+      : existing.coach_note;
+  if (
+    noLoad &&
+    mode === 'rpe' &&
+    Number(value) === 10 &&
+    (note === projectedNote ||
+      BODYWEIGHT_MARKER.test(note ?? '') === (existing.load_mode === 'bodyweight'))
+  ) {
+    // Saving the old projection is not an instruction to discard an existing
+    // canonical prescription. Only legacy NULL-mode rows need normalization.
+    return { coach_note: note === projectedNote ? existing.coach_note : note };
+  }
+  return {
+    ...intensityState({}),
+    intensity_mode: mode,
+    target_value:
+      patch.target_value === undefined
+        ? noLoad
+          ? '10.00'
+          : existing.target_value
+        : patch.target_value === null
+          ? null
+          : Number(patch.target_value).toFixed(2),
+    coach_note: note,
+  };
+}
+
 export interface IntensityState {
   load_mode: LoadMode | null;
   pct_anchor: PctAnchor | null;
@@ -224,6 +325,21 @@ export function validateIntensityState(state: IntensityState): IntensityValidati
   }
 
   switch (state.load_mode) {
+    case 'free_weight':
+    case 'bodyweight': {
+      const allowed = new Set(['target_pct', 'target_rpe', 'rir_target']);
+      rejectOtherModeFields(state, allowed, issues);
+      if (
+        [state.target_pct, state.target_rpe, state.rir_target].filter((value) => value !== null)
+          .length > 1
+      ) {
+        issues.push(issue('load_mode', 'at most one intensity target is allowed'));
+      }
+      if (state.target_weight !== null) {
+        issues.push(issue('target_weight', 'target_weight must be null for this load_mode'));
+      }
+      break;
+    }
     case null:
       requireField(state, 'target_weight', issues);
       rejectOtherModeFields(state, new Set(), issues);
@@ -282,9 +398,14 @@ function requiredInteger(value: number | null, field: string): number {
   return value;
 }
 
-export function intensityWrite(
-  state: IntensityState,
-): Updateable<PlanSetsTable> & { intensity_mode: 'weight' | 'rpe'; target_value: string } {
+export function intensityWrite(state: IntensityState): Updateable<PlanSetsTable> & {
+  intensity_mode: 'weight' | 'rpe' | null;
+  target_value: string | null;
+} {
+  if (state.load_mode === 'free_weight' || state.load_mode === 'bodyweight') {
+    // These modes have no legacy target in storage. Compatibility belongs to serialization.
+    return { ...state, intensity_mode: null, target_value: null };
+  }
   let intensityMode: 'weight' | 'rpe';
   let targetValue: string;
 
@@ -348,7 +469,12 @@ export function mergedIntensityState(existing: PlanSetRow, patch: IntensityInput
   if (switchesMode) {
     for (const field of MODE_VALUE_FIELDS) state[field] = null;
     state.pct_anchor = null;
-    if (patch.load_mode === 'weight_range') state.target_weight = null;
+    if (
+      patch.load_mode === 'weight_range' ||
+      patch.load_mode === 'free_weight' ||
+      patch.load_mode === 'bodyweight'
+    )
+      state.target_weight = null;
   }
 
   if (patch.load_mode !== undefined) state.load_mode = patch.load_mode;

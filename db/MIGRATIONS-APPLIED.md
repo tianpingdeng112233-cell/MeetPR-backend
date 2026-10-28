@@ -85,6 +85,8 @@
 
 **0070 已应用（2026-09-16）**：真实 RDS PostgreSQL 18.3；迁移前逻辑备份通过，持久恢复点为 RDS 手动全量快照任务 `t-0mqie3hpxlx0zw6o6u`（执行成功）。原始 SQL 事务执行后保留 7 条天级行、回填 2 条父批次，seq 无空值且唯一、序列值 7。backend #276 已合并并部署 `d0b919d`；gate 已核验生效，web #101/#53 已换装；实际证据见 [本批部署记录](../docs/deployment-045-web101-53-2026-09-16.md)。0069 与 F-001 contract 迁移未执行。
 
+**0080 未应用（2026-10-28，spec 056 卡 A）**：`db/migrations/0080-load-types.sql` 已编写；`git fetch origin` 后确认 0080 未占用，0076 保留给 052。放宽两种新负荷类型的旧目标非空约束，回填备注自重组并保留回滚表；仅在内存数据库测试，staging / 其它真实库均未执行。回滚 SQL 与限制见迁移文件尾，验证证据见 [本卡 journal](../docs/journal/2026-10-28-056-A.md)。
+
 ## 变更历史
 
 - **2026-10-28（spec 055 绑定接受推送 + 首次体验判定）** — `sha-3ee967697a8995e4f4ad266c373a5d899ea55764`（=staging HEAD，#338：教练接受绑定后给学员发 `bind_accepted` 推送；`GET /bind-requests/mine` 返回当前绑定的 `first_run`（欢迎页与第一份计划卡的判定，`first_plan` 只在已发布时返回）；埋点白名单新增 first-run 事件），无新迁移、无 web/ 换装。[ACR build run 40629666020](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/40629666020)、[部署 run 40629928449](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/40629928449)（`migrations_applied=true`）绿；同次 Global DOCR 镜像构建红（已知推送 403，未影响国内）。curl 实证：/health 200；`/bind-requests/mine` 无 token 回 401。env 未动。真推送送达与两端首次体验（rn#111 / ios#382）待真机验收。
