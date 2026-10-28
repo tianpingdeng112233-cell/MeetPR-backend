@@ -59,6 +59,17 @@ export function validateExercises(week: WeekSkeleton, cells: Cell[]): WeekResult
         unreadable.push({ ...location, reason: 'MISSING_SETS', detail: null });
         return [];
       }
+      if (
+        sets.success &&
+        sets.data === 0 &&
+        (fields.unparsed === undefined ||
+          (Array.isArray(fields.unparsed) && fields.unparsed.length === 0)) &&
+        !cells.some(
+          ([row, col, text]) =>
+            /\d/.test(text) && source_cells.some(([r, c]) => r === row && c === col),
+        )
+      )
+        return [];
       const parsed = ExerciseSchema.safeParse(normalized);
       if (parsed.success) {
         const exercise = parsed.data;

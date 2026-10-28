@@ -567,3 +567,49 @@ describe('DeepSeek plan import adapter', () => {
     expect(onUsage).toHaveBeenLastCalledWith({ prompt_tokens: 20, completion_tokens: 10 });
   });
 });
+
+it.each(['none', '39/47', '6/7'])(
+  '1028d F5 splits an oversized ordinal outline with weight %s',
+  async (weight) => {
+    const cells: [number, number, string][] = Array.from(
+      { length: 11 },
+      (_, i): [number, number, string][] => [
+        [i * 2 + 1, 1, `Day${String(i + 1)}`],
+        [i * 2 + 2, 1, '合成动作甲'],
+        [i * 2 + 2, 2, '2×11'],
+      ],
+    ).flat();
+    if (weight !== 'none') cells[2] = [2, 2, weight];
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                sheet: 'Cycle',
+                header_region: null,
+                weeks: [
+                  {
+                    index: 0,
+                    label: 'Cycle',
+                    start_date: null,
+                    training_days: 11,
+                    region: { r1: 1, c1: 1, r2: 22, c2: 2 },
+                  },
+                ],
+              }),
+            },
+          },
+        ],
+      }),
+    );
+    const model = createDeepSeekPlanImportModel({ apiKey: 'test-placeholder', fetch });
+    const result = await model.outline({ sheets: [{ name: 'Cycle', cells }] });
+    expect(
+      result.weeks.map((w) => ({ index: w.index, days: w.training_days, region: w.region })),
+    ).toEqual([
+      { index: 0, days: 7, region: { r1: 1, c1: 1, r2: 14, c2: 2 } },
+      { index: 1, days: 4, region: { r1: 15, c1: 1, r2: 22, c2: 2 } },
+    ]);
+  },
+);

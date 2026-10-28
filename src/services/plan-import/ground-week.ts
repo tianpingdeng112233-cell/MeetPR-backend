@@ -66,7 +66,9 @@ function dayBlocks(cells: Cell[]) {
       return date ? [monday(date)] : [];
     }),
   );
-  if (anchors.size > 1) return suspect();
+  // Template cycles need not coincide with a calendar week. Ambiguous headers
+  // provide no authority to overwrite model hints or reject the whole week.
+  if (anchors.size > 1) return undefined;
   const headers = normalized.flatMap(([row, col, text]) => {
     const header = dayHeader(text, [...anchors][0]);
     return header ? [{ row, col, ...header }] : [];
@@ -76,7 +78,12 @@ function dayBlocks(cells: Cell[]) {
   if (!first) return undefined;
   const horizontal = headers.length > 1 && headers.every((header) => header.row === first.row);
   const vertical = headers.every((header) => header.col === first.col);
-  if (!horizontal && !vertical) return suspect();
+  if (!horizontal && !vertical) return undefined;
+  if (
+    headers.some((header) => header.weekday === null) ||
+    new Set(headers.map((header) => header.weekday)).size !== headers.length
+  )
+    return undefined;
   const sorted = headers.sort((a, b) => (horizontal ? a.col - b.col : a.row - b.row));
   return {
     headers: sorted,
@@ -128,10 +135,32 @@ function groundExercises(
   week: WeekResult,
   cells: Cell[],
   blocks: ReturnType<typeof dayBlocks>,
+  headerCells: Cell[],
 ): WeekResult {
   // The leftmost candidate is selected within each day block, not across the whole row.
+  const normalized = normalizeDateCells(cells);
+  const noteLabel = /^(?:备注|说明|notes|反馈)$/i;
+  const noteHeaders = [...headerCells, ...cells].filter(([, , text]) =>
+    noteLabel.test(text.trim()),
+  );
+  const rowNumberHeaders = [...headerCells, ...cells].filter(([, , text]) =>
+    /^(?:序号|编号|no\.?|#)$/i.test(text.trim()),
+  );
+  const firstPrescription = new Map<string, number>();
+  for (const [row, col, text] of normalized) {
+    if (
+      dayHeader(text) ||
+      rowNumberHeaders.some(([headerRow, headerCol]) => headerCol === col && headerRow < row) ||
+      !/^(?:[\d\s.,+*/×x%<>=≤≥@~–—-]+|\d+\s*(?:组|次|kg|公斤).*|(?:rpe|rir)(?:\b|(?=[\d@<>=≤≥])).*)$/i.test(
+        text,
+      )
+    )
+      continue;
+    const key = `${String(blocks?.locate([row, col]) ?? 0)}:${String(row)}`;
+    firstPrescription.set(key, Math.min(firstPrescription.get(key) ?? Infinity, col));
+  }
   const names = new Map<string, Cell>();
-  for (const cell of normalizeDateCells(cells)) {
+  for (const cell of normalized) {
     const [row, col, text] = cell;
     const block = blocks?.locate([row, col]) ?? 0;
     if (
@@ -143,6 +172,12 @@ function groundExercises(
     )
       continue;
     const key = `${String(block)}:${String(row)}`;
+    if (
+      noteLabel.test(text.trim()) ||
+      noteHeaders.some(([headerRow, headerCol]) => headerCol === col && headerRow < row) ||
+      col > (firstPrescription.get(key) ?? Infinity)
+    )
+      continue;
     const previous = names.get(key);
     if (!previous || col < previous[1]) names.set(key, cell);
   }
@@ -195,9 +230,15 @@ function groundExercises(
   return { ...week, days, unreadable };
 }
 
-export function groundWeek(week: WeekResult, cells: Cell[]): WeekResult {
-  const blocks = dayBlocks(cells);
-  week = groundExercises(week, cells, blocks);
+export function groundWeek(week: WeekResult, cells: Cell[], headerCells: Cell[] = []): WeekResult {
+  const candidateBlocks = dayBlocks(cells);
+  const locations = [...week.days.flatMap((day) => day.exercises), ...week.unreadable];
+  const blocks =
+    candidateBlocks &&
+    !locations.some((item) => item.source_cells.some((ref) => candidateBlocks.locate(ref) < 0))
+      ? candidateBlocks
+      : undefined;
+  week = groundExercises(week, cells, blocks, headerCells);
   // Empty model slots have no source evidence; the importer fills absent weekdays as rest.
   const diagnosedDays = new Set(week.unreadable.map((item) => item.day_index));
   week = {

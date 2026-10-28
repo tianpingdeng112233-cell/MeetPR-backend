@@ -68,6 +68,23 @@ export const SourceCellSchema = z.tuple([z.number().int().positive(), z.number()
 
 const UnparsedFieldSchema = z.object({ field: z.enum(['reps', 'intensity', 'weight']) });
 
+// Match the editor's range separators and emit its canonical min-max notation.
+const RepsSchema = z
+  .string()
+  .transform((text) =>
+    text.replace(/^\s*(\d{1,2})\s*(?:-|–|—|~|到|至)\s*(\d{1,2})\s*(?:次|个)?\s*$/, '$1-$2'),
+  )
+  .refine((text) => {
+    if (/^(?:\d+(?:\.\d+)?(?:\+|s)?)?$/.test(text)) return true;
+    const range = /^(\d{1,2})-(\d{1,2})$/.exec(text);
+    return (
+      range !== null &&
+      Number(range[1]) >= 1 &&
+      Number(range[2]) >= Number(range[1]) &&
+      Number(range[2]) <= 50
+    );
+  });
+
 export const ExerciseSchema = z
   .object({
     source_cells: z.array(SourceCellSchema).default([]),
@@ -80,7 +97,7 @@ export const ExerciseSchema = z
     ),
     name: z.string().trim().min(1),
     sets: z.number().int().nonnegative(),
-    reps: z.string().regex(/^(?:\d+(?:\.\d+)?(?:\+|s)?)?$/),
+    reps: RepsSchema,
     intensity_kind: z.enum(['rpe', 'rir', 'pct']).nullable(),
     intensity_values: z.array(z.string().regex(/^\d+(?:\.\d+)?$/)),
     weight_values: z.array(z.string().regex(/^\d+(?:\.\d+)?$/)),

@@ -10,6 +10,7 @@ import { groundWeek } from './ground-week';
 import { normalizeDateCells } from './input';
 import { flagInferred } from './inferred';
 import { validateExercises } from './validate-exercises';
+import { normalizeOrdinalWeek } from './day-cycles';
 
 export async function parseWeeks(
   model: PlanImportModel,
@@ -30,18 +31,21 @@ export async function parseWeeks(
         try {
           results[position] = await runModelCall(async () => {
             const result = WeekSkeletonSchema.parse(
-              await model.parseWeek(
-                {
-                  ...input,
-                  cells: normalizeDateCells(input.cells),
-                  header_cells: normalizeDateCells(input.header_cells),
-                },
-                onUsage,
+              normalizeOrdinalWeek(
+                await model.parseWeek(
+                  {
+                    ...input,
+                    cells: normalizeDateCells(input.cells),
+                    header_cells: normalizeDateCells(input.header_cells),
+                  },
+                  onUsage,
+                ),
+                input.cells,
               ),
             );
             if (result.index !== input.index) throw new Error('INVALID_WEEK_INDEX');
             return flagInferred(
-              groundWeek(validateExercises(result, input.cells), input.cells),
+              groundWeek(validateExercises(result, input.cells), input.cells, input.header_cells),
               input.cells,
             );
           });

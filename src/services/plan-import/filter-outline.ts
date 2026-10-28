@@ -1,4 +1,5 @@
 import type { Cell, Outline } from './model';
+import { splitDayCycles } from './day-cycles';
 
 const DATE = /^(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2})$/;
 const DAY =
@@ -39,8 +40,8 @@ function confirmedTrainingDays(cells: Cell[], content: Cell[]): number | undefin
 export function filterOutlineWeeks(outline: Outline, cells: Cell[]): Outline {
   return {
     ...outline,
-    weeks: outline.weeks
-      .flatMap((week) => {
+    weeks: splitDayCycles(outline, cells)
+      .weeks.flatMap((week) => {
         const { region } = week;
         const regionCells = cells.filter(
           ([row, col]) =>

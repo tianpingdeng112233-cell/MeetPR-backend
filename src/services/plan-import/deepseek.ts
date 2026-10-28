@@ -11,6 +11,7 @@ import {
 } from './model';
 import { OUTLINE_PROMPT, WEEK_PROMPT } from './prompts';
 import { PlanImportModelError, runModelCall } from './retry';
+import { normalizeOrdinalWeek, prepareCycleOutline } from './day-cycles';
 
 export const DEEPSEEK_TIMEOUT_MS = 60_000;
 export const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
@@ -143,7 +144,7 @@ export function createDeepSeekPlanImportModel(options: {
         OUTLINE_PROMPT,
         { sheets: input.sheets.map(({ name, cells }) => ({ name, cells })) },
         (value) => {
-          const result = OutlineSchema.parse(value);
+          const result = OutlineSchema.parse(prepareCycleOutline(value, input.sheets));
           if (!input.sheets.some((sheet) => sheet.name === result.sheet))
             throw new Error('MODEL_UNKNOWN_SHEET');
           return result;
@@ -158,7 +159,7 @@ export function createDeepSeekPlanImportModel(options: {
         (value) => {
           if (z.object({ region_suspect: z.literal(true) }).safeParse(value).success)
             throw new PlanImportModelError('REGION_SUSPECT');
-          const result = WeekSkeletonSchema.parse(value);
+          const result = WeekSkeletonSchema.parse(normalizeOrdinalWeek(value, input.cells));
           if (result.index !== input.index) throw new Error('MODEL_UNKNOWN_WEEK');
           return result;
         },
