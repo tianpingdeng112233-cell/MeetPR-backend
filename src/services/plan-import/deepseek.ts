@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import {
   OutlineSchema,
+  SourceCellSchema,
   WeekSkeletonSchema,
   type PlanImportModel,
   type UsageObserver,
@@ -75,8 +76,9 @@ export function createDeepSeekPlanImportModel(options: {
     input: unknown,
     validate: (value: unknown) => T,
     onUsage?: UsageObserver,
+    retryFailures = true,
   ): Promise<T> {
-    return runModelCall(async () => {
+    const call = async () => {
       const controller = new AbortController();
       const timer = setTimeout(() => {
         controller.abort();
@@ -134,7 +136,8 @@ export function createDeepSeekPlanImportModel(options: {
         clearTimeout(timer);
         if (rawResponse !== undefined) await dumpResponse(stage, rawResponse, validationError);
       }
-    });
+    };
+    return retryFailures ? runModelCall(call) : call();
   }
 
   return {
@@ -154,7 +157,9 @@ export function createDeepSeekPlanImportModel(options: {
     parseWeek: (input, onUsage) =>
       complete(
         'week',
-        WEEK_PROMPT,
+        input.correction_cells
+          ? `${WEEK_PROMPT}\n上一次输出把这些格子合并成了一个动作：${JSON.stringify(SourceCellSchema.array().parse(input.correction_cells))}；名字为空只有组次的行、以及各组处方不同的行，都要作为同名的另一个动作返回。`
+          : WEEK_PROMPT,
         { index: input.index, cells: input.cells, header_cells: input.header_cells },
         (value) => {
           if (z.object({ region_suspect: z.literal(true) }).safeParse(value).success)
@@ -164,6 +169,7 @@ export function createDeepSeekPlanImportModel(options: {
           return result;
         },
         onUsage,
+        input.correction_cells === undefined,
       ),
   };
 }

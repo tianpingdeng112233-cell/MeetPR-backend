@@ -29,7 +29,7 @@ export async function parseWeeks(
         const input = inputs[position];
         if (!input) return;
         try {
-          results[position] = await runModelCall(async () => {
+          const parse = async (correction_cells?: [number, number][]) => {
             const result = WeekSkeletonSchema.parse(
               normalizeOrdinalWeek(
                 await model.parseWeek(
@@ -37,6 +37,7 @@ export async function parseWeeks(
                     ...input,
                     cells: normalizeDateCells(input.cells),
                     header_cells: normalizeDateCells(input.header_cells),
+                    ...(correction_cells ? { correction_cells } : {}),
                   },
                   onUsage,
                 ),
@@ -48,7 +49,31 @@ export async function parseWeeks(
               groundWeek(validateExercises(result, input.cells), input.cells, input.header_cells),
               input.cells,
             );
-          });
+          };
+          const first = await runModelCall(() => parse());
+          results[position] = first;
+          const others = first.unreadable.filter((item) => item.reason === 'OTHER');
+          if (others.length > 0) {
+            const coordinates = [
+              ...new Map(
+                others
+                  .flatMap((item) => item.source_cells)
+                  .map((ref) => [JSON.stringify(ref), ref]),
+              ).values(),
+            ];
+            try {
+              // One corrective call, inside the claimed HTTP call. Reuse the
+              // usage observer even if this candidate is discarded or fails.
+              const corrected = await parse(coordinates);
+              if (
+                corrected.unreadable.filter((item) => item.reason === 'OTHER').length <
+                others.length
+              )
+                results[position] = corrected;
+            } catch {
+              // A usable first result must survive a failed correction.
+            }
+          }
         } catch (error) {
           results[position] = {
             index: input.index,

@@ -613,3 +613,78 @@ it.each(['none', '39/47', '6/7'])(
     ]);
   },
 );
+
+it('1028e split prompt requires consecutive identical prescriptions', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+    Response.json({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              index: 0,
+              start_date: null,
+              days: [],
+            }),
+          },
+        },
+      ],
+    }),
+  );
+  const model = createDeepSeekPlanImportModel({ apiKey: 'test-placeholder', fetch });
+  await model.parseWeek({ index: 0, cells: [], header_cells: [] });
+  const body = JSON.parse(fetch.mock.calls[0]?.[1]?.body as string) as {
+    messages: { role: string; content: string }[];
+  };
+  expect(body.messages[0]?.content).toContain('按连续相同处方拆成多个同名动作');
+  expect(body.messages[0]?.content).toContain('sets 为该段组数');
+});
+
+it('1028e corrective hint contains coordinates only, never prior output or cell text', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(() =>
+    Promise.resolve(
+      Response.json({
+        choices: [
+          { message: { content: JSON.stringify({ index: 0, start_date: null, days: [] }) } },
+        ],
+      }),
+    ),
+  );
+  const model = createDeepSeekPlanImportModel({ apiKey: 'test-placeholder', fetch });
+  const week = {
+    index: 0,
+    cells: [[2, 1, 'SYNTHETIC_PRIVATE_CELL']] as [number, number, string][],
+    header_cells: [],
+  };
+  await model.parseWeek(week);
+  await model.parseWeek({
+    ...week,
+    correction_cells: [
+      [2, 1],
+      [3, 2],
+    ],
+  });
+  const bodies = fetch.mock.calls.map(
+    ([, init]) =>
+      JSON.parse(init?.body as string) as { messages: { role: string; content: string }[] },
+  );
+  const original = bodies[0]?.messages[0]?.content ?? '';
+  const corrected = bodies[1]?.messages[0]?.content ?? '';
+  expect(corrected.slice(original.length)).toBe(
+    '\n上一次输出把这些格子合并成了一个动作：[[2,1],[3,2]]；名字为空只有组次的行、以及各组处方不同的行，都要作为同名的另一个动作返回。',
+  );
+  expect(corrected).not.toContain('SYNTHETIC_PRIVATE_CELL');
+  expect(bodies[1]?.messages[1]).toEqual(bodies[0]?.messages[1]);
+});
+
+it('1028e makes only one provider attempt for a failed corrective call', async () => {
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockImplementation(() =>
+      Promise.resolve(Response.json({ error: 'synthetic busy' }, { status: 503 })),
+    );
+  const model = createDeepSeekPlanImportModel({ apiKey: 'test-placeholder', fetch });
+  await expect(
+    model.parseWeek({ index: 0, cells: [], header_cells: [], correction_cells: [[2, 1]] }),
+  ).rejects.toMatchObject({ reason: 'MODEL_BUSY' });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});

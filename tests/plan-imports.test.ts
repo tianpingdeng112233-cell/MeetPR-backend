@@ -398,7 +398,7 @@ describe('coach plan imports', () => {
       },
     ]);
     expect(response.text).not.toContain('PRIVATE_CELL_TEXT');
-    expect(model.parseWeek).toHaveBeenCalledTimes(1);
+    expect(model.parseWeek).toHaveBeenCalledTimes(reason === 'OTHER' ? 2 : 1);
   });
   it.each(['fake model', 'HTTP adapter'])(
     'keeps readable exercises and locates a sets/intensity mismatch without retrying via %s',
@@ -830,7 +830,7 @@ describe('coach plan imports', () => {
       },
     ]);
     expect(response.text).not.toContain('PRIVATE_CELL_TEXT');
-    expect(parseWeek).toHaveBeenCalledTimes(2);
+    expect(parseWeek).toHaveBeenCalledTimes(reason === 'OTHER' ? 3 : 2);
   });
   it('ignores empty sheets and sends only the content sheet to the model', async () => {
     const model = { outline: vi.fn().mockResolvedValue(outline), parseWeek: vi.fn() };
@@ -2531,4 +2531,279 @@ it('1028d F2b still detects swallowed names after a row-number column', async ()
   expect(week.days[0]?.exercises).toEqual([]);
   expect(week.unreadable).toHaveLength(1);
   expect(week.unreadable[0]?.reason).toBe('OTHER');
+});
+
+it('1028e rejects an unsplit per-set prescription without relying on note', async () => {
+  const result = await groundingResponse(
+    [
+      {
+        weekday: null,
+        day_index: 1,
+        rest: false,
+        exercises: [
+          {
+            ...groundingExercise([
+              [2, 1],
+              [2, 2],
+            ]),
+            sets: 1,
+            reps: '7',
+            weight_values: ['93'],
+          },
+        ],
+      },
+    ],
+    [
+      [2, 1, '合成动作甲'],
+      [2, 2, '93x7/107x4/119x2+'],
+    ],
+  );
+  expect(result.days[0]?.exercises).toEqual([]);
+  expect(result.unreadable).toEqual([
+    {
+      day_index: 1,
+      weekday: null,
+      source_cells: [
+        [2, 1],
+        [2, 2],
+      ],
+      reason: 'OTHER',
+      detail: null,
+    },
+  ]);
+});
+
+const splitCells: [number, number, string][] = [
+  [2, 1, '合成动作甲'],
+  [2, 2, '93x7/107x4/119x2+'],
+];
+const splitPrescriptions: [string, string][] = [
+  ['93', '7'],
+  ['107', '4'],
+  ['119', '2+'],
+];
+const splitWeek = (split: boolean, start_date: string | null = null) => ({
+  index: 0,
+  start_date,
+  days: [
+    {
+      weekday: null,
+      day_index: 1,
+      rest: false,
+      exercises: (split ? splitPrescriptions : splitPrescriptions.slice(0, 1)).map(
+        ([weight, reps]) => ({
+          ...groundingExercise([
+            [2, 1],
+            [2, 2],
+          ]),
+          sets: 1,
+          reps,
+          weight_values: [weight],
+        }),
+      ),
+    },
+  ],
+});
+
+it.each(['improves', 'ties', 'fails'])(
+  '1028e retries OTHER once and preserves the best result: %s',
+  async (outcome) => {
+    const parseWeek = vi.fn<PlanImportModel['parseWeek']>().mockResolvedValueOnce(splitWeek(false));
+    if (outcome === 'fails')
+      parseWeek.mockRejectedValueOnce(new PlanImportModelError('MODEL_BUSY'));
+    else parseWeek.mockResolvedValueOnce(splitWeek(outcome === 'improves', '2044-04-04'));
+    const ctx = await enabledContext({ outline: vi.fn().mockResolvedValue(outline), parseWeek });
+    const created = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send(input);
+    const response = await request(ctx.app)
+      .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+      .set(auth(ctx.coachToken))
+      .send({ header_cells: [], weeks: [{ index: 0, cells: splitCells }] });
+    expect(response.status).toBe(200);
+    expect(parseWeek).toHaveBeenCalledTimes(2);
+    expect(parseWeek.mock.calls[0]?.[0]).not.toHaveProperty('correction_cells');
+    expect(parseWeek.mock.calls[1]?.[0]).toMatchObject({
+      correction_cells: [
+        [2, 1],
+        [2, 2],
+      ],
+    });
+    const result = response.body.weeks[0] as WeekResult;
+    expect(result.start_date).toBe(outcome === 'improves' ? '2044-04-04' : null);
+    if (outcome === 'improves') {
+      expect(result.unreadable).toEqual([]);
+      expect(
+        result.days[0]?.exercises.map(({ name, sets, reps, weight_values }) => ({
+          name,
+          sets,
+          reps,
+          weight_values,
+        })),
+      ).toEqual([
+        { name: '合成动作甲', sets: 1, reps: '7', weight_values: ['93'] },
+        { name: '合成动作甲', sets: 1, reps: '4', weight_values: ['107'] },
+        { name: '合成动作甲', sets: 1, reps: '2+', weight_values: ['119'] },
+      ]);
+    } else expect(result.unreadable).toMatchObject([{ reason: 'OTHER' }]);
+  },
+);
+
+it('1028e corrective attempts keep the eight-call allowance and accumulate all tokens', async () => {
+  const parseWeek = vi.fn<PlanImportModel['parseWeek']>().mockImplementation((_week, onUsage) => {
+    onUsage?.({ prompt_tokens: 13, completion_tokens: 7 });
+    return Promise.resolve(splitWeek(false));
+  });
+  const ctx = await enabledContext({ outline: vi.fn().mockResolvedValue(outline), parseWeek });
+  const created = await request(ctx.app)
+    .post('/coach/plan-imports')
+    .set(auth(ctx.coachToken))
+    .send(input);
+  const path = `/coach/plan-imports/${String(created.body.import_id)}/weeks`;
+  const body = { header_cells: [], weeks: [{ index: 0, cells: splitCells }] };
+  for (let i = 0; i < 8; i++)
+    expect((await request(ctx.app).post(path).set(auth(ctx.coachToken)).send(body)).status).toBe(
+      200,
+    );
+  expect((await request(ctx.app).post(path).set(auth(ctx.coachToken)).send(body)).status).toBe(409);
+  expect(parseWeek).toHaveBeenCalledTimes(16);
+  const run = await ctx.db
+    .selectFrom('plan_import_runs')
+    .select(['prompt_tokens', 'completion_tokens'])
+    .executeTakeFirstOrThrow();
+  expect(run).toEqual({ prompt_tokens: 208, completion_tokens: 112 });
+});
+
+it.each(['23s-47s', '23-47s', '23~47秒'])(
+  '1028e falls back a time range to seconds while retaining its source: %s',
+  async (reps) => {
+    const result = await groundingResponse(
+      [
+        {
+          weekday: null,
+          day_index: 1,
+          rest: false,
+          exercises: [
+            {
+              ...groundingExercise([
+                [2, 1],
+                [2, 2],
+              ]),
+              reps,
+              note: '合成说明',
+            },
+          ],
+        },
+      ],
+      [
+        [2, 1, '合成动作甲'],
+        [2, 2, reps],
+        [2, 3, '2组'],
+      ],
+    );
+    expect(result.unreadable).toEqual([]);
+    expect(result.days[0]?.exercises[0]).toMatchObject({
+      reps: '23s',
+      note: `合成说明；${reps}`,
+      flags: ['note_fallback'],
+    });
+  },
+);
+
+it('1028e rejects unsplit per-set pairs spread across source cells', async () => {
+  const result = await groundingResponse(
+    [
+      {
+        weekday: null,
+        day_index: 1,
+        rest: false,
+        exercises: [
+          {
+            ...groundingExercise([
+              [2, 1],
+              [2, 2],
+              [2, 3],
+              [2, 4],
+            ]),
+            sets: 1,
+            reps: '7',
+            weight_values: ['93'],
+          },
+        ],
+      },
+    ],
+    [
+      [2, 1, '合成动作甲'],
+      [2, 2, '93x7'],
+      [2, 3, '107x4'],
+      [2, 4, '119x2+'],
+    ],
+  );
+  expect(result.days[0]?.exercises).toEqual([]);
+  expect(result.unreadable).toMatchObject([{ reason: 'OTHER' }]);
+});
+
+it('1028e preserves a fully covered weight-repeat list', async () => {
+  const result = await groundingResponse(
+    [
+      {
+        weekday: null,
+        day_index: 1,
+        rest: false,
+        exercises: [
+          {
+            ...groundingExercise([
+              [2, 1],
+              [2, 2],
+              [2, 3],
+            ]),
+            sets: 5,
+            reps: '2',
+            weight_values: ['87', '87', '87', '87', '87'],
+          },
+        ],
+      },
+    ],
+    [
+      [2, 1, '合成动作甲'],
+      [2, 2, '2'],
+      [2, 3, '87x2/87x3'],
+    ],
+  );
+  expect(result.unreadable).toEqual([]);
+  expect(result.days[0]?.exercises).toHaveLength(1);
+});
+
+it('1028e preserves weight repeats across cells beside an explicit set prescription', async () => {
+  const result = await groundingResponse(
+    [
+      {
+        weekday: null,
+        day_index: 1,
+        rest: false,
+        exercises: [
+          {
+            ...groundingExercise([
+              [2, 1],
+              [2, 2],
+              [2, 3],
+              [2, 4],
+            ]),
+            sets: 5,
+            reps: '3',
+            weight_values: ['89', '89', '89', '103', '103'],
+          },
+        ],
+      },
+    ],
+    [
+      [2, 1, '合成动作甲'],
+      [2, 2, '5x3'],
+      [2, 3, '89x3'],
+      [2, 4, '103x2'],
+    ],
+  );
+  expect(result.unreadable).toEqual([]);
+  expect(result.days[0]?.exercises).toHaveLength(1);
 });

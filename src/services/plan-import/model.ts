@@ -56,6 +56,7 @@ export interface WeekInput {
   index: number;
   cells: Cell[];
   header_cells: Cell[];
+  correction_cells?: [number, number][];
 }
 export interface TokenUsage {
   prompt_tokens: number;

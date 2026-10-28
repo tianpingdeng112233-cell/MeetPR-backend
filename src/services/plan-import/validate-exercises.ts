@@ -35,6 +35,21 @@ export function validateExercises(week: WeekSkeleton, cells: Cell[]): WeekResult
           })
         : [];
       const normalized: Record<string, unknown> = { ...fields, source_cells };
+      const timeRange =
+        typeof fields.reps === 'string'
+          ? /^\s*(\d+)\s*(?:s|秒)?\s*[-~–—]\s*(\d+)\s*(?:s|秒)\s*$/i.exec(fields.reps)
+          : null;
+      if (
+        timeRange &&
+        Number(timeRange[1]) > 0 &&
+        Number(timeRange[2]) >= Number(timeRange[1]) &&
+        typeof fields.note === 'string' &&
+        Array.isArray(fields.flags)
+      ) {
+        normalized.reps = `${String(Number(timeRange[1]))}s`;
+        normalized.note = [fields.note, fields.reps].filter(Boolean).join('；');
+        normalized.flags = [...new Set([...(fields.flags as unknown[]), 'note_fallback'])];
+      }
       const shape = ExerciseSchema.innerType().shape;
       const sets = shape.sets.safeParse(fields.sets);
       if (sets.success && sets.data > 1) {

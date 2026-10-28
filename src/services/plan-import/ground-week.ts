@@ -131,6 +131,20 @@ function sourcePrescriptions(text: string, exercise: Exercise) {
   });
 }
 
+function coveredWeightRepeats(pairs: { weight: number; reps: string }[], exercise: Exercise) {
+  const counts = new Map<number, number>();
+  for (const { weight, reps } of pairs) {
+    counts.set(weight, (counts.get(weight) ?? 0) + Number(reps));
+  }
+  return (
+    [...counts.values()].reduce((sum, count) => sum + count, 0) === exercise.sets &&
+    [...counts].every(
+      ([weight, count]) =>
+        exercise.weight_values.filter((value) => Number(value) === weight).length === count,
+    )
+  );
+}
+
 function groundExercises(
   week: WeekResult,
   cells: Cell[],
@@ -210,8 +224,61 @@ function groundExercises(
             index !== structured &&
             noted.some((note) => note.sets === token.sets && note.reps === token.reps),
         );
+      // Interpret complete weight x reps cells only when one segment agrees
+      // with the structured output, avoiding ordinary weight-repeat notation.
+      const pairCells = cells
+        .filter(
+          ([row, col, text]) =>
+            refs.has(`${String(row)}:${String(col)}`) &&
+            /^\d+(?:\.\d+)?\s*[*x×]\s*\d+\+?(?:\s*\/\s*\d+(?:\.\d+)?\s*[*x×]\s*\d+\+?)*$/i.test(
+              text,
+            ),
+        )
+        .filter(([, , text]) => {
+          const single = /^(\d+(?:\.\d+)?)\s*[*x×]\s*(\d+\+?)$/i.exec(text);
+          if (!single) return true;
+          // A separate sets x reps cell is not a weight x reps pair.
+          const siblings = day.exercises.filter((item) => item.name === exercise.name);
+          return (
+            !siblings.some((item) => item.sets === Number(single[1]) && item.reps === single[2]) ||
+            siblings.some((item) =>
+              item.weight_values.some((value) => Number(value) === Number(single[1])),
+            )
+          );
+        })
+        .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      const pairs = pairCells.flatMap(([, , text]) =>
+        [...text.matchAll(/(\d+(?:\.\d+)?)\s*[*x×]\s*(\d+\+?)/gi)].map((match) => ({
+          weight: Number(match[1]),
+          reps: match[2] ?? '',
+        })),
+      );
+      const segments = day.exercises.filter(
+        (item) =>
+          item.name === exercise.name &&
+          item.source_cells.some(([r, c]) =>
+            pairCells.some(([row, col]) => r === row && c === col),
+          ),
+      );
+      const covered = segments.flatMap((item) =>
+        item.weight_values.map((weight) => ({ weight: Number(weight), reps: item.reps })),
+      );
+      const unsplitPairs =
+        pairs.length > 1 &&
+        !coveredWeightRepeats(pairs, exercise) &&
+        pairs.some(
+          (pair) =>
+            pair.reps === exercise.reps &&
+            exercise.weight_values.some((weight) => Number(weight) === pair.weight),
+        ) &&
+        pairs.some(
+          (pair, index) =>
+            covered[index]?.weight !== pair.weight || covered[index].reps !== pair.reps,
+        );
+
       if (
         unstructuredSets ||
+        unsplitPairs ||
         (new Set(exercise.source_cells.map(([row]) => row)).size > 1 &&
           coveredNames.some(([row, , name]) => row !== nameRow && name !== exercise.name))
       ) {
