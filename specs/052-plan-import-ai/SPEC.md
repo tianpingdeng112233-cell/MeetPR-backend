@@ -121,6 +121,10 @@
 - 第二步 `weeks` 请求的每周 cells 由前端按 `region.sheet` 从对应页截取；`header_cells` 允许按页给出。
 - 每日次数：仍在 outline 成功时扣一次；同一 `import_id` 下教练改选别的 block 不另扣（同一次导入）。
 
+### 2.6 逐组不同次数 → 拆成同名动作（2026-10-28 David：Q12「新建动作即可，不用支持」）
+
+一个动作各组次数（或次数与重量组合）不同时（如 531「110×5 / 125×3 / 140×1+」），不扩展导入格式，按连续相同的处方拆成多个**同名动作**依次返回（`Comp Squat 1×5 110`、`Comp Squat 1×3 125`、`Comp Squat 1×1+ 140`），与追加组的处理一致；不再整行报「没读懂」。
+
 ## 3. 模型调用
 
 - OpenAI 兼容 `POST {BASE_URL}/chat/completions`，`response_format: { type: 'json_object' }`，`temperature: 0`，单次超时 60s。输出用 zod 校验，不合格重试 1 次。
