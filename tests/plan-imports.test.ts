@@ -3327,3 +3327,90 @@ it('1029 merges split sheets when body length moves repeated day headers', async
   expect(result.body.blocks).toHaveLength(1);
   expect(result.body.blocks[0].sheets).toEqual(['Week 1', 'Week 2']);
 });
+
+it.each([
+  { kind: '周', total: 12, last: '第12周（比赛周）' },
+  { kind: '周', total: 12, last: 'Week 12 (deload)' },
+  { kind: '周', total: 12, last: '第12周-减量' },
+  { kind: '周', total: 12, last: 'Week 12 test week' },
+  { kind: '周', total: 12, last: '第12周【比赛周】' },
+  { kind: '天', total: 4, last: '第4天（比赛周）' },
+  { kind: '天', total: 4, last: 'Day 4 (deload)' },
+  { kind: '天', total: 4, last: 'D4-减量' },
+  { kind: '天', total: 4, last: 'Day 4 test week' },
+  { kind: '天', total: 4, last: 'D4[test week]' },
+])(
+  '1029 qualifier merges $last into its ordinal block and keeps the complete default',
+  async ({ kind, total, last }) => {
+    const names = [
+      ...Array.from({ length: total - 1 }, (_, i) => `第${String(i + 1)}${kind}`),
+      last,
+    ];
+    const model = blockModel();
+    const outlinePage = model.outline;
+    model.outline = (page, usage) =>
+      page.sheets[0]?.name === '计划说明'
+        ? Promise.resolve({ sheet: '计划说明', header_region: null, weeks: [] })
+        : outlinePage(page, usage);
+    const ctx = await enabledContext(model);
+    const result = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send({ ...input, sheets: [...names, '计算器', '计划说明'].map(blockSheet) });
+    expect(result.status).toBe(200);
+    expect(result.body.blocks).toHaveLength(1);
+    expect(result.body.blocks[0].sheets).toEqual(names);
+    expect(result.body.blocks[0].weeks).toHaveLength(total);
+    expect(
+      result.body.blocks[0].weeks.map((week: { region: { sheet: string } }) => week.region.sheet),
+    ).toEqual(names);
+    expect(result.body.weeks).toEqual(result.body.blocks[0].weeks);
+    expect(result.body.sheet).toBe(names[0]);
+    expect(result.body.skipped_sheets).toEqual(['计算器', '计划说明']);
+  },
+);
+
+it('1029 qualifier guard requires matching structure even for the same suffixed ordinal', async () => {
+  const sheets = Array.from({ length: 11 }, (_, i) => blockSheet(`第${String(i + 1)}周`));
+  const named = blockSheet('第12周说明');
+  const ctx = await enabledContext(blockModel());
+  const post = (last: ReturnType<typeof blockSheet>) =>
+    request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send({ ...input, sheets: [...sheets, last] });
+  const different = await post({
+    ...named,
+    cells: [
+      [1, 1, '重量'],
+      [1, 5, 'RPE'],
+      [2, 1, '合成动作乙'],
+    ],
+  });
+  expect(different.status).toBe(200);
+  expect(different.body.blocks).toHaveLength(2);
+  expect(different.body.blocks[0].sheets).toHaveLength(11);
+  expect(different.body.blocks[1].sheets).toEqual(['第12周说明']);
+  // Same name and ordinal, only the header structure changes.
+  const matching = await post(named);
+  expect(matching.status).toBe(200);
+  expect(matching.body.blocks).toHaveLength(1);
+  expect(matching.body.blocks[0].sheets).toHaveLength(12);
+});
+
+it.each([
+  ['Week 1 Day 1', 'Week 1 Day 2'],
+  ['第1周D1', '第1周D2'],
+  ['Week 1 Day 1', 'Week 1 Day 2 (deload)'],
+  ['第1周D1', '第1周D2（比赛周）'],
+])('1029 qualifier preserves the day sequence in %s / %s', async (first, last) => {
+  const ctx = await enabledContext(blockModel());
+  const result = await request(ctx.app)
+    .post('/coach/plan-imports')
+    .set(auth(ctx.coachToken))
+    .send({ ...input, sheets: [last, first].map(blockSheet) });
+  expect(result.status).toBe(200);
+  expect(result.body.blocks).toHaveLength(1);
+  expect(result.body.blocks[0].sheets).toEqual([first, last]);
+  expect(result.body.weeks).toEqual(result.body.blocks[0].weeks);
+});

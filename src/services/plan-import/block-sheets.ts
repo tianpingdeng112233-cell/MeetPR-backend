@@ -7,25 +7,25 @@ export function isReferenceSheet(name: string): boolean {
 }
 
 function splitName(name: string) {
-  for (const [kind, pattern] of [
-    ['week', /^(.*?)(?:第\s*(\d+)\s*周|week\s*(\d+))\s*$/i],
-    ['day', /^(.*?)(?:第\s*(\d+)\s*天|day\s*(\d+)|\bd\s*(\d+))\s*$/i],
-  ] as const) {
-    const match = pattern.exec(name);
-    if (!match) continue;
-    const ordinal = Number(match[2] ?? match[3] ?? match[4]);
-    if (!Number.isSafeInteger(ordinal) || ordinal < 1) return undefined;
-    return {
-      kind,
-      ordinal,
-      prefix: (match[1] ?? '')
-        .trim()
-        .replace(/[-_：:]$/, '')
-        .trim()
-        .toLowerCase(),
-    };
-  }
-  return undefined;
+  // Use the last ordinal so Week 1 Day 2 keeps Week 1 as its plan prefix.
+  // Trailing qualifiers describe that ordinal and do not change the group.
+  // Keep the whole number (Week 12 must never backtrack to Week 1).
+  const match =
+    /^(.*)(?:第\s*(\d+)\s*周|week\s*(\d+)|第\s*(\d+)\s*天|day\s*(\d+)|\bd\s*(\d+))(?!\d).*$/i.exec(
+      name,
+    );
+  if (!match) return undefined;
+  const ordinal = Number(match[2] ?? match[3] ?? match[4] ?? match[5] ?? match[6]);
+  if (!Number.isSafeInteger(ordinal) || ordinal < 1) return undefined;
+  return {
+    kind: match[2] !== undefined || match[3] !== undefined ? 'week' : 'day',
+    ordinal,
+    prefix: (match[1] ?? '')
+      .trim()
+      .replace(/[-_：:]$/, '')
+      .trim()
+      .toLowerCase(),
+  };
 }
 
 // Use column definitions, never exercise names or prescriptions, as merge evidence.
