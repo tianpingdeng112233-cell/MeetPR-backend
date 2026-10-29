@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Cell, Sheet } from './model';
+import { groupBlockSheets, isReferenceSheet } from './block-sheets';
 
 export const MAX_INPUT_CHARS = 400_000;
 export const OUTLINE_TOKEN_BUDGET = 60_000;
@@ -26,13 +27,23 @@ export const OutlineRequestSchema = z
 export const WeeksRequestSchema = z
   .object({
     weeks: z
-      .array(z.object({ index: z.number().int().nonnegative(), cells: CellsSchema }).strict())
+      .array(
+        z
+          .object({
+            index: z.number().int().nonnegative(),
+            sheet: z.string().min(1).max(255).optional(),
+            cells: CellsSchema,
+          })
+          .strict(),
+      )
       .min(1)
       .max(12)
       .refine((weeks) => new Set(weeks.map((week) => week.index)).size === weeks.length),
-    header_cells: CellsSchema,
+    header_cells: CellsSchema.optional(),
+    header_cells_by_sheet: z.record(z.string().min(1).max(255), CellsSchema).optional(),
   })
-  .strict();
+  .strict()
+  .refine((input) => input.header_cells !== undefined || input.header_cells_by_sheet !== undefined);
 
 export function normalizeDateCells(cells: Cell[]): Cell[] {
   return cells.map(([row, col, text]) => {
@@ -52,6 +63,17 @@ export function cellChars(cells: Cell[]): number {
 function estimatedTokens(value: unknown): number {
   // Approximate mixed Chinese/ASCII budget, including coordinates/JSON syntax.
   return Math.ceil(Buffer.byteLength(JSON.stringify(value), 'utf8') / 3);
+}
+
+export function trimBlockOutlines(sheets: Sheet[]): ReturnType<typeof trimOutline> {
+  const trimmed = groupBlockSheets(sheets.filter((sheet) => !isReferenceSheet(sheet.name))).map(
+    trimOutline,
+  );
+  if (trimmed.some((block) => !block)) return undefined;
+  return {
+    sheets: trimmed.flatMap((block) => block?.sheets ?? []),
+    truncated_rows: trimmed.reduce((total, block) => total + (block?.truncated_rows ?? 0), 0),
+  };
 }
 
 export function trimOutline(

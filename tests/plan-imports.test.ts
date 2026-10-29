@@ -488,7 +488,16 @@ describe('coach plan imports', () => {
       training_days: 5,
       region: { r1: index * 3 + 1, c1: 2, r2: index * 3 + 3, c2: 4 },
     }));
-    const model = { outline: vi.fn().mockResolvedValue({ ...outline, weeks }), parseWeek: vi.fn() };
+    const model = {
+      outline: vi.fn<PlanImportModel['outline']>(({ sheets }) =>
+        Promise.resolve({
+          ...outline,
+          sheet: sheets[0]?.name ?? '',
+          weeks: sheets[0]?.name === outline.sheet ? weeks : [],
+        }),
+      ),
+      parseWeek: vi.fn(),
+    };
     const ctx = await enabledContext(model);
     const response = await request(ctx.app)
       .post('/coach/plan-imports')
@@ -522,8 +531,8 @@ describe('coach plan imports', () => {
       });
     expect(response.status).toBe(200);
     expect(response.body.weeks).toEqual([
-      { ...weeks[1], index: 0 },
-      { ...weeks[3], index: 1 },
+      { ...weeks[1], index: 0, region: { ...weeks[1]?.region, sheet: outline.sheet } },
+      { ...weeks[3], index: 1, region: { ...weeks[3]?.region, sheet: outline.sheet } },
     ]);
     expect(await ctx.db.selectFrom('plan_import_runs').selectAll().execute()).toHaveLength(1);
   });
@@ -610,7 +619,9 @@ describe('coach plan imports', () => {
         .set(auth(ctx.coachToken))
         .send({ ...input, sheets: [{ name: '2026', cells }] });
       expect(response.status).toBe(200);
-      expect(response.body.weeks).toEqual([{ ...week, training_days: expected }]);
+      expect(response.body.weeks).toEqual([
+        { ...week, training_days: expected, region: { ...week.region, sheet: outline.sheet } },
+      ]);
     },
   );
   it('returns a day-only week in table order without inferring simplified names', async () => {
@@ -646,7 +657,12 @@ describe('coach plan imports', () => {
       .set(auth(ctx.coachToken))
       .send({ ...input, sheets: [{ name: '2026', cells }] });
     expect(created.status).toBe(200);
-    expect(created.body.weeks).toEqual(dayOutline.weeks);
+    expect(created.body.weeks).toEqual(
+      dayOutline.weeks.map((week) => ({
+        ...week,
+        region: { ...week.region, sheet: dayOutline.sheet },
+      })),
+    );
     const response = await request(ctx.app)
       .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
       .set(auth(ctx.coachToken))
@@ -847,7 +863,9 @@ describe('coach plan imports', () => {
         ],
       });
     expect(response.status).toBe(200);
-    expect(response.body.weeks).toEqual(outline.weeks);
+    expect(response.body.weeks).toEqual(
+      outline.weeks.map((week) => ({ ...week, region: { ...week.region, sheet: outline.sheet } })),
+    );
     expect(model.outline).toHaveBeenCalledTimes(1);
     expect(model.outline.mock.calls[0]?.[0]).toEqual({ sheets: input.sheets });
   });
@@ -1419,7 +1437,11 @@ describe('coach plan imports', () => {
     for (let remaining = 2; remaining >= 0; remaining--) {
       const result = await post();
       expect(result.status).toBe(200);
-      expect(result.body).toEqual({ ...outline, truncated_rows: 0, import_id: expect.any(String) });
+      expect(result.body).toMatchObject({
+        ...outline,
+        truncated_rows: 0,
+        import_id: expect.any(String),
+      });
       expect((await status()).body.remaining_today).toBe(remaining);
     }
     const limited = await post();
@@ -2970,4 +2992,338 @@ it('1028f regroups split prescriptions before checking same-day coverage', async
   expect(result.days).toHaveLength(1);
   expect(result.days[0]?.exercises).toEqual(exercises);
   expect(result.unreadable).toEqual([]);
+});
+
+function blockSheet(name: string) {
+  return {
+    name,
+    cells: [
+      [1, 1, '动作'],
+      [1, 2, '组数'],
+      [1, 3, '次数'],
+      [2, 1, '合成动作甲'],
+      [2, 2, '2'],
+      [2, 3, '11'],
+    ] as [number, number, string][],
+  };
+}
+
+function blockModel(): PlanImportModel {
+  return {
+    outline: vi.fn(({ sheets }, onUsage) => {
+      const sheet = sheets[0];
+      if (!sheet) throw new Error('Missing synthetic sheet');
+      onUsage?.({ prompt_tokens: 3, completion_tokens: 2 });
+      return Promise.resolve({
+        sheet: sheet.name,
+        header_region: { r1: 1, c1: 1, r2: 1, c2: 3 },
+        weeks:
+          sheet.name === '说明'
+            ? []
+            : [
+                {
+                  index: 0,
+                  label: '合成周',
+                  start_date:
+                    sheet.name === '合成新计划'
+                      ? '2032-06-07'
+                      : sheet.name === '合成旧计划'
+                        ? '2032-05-03'
+                        : null,
+                  training_days: 1,
+                  region: { r1: 2, c1: 1, r2: 2, c2: 3 },
+                },
+              ],
+      });
+    }),
+    parseWeek: vi.fn(({ index }) => Promise.resolve(weekResult(index))),
+  };
+}
+
+it('1029 returns every independent block and skipped sheets with legacy default fields', async () => {
+  const model = blockModel();
+  const ctx = await enabledContext(model);
+  const result = await request(ctx.app)
+    .post('/coach/plan-imports')
+    .set(auth(ctx.coachToken))
+    .send({ ...input, sheets: ['合成新计划', '合成旧计划', '说明'].map(blockSheet) });
+  expect(result.status).toBe(200);
+  expect(result.body.blocks).toHaveLength(2);
+  expect(result.body.skipped_sheets).toEqual(['说明']);
+  expect(result.body.blocks[0]).toEqual({
+    id: expect.any(String),
+    label: '合成新计划',
+    sheets: ['合成新计划'],
+    header_region_by_sheet: { 合成新计划: { r1: 1, c1: 1, r2: 1, c2: 3 } },
+    weeks: [
+      {
+        index: 0,
+        label: '合成周',
+        start_date: '2032-06-07',
+        training_days: 1,
+        region: { sheet: '合成新计划', r1: 2, c1: 1, r2: 2, c2: 3 },
+      },
+    ],
+  });
+  expect(result.body.blocks[1].sheets).toEqual(['合成旧计划']);
+  expect(result.body.blocks[1].id).not.toBe(result.body.blocks[0].id);
+  expect(result.body.sheet).toBe('合成新计划');
+  expect(result.body.weeks).toEqual(result.body.blocks[0].weeks);
+  expect(result.body.header_region).toEqual(
+    result.body.blocks[0].header_region_by_sheet['合成新计划'],
+  );
+  expect(result.body.truncated_rows).toBe(0);
+  expect(result.body.import_id).toEqual(expect.any(String));
+});
+
+it.each([
+  {
+    kind: 'week',
+    names: [
+      'Week 12',
+      '第1周',
+      'Week 2',
+      '第3周',
+      'Week 4',
+      '第5周',
+      'Week 6',
+      '第7周',
+      'Week 8',
+      '第9周',
+      'Week 10',
+      '第11周',
+    ],
+    ordered: [
+      '第1周',
+      'Week 2',
+      '第3周',
+      'Week 4',
+      '第5周',
+      'Week 6',
+      '第7周',
+      'Week 8',
+      '第9周',
+      'Week 10',
+      '第11周',
+      'Week 12',
+    ],
+  },
+  {
+    kind: 'day',
+    names: ['Day 4', 'D1', '第3天', 'Day 2'],
+    ordered: ['D1', 'Day 2', '第3天', 'Day 4'],
+  },
+])(
+  '1029 merges structurally matching $kind sheets in numeric order',
+  async ({ names, ordered }) => {
+    const ctx = await enabledContext(blockModel());
+    const sheets = names.map(blockSheet);
+    const result = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send({ ...input, sheets });
+    expect(result.status).toBe(200);
+    expect(result.body.blocks).toHaveLength(1);
+    const block = result.body.blocks[0];
+    expect(block.sheets).toEqual(ordered);
+    expect(block.weeks.map((week: { region: { sheet: string } }) => week.region.sheet)).toEqual(
+      ordered,
+    );
+    expect(block.weeks.map((week: { index: number }) => week.index)).toEqual(
+      ordered.map((_, i) => i),
+    );
+    expect(Object.keys(block.header_region_by_sheet)).toEqual(ordered);
+    expect(result.body.weeks).toEqual(block.weeks);
+    expect(result.body.sheet).toBe(ordered[0]);
+
+    // Names alone cannot merge unrelated layouts.
+    const first = sheets[0];
+    if (!first) throw new Error('Missing synthetic sheet');
+    first.cells = [
+      [1, 1, '重量'],
+      [1, 5, 'RPE'],
+      [2, 1, '合成动作乙'],
+    ];
+    const separate = await request(ctx.app)
+      .post('/coach/plan-imports')
+      .set(auth(ctx.coachToken))
+      .send({ ...input, sheets });
+    expect(separate.status).toBe(200);
+    expect(separate.body.blocks).toHaveLength(2);
+  },
+);
+
+it('1029 budgets independent blocks separately while retaining shared-block and total limits', async () => {
+  const model = blockModel();
+  const ctx = await enabledContext(model);
+  const sheets = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map((suffix) => ({
+    ...blockSheet(`合成计划${suffix}`),
+    cells: [
+      ...blockSheet('unused').cells.slice(0, 3),
+      ...Array.from(
+        { length: 50 },
+        (_, i) => [i + 2, 1, '合成内容'.repeat(210)] as [number, number, string],
+      ),
+    ],
+  }));
+  const result = await request(ctx.app)
+    .post('/coach/plan-imports')
+    .set(auth(ctx.coachToken))
+    .send({ ...input, sheets });
+  expect(result.status).toBe(200);
+  expect(result.body.blocks).toHaveLength(8);
+  expect(result.body.truncated_rows).toBe(0);
+  for (const [forwarded] of vi.mocked(model.outline).mock.calls) {
+    expect(forwarded.sheets).toHaveLength(1);
+    expect(Buffer.byteLength(JSON.stringify(forwarded), 'utf8') / 3).toBeLessThan(60_000);
+  }
+  const grouped = sheets.map((sheet, i) => ({ ...sheet, name: `Week ${String(i + 1)}` }));
+  const shared = await request(ctx.app)
+    .post('/coach/plan-imports')
+    .set(auth(ctx.coachToken))
+    .send({ ...input, sheets: grouped });
+  expect(shared.status).toBe(413);
+  expect(shared.body.error).toBe('IMPORT_HEADERS_TOO_LARGE');
+  const oversized = await request(ctx.app)
+    .post('/coach/plan-imports')
+    .set(auth(ctx.coachToken))
+    .send({ ...input, sheets: [{ name: '合成计划', cells: [[1, 1, 'x'.repeat(400_001)]] }] });
+  expect(oversized.status).toBe(413);
+  expect(oversized.body.error).toBe('PAYLOAD_TOO_LARGE');
+});
+
+it('1029 parses cross-sheet weeks with their own headers and switches blocks without another daily charge', async () => {
+  const model = blockModel();
+  model.parseWeek = vi.fn(({ index, header_cells }) =>
+    Promise.resolve({
+      index,
+      start_date: null,
+      days: [
+        {
+          weekday: null,
+          day_index: 1,
+          rest: false,
+          exercises: [
+            { ...groundingExercise([[2, 1]], '合成动作甲'), note: header_cells[0]?.[2] ?? '' },
+          ],
+        },
+      ],
+    }),
+  );
+  const ctx = await enabledContext(model);
+  const created = await request(ctx.app)
+    .post('/coach/plan-imports')
+    .set(auth(ctx.coachToken))
+    .send({ ...input, sheets: ['合成甲', '合成乙'].map(blockSheet) });
+  expect(created.status).toBe(200);
+  expect(created.body.sheet).toBe('合成乙'); // No dates: last block is default.
+  const headers = { 合成甲: [[1, 1, '合成甲列含义']], 合成乙: [[1, 1, '合成乙列含义']] };
+  const parsed = await request(ctx.app)
+    .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+    .set(auth(ctx.coachToken))
+    .send({
+      header_cells_by_sheet: headers,
+      weeks: [
+        { index: 0, sheet: '合成甲', cells: [[2, 1, '合成动作甲 2×11']] },
+        { index: 1, sheet: '合成乙', cells: [[2, 1, '合成动作甲 2×11']] },
+      ],
+    });
+  expect(parsed.status).toBe(200);
+  expect(parsed.body.weeks[0].days[0].exercises[0].note).toBe('合成甲列含义');
+  expect(parsed.body.weeks[1].days[0].exercises[0].note).toBe('合成乙列含义');
+  const switched = await request(ctx.app)
+    .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+    .set(auth(ctx.coachToken))
+    .send({
+      header_cells: [[1, 1, '合成旧格式表头']],
+      header_cells_by_sheet: headers,
+      weeks: [
+        { index: 0, sheet: '合成乙', cells: [[2, 1, '合成动作甲 2×11']] },
+        { index: 1, cells: [[2, 1, '合成动作甲 2×11']] },
+      ],
+    });
+  expect(switched.status).toBe(200);
+  expect(switched.body.weeks[0].days[0].exercises[0].note).toBe('合成乙列含义');
+  expect(switched.body.weeks[1].days[0].exercises[0].note).toBe('合成旧格式表头');
+  const status = await request(ctx.app)
+    .get(`/coach/plan-imports/status?trainee_id=${ids.trainee}`)
+    .set(auth(ctx.coachToken));
+  expect(status.body.remaining_today).toBe(2);
+});
+
+it('1029 skips reference sheets before spending a block budget or model call', async () => {
+  const model = blockModel();
+  const ctx = await enabledContext(model);
+  const skipped = ['说明', '计算器', 'RPE 表', '动作库', '记录页'];
+  const references = skipped.map(blockSheet);
+  const notes = references[0];
+  if (!notes) throw new Error('Missing synthetic reference sheet');
+  notes.cells = Array.from({ length: 40 }, (_, i) => [i + 1, 1, '合成说明'.repeat(500)]);
+  const result = await request(ctx.app)
+    .post('/coach/plan-imports')
+    .set(auth(ctx.coachToken))
+    .send({ ...input, sheets: [blockSheet('合成计划'), ...references] });
+  expect(result.status).toBe(200);
+  expect(result.body.blocks).toHaveLength(1);
+  expect(result.body.skipped_sheets).toEqual(skipped);
+  expect(
+    vi.mocked(model.outline).mock.calls.map(([call]) => call.sheets.map((sheet) => sheet.name)),
+  ).toEqual([['合成计划']]);
+});
+
+it('1029 uses the legacy header fallback for sheet names matching object properties', async () => {
+  const model = blockModel();
+  model.parseWeek = vi.fn(({ index, header_cells }) =>
+    Promise.resolve({
+      index,
+      start_date: null,
+      days: [
+        {
+          weekday: null,
+          day_index: 1,
+          rest: false,
+          exercises: [
+            { ...groundingExercise([[2, 1]], '合成动作甲'), note: header_cells[0]?.[2] ?? '' },
+          ],
+        },
+      ],
+    }),
+  );
+  const ctx = await enabledContext(model);
+  const created = await request(ctx.app)
+    .post('/coach/plan-imports')
+    .set(auth(ctx.coachToken))
+    .send({ ...input, sheets: [blockSheet('constructor')] });
+  const result = await request(ctx.app)
+    .post(`/coach/plan-imports/${String(created.body.import_id)}/weeks`)
+    .set(auth(ctx.coachToken))
+    .send({
+      header_cells_by_sheet: { 合成其他页: [] },
+      header_cells: [[1, 1, '合成兼容表头']],
+      weeks: [{ index: 0, sheet: 'constructor', cells: [[2, 1, '合成动作甲 2×11']] }],
+    });
+  expect(result.status).toBe(200);
+  expect(result.body.weeks[0]).not.toHaveProperty('error');
+  expect(result.body.weeks[0].days[0].exercises[0].note).toBe('合成兼容表头');
+});
+
+it('1029 merges split sheets when body length moves repeated day headers', async () => {
+  const sheets = [blockSheet('Week 1'), blockSheet('Week 2')];
+  sheets.forEach((sheet, i) => {
+    const row = i === 0 ? 8 : 9;
+    sheet.cells.push(
+      [row, 1, '动作'],
+      [row, 2, '组数'],
+      [row, 3, '次数'],
+      [row + 1, 1, '合成动作乙'],
+    );
+  });
+  const ctx = await enabledContext(blockModel());
+  const result = await request(ctx.app)
+    .post('/coach/plan-imports')
+    .set(auth(ctx.coachToken))
+    .send({ ...input, sheets });
+  expect(result.status).toBe(200);
+  expect(result.body.blocks).toHaveLength(1);
+  expect(result.body.blocks[0].sheets).toEqual(['Week 1', 'Week 2']);
 });

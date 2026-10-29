@@ -65,6 +65,22 @@ export interface TokenUsage {
 export type UsageObserver = (usage: TokenUsage) => void;
 export type Outline = z.infer<typeof OutlineSchema>;
 
+export type BlockWeek = Omit<Outline['weeks'][number], 'region'> & {
+  region: z.infer<typeof RegionSchema> & { sheet: string };
+};
+export interface OutlineBlock {
+  id: string;
+  label: string;
+  sheets: string[];
+  weeks: BlockWeek[];
+  header_region_by_sheet: Record<string, Outline['header_region']>;
+}
+export interface BlocksOutline extends Omit<Outline, 'weeks'> {
+  weeks: BlockWeek[];
+  blocks: OutlineBlock[];
+  skipped_sheets: string[];
+}
+
 export const SourceCellSchema = z.tuple([z.number().int().positive(), z.number().int().positive()]);
 
 const UnparsedFieldSchema = z.object({ field: z.enum(['reps', 'intensity', 'weight']) });

@@ -729,3 +729,23 @@ it('1028f adapter recovers duplicate weekdays before rejecting the model respons
   expect(result.days.flatMap((day) => day.exercises)).toEqual(days.flatMap((day) => day.exercises));
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+it('1029 asks only for the supplied sheet weeks and delegates block grouping to the server', async () => {
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValue(
+      Response.json({ choices: [{ message: { content: JSON.stringify(outline) } }] }),
+    );
+  const model = createDeepSeekPlanImportModel({ apiKey: 'test-placeholder', fetch });
+  await model.outline(input);
+  const init = fetch.mock.calls[0]?.[1];
+  const body = JSON.parse(typeof init?.body === 'string' ? init.body : '') as {
+    messages: { role: string; content: string }[];
+  };
+  const prompt = body.messages[0]?.content ?? '';
+  expect(prompt).toContain('只包含一个页');
+  expect(prompt).toContain('block 合并由服务端');
+  expect(prompt).not.toContain('选日期最新');
+  expect(prompt).toContain('记录页');
+  expect(JSON.parse(body.messages[1]?.content ?? '')).toEqual(input);
+});

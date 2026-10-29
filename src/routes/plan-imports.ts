@@ -7,7 +7,7 @@ import { hasAcceptedBond } from '../db/bonds';
 import type { Database } from '../db/types';
 import type { Logger } from '../logger';
 import { requireRole } from '../middleware/auth';
-import { OutlineSchema, type Outline, type PlanImportModel } from '../services/plan-import/model';
+import { type BlocksOutline, type PlanImportModel } from '../services/plan-import/model';
 import {
   claimWeekCall,
   DAILY_LIMIT,
@@ -16,14 +16,14 @@ import {
   shanghaiDay,
 } from '../services/plan-import/runs';
 import { parseWeeks } from '../services/plan-import/parse-weeks';
-import { filterOutlineWeeks } from '../services/plan-import/filter-outline';
+import { outlineBlocks } from '../services/plan-import/outline-blocks';
 import { createDeepSeekPlanImportModel } from '../services/plan-import/deepseek';
-import { PlanImportModelError, runModelCall } from '../services/plan-import/retry';
+import { PlanImportModelError } from '../services/plan-import/retry';
 import {
   cellChars,
   MAX_INPUT_CHARS,
   OutlineRequestSchema,
-  trimOutline,
+  trimBlockOutlines,
   WeeksRequestSchema,
 } from '../services/plan-import/input';
 import { route } from './http';
@@ -103,7 +103,7 @@ export function planImportsRouter(deps: {
         res.status(413).json({ error: 'PAYLOAD_TOO_LARGE' });
         return;
       }
-      const trimmed = trimOutline(body.data.sheets);
+      const trimmed = trimBlockOutlines(body.data.sheets);
       if (!trimmed) {
         res.status(413).json({ error: 'IMPORT_HEADERS_TOO_LARGE' });
         return;
@@ -115,18 +115,11 @@ export function planImportsRouter(deps: {
         return;
       }
       const usage = { prompt_tokens: 0, completion_tokens: 0 };
-      let result: Outline;
+      let result: BlocksOutline;
       try {
-        result = await runModelCall(async () => {
-          const output = OutlineSchema.parse(
-            await model.outline({ sheets: trimmed.sheets }, (tokens) => {
-              usage.prompt_tokens += tokens.prompt_tokens;
-              usage.completion_tokens += tokens.completion_tokens;
-            }),
-          );
-          if (!body.data.sheets.some((sheet) => sheet.name === output.sheet))
-            throw new Error('MODEL_UNKNOWN_SHEET');
-          return output;
+        result = await outlineBlocks(model, trimmed.sheets, body.data.sheets, (tokens) => {
+          usage.prompt_tokens += tokens.prompt_tokens;
+          usage.completion_tokens += tokens.completion_tokens;
         });
       } catch (error) {
         deps.logger.info(
@@ -146,10 +139,6 @@ export function planImportsRouter(deps: {
         res.status(502).json({ error: 'PARSE_FAILED', reason });
         return;
       }
-      result = filterOutlineWeeks(
-        result,
-        body.data.sheets.find((sheet) => sheet.name === result.sheet)?.cells ?? [],
-      );
       if (result.weeks.length === 0) {
         res.status(422).json({ error: 'NO_TRAINING_WEEKS' });
         return;
@@ -194,7 +183,11 @@ export function planImportsRouter(deps: {
         return;
       }
       const inputChars =
-        cellChars(body.data.header_cells) +
+        cellChars(body.data.header_cells ?? []) +
+        Object.values(body.data.header_cells_by_sheet ?? {}).reduce(
+          (sum, cells) => sum + cellChars(cells),
+          0,
+        ) +
         body.data.weeks.reduce((sum, week) => sum + cellChars(week.cells), 0);
       if (inputChars > MAX_INPUT_CHARS) {
         res.status(413).json({ error: 'PAYLOAD_TOO_LARGE' });
@@ -220,7 +213,18 @@ export function planImportsRouter(deps: {
       const usage = { prompt_tokens: 0, completion_tokens: 0 };
       const weeks = await parseWeeks(
         model,
-        body.data.weeks.map((week) => ({ ...week, header_cells: body.data.header_cells })),
+        body.data.weeks.map((week) => ({
+          index: week.index,
+          cells: week.cells,
+          header_cells:
+            (week.sheet &&
+            body.data.header_cells_by_sheet &&
+            Object.hasOwn(body.data.header_cells_by_sheet, week.sheet)
+              ? body.data.header_cells_by_sheet[week.sheet]
+              : undefined) ??
+            body.data.header_cells ??
+            [],
+        })),
         (tokens) => {
           usage.prompt_tokens += tokens.prompt_tokens;
           usage.completion_tokens += tokens.completion_tokens;
