@@ -119,6 +119,8 @@
 - outline 不再只「选日期最新的那页」，而是返回 `blocks: [{ id, sheets: [name...], label, weeks: [...同现有 weeks 结构...] }]`：一页一个 block；结构相同、按周或按天拆分的多页（「第N周」「D1…」）合成一个 block，`weeks` 跨页按顺序编号，`region` 增加 `sheet` 字段指明所在页。非计划页（说明、计算器、RPE 表、动作库）不成 block。
 - 兼容：响应仍保留顶层 `sheet` / `weeks` / `header_region`，取值为默认 block（日期最新者），旧网页照旧工作；新网页读 `blocks`。
 - 第二步 `weeks` 请求的每周 cells 由前端按 `region.sheet` 从对应页截取；`header_cells` 允许按页给出。
+- 响应另带 `skipped_sheets: [name...]`：有内容但不是计划的页（说明、计算器、RPE 表、动作库、记录页），供网页 ㉓ 显示。
+- 输入预算按 block 计：表头保留与 60k token 裁剪对每个候选 block 单独计算，不再把所有页的表头加总（修复多页大表 `IMPORT_HEADERS_TOO_LARGE`，原 F4）；总字符 400k 上限不变。
 - 每日次数：仍在 outline 成功时扣一次；同一 `import_id` 下教练改选别的 block 不另扣（同一次导入）。
 
 ### 2.6 逐组不同次数 → 拆成同名动作（2026-10-28 David：Q12「新建动作即可，不用支持」）
