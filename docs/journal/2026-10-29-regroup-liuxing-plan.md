@@ -148,3 +148,80 @@ node scripts/oneoff/2026-10-29-regroup-liuxing-plan.test.mjs \
 本轮未重跑已知受缺依赖阻塞的全仓门禁；保留上文环境限制。未 commit、未 push、未连接任何远端数据库。
 
 定向 Spec 复审：无 finding；reviewer 独立复跑整套专项退出 0，确认 SQL 仅此一行变更、两种信号均未修改。新增测试的 `node --check` 与 JS/JOURNAL Prettier 检查通过。
+
+## DMS 版（2026-10-29）
+
+本节取代上文旧脚本的 DMS 执行指引与 **22 天、6 周、12/11** 的假设；旧 SQL 原样保留，不再向 DMS 粘贴旧版 B/C/E。David 已现场确认目标 `02db605c-d113-47ef-9303-1bcabf7b431d` 为 published，原起点 10/26、终点 12/06、6 周，**20 天、0 空天、0 shift**。本地 fixture 按 W1 六日、W2–W5 二三六日、W6 **12/01、12/02** 构造。本轮未连接任何远端数据库，真实动作数 E、组数 T 仍由 DMS 只读输出核对。
+
+交付文件：
+
+- [DMS 专用 SQL](../../scripts/oneoff/2026-10-29-regroup-liuxing-plan-dms.sql)
+- [分号拆句演练](../../scripts/oneoff/2026-10-29-regroup-liuxing-plan-dms.test.mjs)
+
+### DMS 粘贴顺序与停止条件
+
+**不要全文件执行。** SQL 内 `-- SECTION S0` 等标记划分粘贴范围：从该标记后第一条语句，到下一标记前结束。S1/S1b 内四条各自以分号结尾，逐条粘贴。S4 仅为备用，不接着 S3 自动执行。所有日期均为 2026 年。
+
+| 段落         | 粘贴内容与预期输出                                                                                                                                                                                                         | 停止条件 / 已有备份处理                                                                                                                                               |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S0           | 一条只读语句、一行输出。`target_missing=0`、十类风险计数全 **0**。首次无备份时九个 `backup_*` 也全 **0**。四个原图加旧版五个辅助表均用 `to_regclass` 探测，缺表安全。                                                      | 目标缺失、风险任何非零立即停止。备份标志为 **1** 先核对，不代表训练风险；旧版辅助表不参与本版，不删除。                                                               |
+| S1           | 四条创建语句逐条粘贴，依次备份 plans、plan_days、plan_exercises、plan_sets 全列，行数为 **1、20、E、T**。                                                                                                                  | 任一已有表会明确报 `already exists`，不会覆盖。停止批量执行，转 S1b 对应查询核对已有表，再只创建 S0 显示缺失的表。不得删除/清空/改名原备份来绕过错误。                |
+| S1b          | 四条独立只读计数，各返回一行 `table_name / backup_rows / current_rows`。已存在的表只粘贴其对应查询；四表齐备后四条均跑。前两对分别 **1=1、20=20**，后两对 **E=E、T=T** 且大于 0。                                          | 缺表报错但零修改。任何计数不符停止。同行数还不够，S2 会逐表用双向 `EXCEPT ALL` 比对完整行（包括 ID、父 ID、处方、updated_at）。旧备份内容不符则 S2 报错，不自动修补。 |
+| S2           | 整段是一条修改语句。预期唯一一行：`guard_ok=1`、`start_date=2026-10-31`、`end_date=2026-12-04`、`plan_weeks=5`、`status=published`、`changed_days=20`、`deleted_days=0`、`date_mismatches=0`。                             | 缺备份表在解析时报错；状态、原图、20 天/内容、风险、schema 任一不符，报含 `STOP: S2` 的整数转换错误，整条回滚。错误、空结果或摘要偏差都停止。不重跑已成功的 S2。      |
+| S3           | 一条只读语句、一行输出。起止 **10/31–12/04**、**5** 周、`anchor_weekday=6`、published、days **20**，`date_mismatches / missing_exercises / missing_sets` 全 **0**。`week_dates` 按 W1–W5 排列，每周 **4** 天，见下方日历。 | 行数、日期、差异任何不符停止，保留输出交回，不继续编辑。核对后重新打开客户端使用服务器版，不恢复旧本地草稿。                                                          |
+| S4（仅备用） | 整段是一条恢复语句。预期 `guard_ok=1`、起止 **10/26–12/06**、**6** 周、`restored_days=20`，anchor_weekday 与 updated_at 精确回到备份值。随后 S3 应显示旧起止/周数，days **20**、三项差异仍 **0**。                         | 只允许当前全行内容符合本次修改后的预期且风险仍全零；缺表、已恢复、处方或计划/天被再编辑、新增训练均停止报错。不要为通过守卫而删除训练或修改备份。                     |
+
+S3 的日期串应为：
+
+```text
+W1=2026-10-31,2026-11-01,2026-11-03,2026-11-04
+W2=2026-11-07,2026-11-08,2026-11-10,2026-11-11
+W3=2026-11-14,2026-11-15,2026-11-17,2026-11-18
+W4=2026-11-21,2026-11-22,2026-11-24,2026-11-25
+W5=2026-11-28,2026-11-29,2026-12-01,2026-12-02
+```
+
+### 原子性、备份依据与边界
+
+- DMS 已在旧版 B 报 `Unterminated dollar quote`，且拆句改写会话设置。本版不用 dollar quote、过程块、显式多句事务、会话设置或显式锁。`UPDATE` 语法必需的 `SET` 子句独占一行，**不是会话设置命令**；这是对任务“禁止 SET”与“必须 UPDATE”的语法兼容解释，已在开工说明。全文件大小写不敏感断言不含 `$`、`DO `、`BEGIN`、`COMMIT`、`SET `、`LOCK `，结果 **0**。
+- S2/S4 各自为一条 data-modifying CTE。`MATERIALIZED guard` 对非恒定 CASE 结果转 integer：成功为 `1`，失败为包含 `STOP` 的文本。两个 UPDATE 的 WHERE 和最终输出都依赖该值，即使待更新输入为空也必须求值。缺表直接解析失败。后续计划更新通过 day UPDATE 的 `RETURNING` 计数形成依赖；摘要读取 `RETURNING`，不会误读同一语句的旧快照。
+- 迁移 `0003-init-plans.sql:36–48` 定义 `plan_days` 仅有 ID 主键和非唯一 `plan_days_plan_id_idx`；全部 **73** 迁移重建后目录验证唯一索引仅 `plan_days_pkey`，`condeferrable=false`。没有 `(plan_id,week_number,day_of_week[,sort_order])` 唯一约束，直接改键可行；S2/S4 现场若发现任何额外非主键唯一索引则拒绝，避免假定线上约束和本地一致。
+- 只备份四张计划树原图。按本轮明确范围，S0 的 set_logs（天/动作/学员窗口）、completion、shift、batch、pending revision、feedback（动作/学员窗口）、training session（天数组/学员窗口）、events、reviews、signals 必须全零，S2/S4 各自重查同一风险口径，因此这些关联表没有可备份的命中行，也不写入或恢复它们。窗口为 **10/26–12/11（含边界）**；signals 为 `opened_at>=10/26`，不按状态排除。10/01 历史信号不拦截、也不修改。
+- 四条建表并非同一事务，失败可能只留下部分表。**16** 种存在/不存在组合均演练过；补齐缺表后 S2 再验证完整原图，不能仅凭 S1 成功就认为备份一致。关联表取舍以本轮 S0 明确要求为准，不声称旧版视频/消息 JSON 备份仍在执行。
+- **执行窗口内必须停止该计划的训练和编辑，关闭教练/学员所有旧页面并等在途请求结束。** 无显式锁的快照守卫不能排除语句开始后并发插入训练记录；本地演练也没有证明并发写入安全。成功后重开并使用服务器版，保留有价值的本地草稿，不盲目清缓存。
+- S4 对比预期后图时忽略 plans.updated_at（本版没有第五张后图表），但其余计划字段、所有天字段、动作和组的完整内容均核对；恢复时 updated_at 使用原图。仅更新时间戳、未改业务内容的写入不能单独识别。已有旧版辅助表不会给本版赋予额外执行状态。
+- PGlite 验证的是 PostgreSQL 语法与逐分号提交，不是阿里云 DMS 改写器的现场验收。DMS 若仍报语法/权限错误，停下保存完整错误，不用旧脚本重试。
+
+### 本地演练证据
+
+```sh
+node scripts/oneoff/2026-10-29-regroup-liuxing-plan-dms.test.mjs \
+  /private/tmp/regroup-pglite/package/dist/index.js
+```
+
+PGlite **0.5.10 / PostgreSQL 18.6 wasm**，全部 **73** 迁移。新脚本按分号拆为 **12** 条，各次调用只送一条 `db.query`，不把目标步骤包进测试事务；schema/fixture 建立另行执行。所有永久表均显式 public，测试会话 search_path 为 information_schema。
+
+- **先红**：占位 S2 只读，断言实际仍 10/26、12/06、6 周，期望 10/31、12/04、5 周；进程退出 1。
+- **转绿**：S0 全零；S1 **1/20/20/60**；S2/S3 **20→20 天、20→20 动作、60→60 组**，删除 **0**，日期/处方/组差 **0**，每周 **4/4/4/4/4** 天；S4 全行恢复原状（含 updated_at），差 **0**。
+- **14 条风险路径**：三种 set_log 归属、completion、孤儿 shift、空 batch、revision、两种 feedback、两种 session、event、review、10/26 信号，逐个证明 S0=1、S2/S4 都报错、失败后计划树差 **0**；包含关联 ID 的窗口外记录，以及无关联 ID 的窗口边界记录。
+- 状态/start/end/weeks/name/处方/组被改、目标缺失、空备份、10/31 前有内容、未知唯一索引均拒绝；S2 重跑、S4 重跑均拒绝。**16** 种部分备份组合中，缺表 S2/S4 报错零修改；已有表创建报错且原内容不变，补齐后正常修改/恢复。
+- 总计 **72** 次守卫失败均零修改；所有专项断言通过。真实数据库的 E/T 不由 fixture 的 **20/60** 推断。
+
+全仓基线仍受既有依赖缺失限制：`pnpm typecheck` 缺 compression、ws、AWS SDK；`CI=true pnpm install --offline` 在 AWS SDK 缓存缺失处失败。已恢复借用本机主工作树的现有 node_modules，没有改 package/lock 文件。专项不依赖这些包。
+
+### DMS 版最终自测与审查
+
+- `review-loop` 两名只读 reviewer 独立运行专项并核对 JOURNAL：**Standards 0 finding；Spec 0 finding**。未运行缺 tracker 的完整 Matt 工作流；没有私建 tracker。依据是 David 本轮明确的一次性修正要求，不新增产品行为。
+- 最终专项、`node --check`、`git diff --check` 与全仓 `pnpm format:check` 均通过。原 SQL 与原演练文件未改。
+- 全仓 `pnpm lint` 仍为既有 **72 errors**；typecheck/build 受 compression/ws/AWS SDK 缺依赖阻塞；最终 `pnpm test` 为 **90 文件通过、79 文件加载失败、492 tests 通过**。首次测试另遇借用 node_modules 的缓存写权限问题，已将依赖链接放在本地目录并用本地缓存复跑，最终不再有该权限错误。不能声称全仓门禁通过。
+- 仅在 `chore/regroup-liuxing-plan` 做本地提交，不 push；未连接远端数据库，未执行真实修正。
+
+本地提交尝试未完成：`git add` / `git commit` 报 `Unable to create .../MeetPR-backend/.git/worktrees/MeetPR-backend-wt-regroup/index.lock: Operation not permitted`。共享 Git 目录不在当前可写根内，当前会话不允许提权。三个文件保留在本分支工作区，较早版本已暂存、末尾验证记录尚未暂存；**没有新 commit，没有 push**。在具有该 Git 目录写权限的本机终端可执行：
+
+```sh
+cd /Users/david/Projects/apps/MeetPR-backend-wt-regroup
+git add scripts/oneoff/2026-10-29-regroup-liuxing-plan-dms.sql \
+  scripts/oneoff/2026-10-29-regroup-liuxing-plan-dms.test.mjs \
+  docs/journal/2026-10-29-regroup-liuxing-plan.md
+git commit -m "fix: add atomic DMS-compatible plan regroup script"
+```
