@@ -318,6 +318,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       weight_kg NUMERIC(6,2) NOT NULL,
       reps INT NOT NULL,
       rpe NUMERIC(3,1),
+      actual_rir SMALLINT,
       coach_rpe NUMERIC(3,1) CHECK (coach_rpe >= 0 AND coach_rpe <= 10),
       completed BOOLEAN NOT NULL DEFAULT FALSE,
       failed BOOLEAN NOT NULL DEFAULT FALSE,
