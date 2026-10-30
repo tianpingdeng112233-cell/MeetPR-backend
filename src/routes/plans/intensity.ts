@@ -46,7 +46,7 @@ interface BodyweightWriteInput extends IntensityInput {
   coach_note?: string | null | undefined;
 }
 
-// Keep this token boundary/removal identical to migration 0080. Only the first
+// Keep this token boundary/removal identical to migrations 0080/0081. Only the first
 // standalone marker is protocol; whitespace and free-text mentions are data.
 const BODYWEIGHT_MARKER = /(^|\s)(自重|bodyweight)(\s|$)/i;
 
@@ -58,18 +58,33 @@ export function bodyweightCoachNote(note: string | null): string {
 export function normalizeLegacyBodyweightSets<T extends BodyweightWriteInput>(sets: T[]): T[] {
   if (
     sets.length === 0 ||
-    !sets.every(
-      (set) =>
-        set.load_mode == null &&
-        set.intensity_mode === 'rpe' &&
-        Number(set.target_value) === 10 &&
-        BODYWEIGHT_MARKER.test(set.coach_note ?? ''),
+    !(
+      sets.every(
+        (set) =>
+          set.load_mode == null &&
+          set.intensity_mode === 'rpe' &&
+          Number(set.target_value) === 10 &&
+          BODYWEIGHT_MARKER.test(set.coach_note ?? ''),
+      ) ||
+      sets.every(
+        (set) =>
+          set.load_mode === 'rpe' &&
+          Number(set.target_rpe) === 10 &&
+          (set.intensity_mode === undefined || set.intensity_mode === 'rpe') &&
+          (set.target_value === undefined || Number(set.target_value) === 10) &&
+          BODYWEIGHT_MARKER.test(set.coach_note ?? ''),
+      )
     )
   )
     return sets;
   return sets.map((set) => {
     const note = (set.coach_note ?? '').replace(BODYWEIGHT_MARKER, '$1$3');
-    return { ...set, load_mode: 'bodyweight', coach_note: note === '' ? null : note };
+    return {
+      ...set,
+      load_mode: 'bodyweight',
+      ...(set.load_mode === 'rpe' ? { target_rpe: null } : {}),
+      coach_note: note === '' ? null : note,
+    };
   });
 }
 
