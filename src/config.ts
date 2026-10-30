@@ -29,6 +29,8 @@ export const ConfigSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().positive().default(3000),
+    MIN_IOS_BUILD: z.coerce.number().int().nonnegative().default(0),
+    MIN_ANDROID_VERSION_CODE: z.coerce.number().int().nonnegative().default(0),
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
     JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be >= 32 chars'),
     JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be >= 32 chars'),
@@ -266,7 +268,11 @@ export type Config = Omit<
   | 'GOOGLE_CLIENT_IDS'
   | 'EMAIL_SIGNUP_VERIFICATION'
   | 'MAIL_LOCALE'
+  | 'MIN_IOS_BUILD'
+  | 'MIN_ANDROID_VERSION_CODE'
 > & {
+  MIN_IOS_BUILD?: ParsedConfig['MIN_IOS_BUILD'];
+  MIN_ANDROID_VERSION_CODE?: ParsedConfig['MIN_ANDROID_VERSION_CODE'];
   EMAIL_SIGNUP_VERIFICATION?: ParsedConfig['EMAIL_SIGNUP_VERIFICATION'];
   MAIL_LOCALE?: ParsedConfig['MAIL_LOCALE'];
   STORAGE_BACKEND?: ParsedConfig['STORAGE_BACKEND'];

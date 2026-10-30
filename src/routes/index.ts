@@ -8,6 +8,7 @@ import type { Logger } from '../logger';
 import { createOptionalAuth } from '../middleware/auth';
 import type { RealtimeHub } from '../realtime/hub';
 import { adminRouter } from './admin';
+import { appMinVersionRouter } from './app-min-version';
 import { coachOnboardingPagesRouter } from './coach-onboarding-pages';
 import { publicInvitesRouter } from './public-invites';
 import { coachApplicationsRouter } from './coach-applications';
@@ -55,6 +56,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   });
 
   app.use(createPreferredLocale(deps.config, deps.db, deps.logger));
+  app.use('/app', appMinVersionRouter(deps.config));
 
   if (deps.config.COACH_ONBOARDING_ENABLED === true) {
     app.use(coachOnboardingPagesRouter());
