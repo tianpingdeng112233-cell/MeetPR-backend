@@ -20,7 +20,7 @@ import {
   listAdminPlans,
   listAdminUsers,
 } from '../src/handlers/admin';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 
 const ids = {
   admin: '10000000-0000-4000-8000-000000004410',
@@ -96,6 +96,9 @@ function makeContext(): TestContext {
   mem.public.none(fs.readFileSync('db/migrations/0001-init-users.sql', 'utf8'));
   mem.public.none(fs.readFileSync('db/migrations/0044-add-admin-role.sql', 'utf8'));
   mem.public.none(fs.readFileSync('db/migrations/0064-global-identity.sql', 'utf8'));
+  // This reduced pg-mem fixture cannot apply the CHECK after 0064 rebuilds users.
+  // The dedicated 0077 migration suite exercises the actual constraint.
+  mem.public.none('ALTER TABLE users ADD COLUMN preferred_locale TEXT NULL');
   mem.public.none(`
     CREATE TABLE coach_profiles (
       user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -223,6 +226,7 @@ function makeContext(): TestContext {
     CREATE TABLE exercises (
       id UUID PRIMARY KEY,
       name TEXT NOT NULL,
+      created_by_coach_id UUID,
       exercise_type TEXT NOT NULL
     );
     INSERT INTO exercises (id, name, exercise_type) VALUES
@@ -273,6 +277,7 @@ function makeContext(): TestContext {
     );
   `);
 
+  mem.public.none(fs.readFileSync('db/migrations/0078-exercise-adoption.sql', 'utf8'));
   const { Pool } = mem.adapters.createPg();
   const db = createDb(new Pool());
   return {
@@ -681,5 +686,39 @@ describe('admin email visibility', () => {
       .get(`/admin/users/${ids.coach}`)
       .set(auth(ctx.tokens.admin));
     expect(detail.body.user.email).toBe('searchable@example.com');
+  });
+});
+
+describe('spec 053 admin usage aggregation', () => {
+  it('includes alias occurrences and distinct coaches in the official row only', async () => {
+    const ctx = makeContext();
+    await addDuplicateOtherCoachUsage(ctx);
+    const alias = '53000000-0000-4000-8000-000000000003';
+    await sql`insert into exercises (id, name, exercise_type, canonical_exercise_id) values (${alias}, 'Alias', 'accessory', ${ids.usedExercise})`.execute(
+      ctx.db,
+    );
+    await ctx.db
+      .insertInto('plan_exercises')
+      .values([
+        { plan_day_id: ids.day, exercise_id: alias },
+        { plan_day_id: ids.day, exercise_id: alias },
+      ])
+      .execute();
+    const response = await request(ctx.app)
+      .get('/admin/exercise-usage')
+      .set(auth(ctx.tokens.admin));
+    expect(response.status).toBe(200);
+    expect(response.body.exercises).toHaveLength(3);
+    expect(response.body.exercises[0]).toEqual({
+      exercise_id: ids.usedExercise,
+      name: '竞技深蹲',
+      exercise_type: 'main_lift',
+      plan_count: 7,
+      coach_count: 2,
+    });
+    expect(
+      response.body.exercises.some((row: { exercise_id: string }) => row.exercise_id === alias),
+    ).toBe(false);
+    await ctx.db.destroy();
   });
 });

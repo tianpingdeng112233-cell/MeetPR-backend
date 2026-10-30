@@ -138,6 +138,7 @@ export function request(app: Express) {
   return {
     delete: (path: string) => new InMemoryTest(app, 'DELETE', path),
     get: (path: string) => new InMemoryTest(app, 'GET', path),
+    options: (path: string) => new InMemoryTest(app, 'OPTIONS', path),
     patch: (path: string) => new InMemoryTest(app, 'PATCH', path),
     post: (path: string) => new InMemoryTest(app, 'POST', path),
     put: (path: string) => new InMemoryTest(app, 'PUT', path),

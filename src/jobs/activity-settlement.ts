@@ -7,7 +7,7 @@ import { effectivePlanDays } from '../domain/plan-calendar';
 import { SIGNAL_POLICY } from '../domain/signal-policy';
 import { sweepTimedOutSessions } from '../handlers/activity-ledger';
 import type { Logger } from '../logger';
-import { pushDisplayName, tryEnqueuePushOutbox } from '../services/push-outbox';
+import { pushDisplayNameFields, tryEnqueuePushOutbox } from '../services/push-outbox';
 import { isIsoCalendarDate, normalizeDateOnly } from '../utils/date';
 import { DEFAULT_TIME_ZONE } from '../utils/timezone';
 
@@ -422,7 +422,7 @@ export async function runDailySettlement(
             aggregateId: candidate.signalId,
             recipientId: candidate.coachId,
             payload: {
-              student_name: await pushDisplayName(db, candidate.studentId),
+              ...(await pushDisplayNameFields(db, candidate.studentId, 'student_name')),
               consecutive_days: candidate.consecutiveDays,
               student_id: candidate.studentId,
             },

@@ -141,7 +141,7 @@ export function studentFeedbackRouter(deps: FeedbackRouterDeps): ExpressRouter {
       }
 
       if (uuidEquals(req.user.id, params.data.id)) {
-        const items = await fetchOwnFeedback(deps.db, req.user.id);
+        const items = await fetchOwnFeedback(deps.db, req.user.id, req.locale);
         res.status(200).json({ items });
         return;
       }
@@ -157,7 +157,7 @@ export function studentFeedbackRouter(deps: FeedbackRouterDeps): ExpressRouter {
         return;
       }
 
-      const items = await fetchCoachFeedback(deps.db, req.user.id, params.data.id);
+      const items = await fetchCoachFeedback(deps.db, req.user.id, params.data.id, req.locale);
       res.status(200).json({ items });
     }),
   );

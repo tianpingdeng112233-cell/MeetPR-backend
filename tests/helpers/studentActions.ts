@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import type { Kysely } from 'kysely';
@@ -127,6 +129,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       apple_user_id TEXT,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL,
+      preferred_locale TEXT NULL,
       timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
       refresh_token_jti UUID,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -591,6 +594,16 @@ export async function makeContext(
     // multi-instance semantics while tests still exercise the same code path;
     // the lock shape itself is pinned by a compile assertion in
     // tests/jobs/push-consumer.test.ts.
+    // pg-mem also cannot parse IS DISTINCT FROM. Locale parameters are non-null;
+    // preserve its NULL-safe semantics here only. The route test asserts the
+    // original PostgreSQL SQL and affected rows before this adapter rewrite.
+    const pgMemSql = (text: string) =>
+      text
+        .replace(/\s+skip\s+locked/gi, '')
+        .replace(
+          /"preferred_locale" is distinct from (\$\d+)/gi,
+          '("preferred_locale" is null or "preferred_locale" != $1)',
+        );
     const connect = pool.connect.bind(pool) as () => Promise<PoolClient>;
     const rewritten = new WeakSet();
     (pool as { connect: () => Promise<PoolClient> }).connect = async () => {
@@ -602,16 +615,13 @@ export async function makeContext(
           apply: (target, thisArg, args: unknown[]) => {
             const first = args[0];
             if (typeof first === 'string') {
-              args[0] = first.replace(/\s+skip\s+locked/gi, '');
+              args[0] = pgMemSql(first);
             } else if (
               typeof first === 'object' &&
               first !== null &&
               typeof (first as { text?: unknown }).text === 'string'
             ) {
-              (first as { text: string }).text = (first as { text: string }).text.replace(
-                /\s+skip\s+locked/gi,
-                '',
-              );
+              (first as { text: string }).text = pgMemSql((first as { text: string }).text);
             }
             return Reflect.apply(target, thisArg, args) as unknown;
           },
@@ -644,6 +654,7 @@ export async function makeContext(
       return client;
     };
   }
+  mem.public.none(fs.readFileSync('db/migrations/0078-exercise-adoption.sql', 'utf8'));
   const db = createDb(pool);
 
   await db

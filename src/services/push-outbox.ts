@@ -9,6 +9,7 @@ export type PerEventPushType =
   | 'pr_congrats'
   | 'video_pending'
   | 'bind_request'
+  | 'bind_accepted'
   | 'plan_shift'
   | 'plan_updated'
   | 'plan_shifted'
@@ -50,7 +51,11 @@ export async function tryEnqueuePushOutbox(
   }
 }
 
-export async function pushDisplayName(db: Kysely<Database>, userId: string): Promise<string> {
+export async function pushDisplayNameFields(
+  db: Kysely<Database>,
+  userId: string,
+  field: 'sender_name' | 'student_name' | 'coach_name',
+): Promise<Record<string, string | boolean>> {
   const profile = await db
     .selectFrom('users as u')
     .leftJoin('coach_profiles as cp', 'cp.user_id', 'u.id')
@@ -58,5 +63,9 @@ export async function pushDisplayName(db: Kysely<Database>, userId: string): Pro
     .select(['u.role', 'cp.display_name as coach_name', 'sp.display_name as student_name'])
     .where('u.id', '=', userId)
     .executeTakeFirstOrThrow();
-  return profile.coach_name ?? profile.student_name ?? (profile.role === 'coach' ? '教练' : '学员');
+  const name = profile.coach_name ?? profile.student_name;
+  return {
+    [field]: name ?? (profile.role === 'coach' ? '教练' : '学员'),
+    ...(name === null ? { display_name_is_fallback: true } : {}),
+  };
 }

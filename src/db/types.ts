@@ -1,3 +1,4 @@
+import type { PreferredLocale } from '../i18n/locale';
 import type { ColumnType, Generated } from 'kysely';
 
 import type { SetRefV1 } from '../domain/set-ref';
@@ -204,6 +205,7 @@ type NullableJsonColumn<T> = ColumnType<T | null, T | string | null | undefined,
 
 export interface UsersTable {
   id: Generated<string>;
+  preferred_locale: NullableColumn<PreferredLocale>;
   phone: NullableColumn<string>;
   email: NullableColumn<string>;
   email_verified_at: NullableColumn<Date>;
@@ -275,6 +277,8 @@ export interface SessionsTable {
 }
 
 export interface ExercisesTable {
+  canonical_exercise_id: NullableColumn<string>;
+  adopted_at: NullableColumn<Date>;
   id: Generated<string>;
   name: string;
   name_en: NullableColumn<string>;
@@ -851,6 +855,12 @@ export interface PlanImportRunsTable {
   created_at: TimestampColumn;
 }
 
+export interface CoachStudentPlanViewsTable {
+  coach_id: string;
+  student_id: string;
+  seen_at: Date;
+}
+
 export interface Database {
   plan_import_runs: PlanImportRunsTable;
   users: UsersTable;
@@ -870,6 +880,7 @@ export interface Database {
   plan_exercises: PlanExercisesTable;
   plan_sets: PlanSetsTable;
   coach_profiles: CoachProfilesTable;
+  coach_student_plan_views: CoachStudentPlanViewsTable;
   student_profiles: StudentProfilesTable;
   bind_requests: BindRequestsTable;
   set_logs: SetLogsTable;

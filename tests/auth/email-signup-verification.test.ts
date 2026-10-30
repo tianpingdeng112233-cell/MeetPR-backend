@@ -119,6 +119,46 @@ function issue(app: ReturnType<typeof createApp>, address = email) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('email signup verification', () => {
+  it.each(['Accept-Language', 'X-MeetPR-Locale'])(
+    'keeps legacy mail copy for unsupported %s: zh-TW',
+    async (header) => {
+      const fetchMock = stubResend();
+      const { app } = makeContext({ MAIL_LOCALE: 'zh' });
+      const response = await request(app)
+        .post('/auth/email/register/code')
+        .set(header, 'zh-TW')
+        .send({ email: 'student@example.com' });
+      expect(response.status).toBe(204);
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalled();
+      });
+      const rawBody = fetchMock.mock.calls[0]?.[1]?.body;
+      if (typeof rawBody !== 'string') throw new Error('missing mail body');
+      expect(JSON.parse(rawBody)).toMatchObject({ subject: 'MeetPR 注册验证码' });
+    },
+  );
+  it('sends Taiwan signup copy from the request header', async () => {
+    const fetchMock = stubResend();
+    const { app } = makeContext({ MAIL_LOCALE: 'en' });
+    const response = await request(app)
+      .post('/auth/email/register/code')
+      .set('X-MeetPR-Locale', 'zh-Hant')
+      .send({ email });
+    expect(response.status).toBe(204);
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+    const rawBody = fetchMock.mock.calls[0]?.[1]?.body;
+    if (typeof rawBody !== 'string') throw new Error('missing mail body');
+    const body = JSON.parse(rawBody) as {
+      subject: string;
+      text: string;
+      html: string;
+    };
+    expect(body.subject).toBe('MeetPR 註冊驗證碼');
+    expect(body.text).toContain('10 分鐘內有效');
+    expect(body.html).toContain('如果不是你本人操作，請忽略這封郵件。');
+  });
   it('keeps legacy registration unverified and ignores code when off; code endpoint is 404', async () => {
     const fetchMock = stubResend();
     const { app, db } = makeContext({ EMAIL_SIGNUP_VERIFICATION: 'off' });

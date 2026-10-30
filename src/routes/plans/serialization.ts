@@ -1,3 +1,5 @@
+import { catalogName } from '../../i18n/copy';
+import type { PreferredLocale } from '../../i18n/locale';
 import type { Selectable } from 'kysely';
 
 import type {
@@ -146,6 +148,8 @@ export interface ImportedHistoryResponse {
 }
 
 export interface ExerciseResponse {
+  canonical_exercise_id: string | null;
+  adopted: boolean;
   id: string;
   name: string;
   name_en: string | null;
@@ -320,10 +324,15 @@ export function toImportedHistory(
   };
 }
 
-export function toExercise(row: ExerciseRow): ExerciseResponse {
+export function toExercise(
+  row: Pick<ExerciseRow, Exclude<keyof ExerciseResponse, 'adopted'>>,
+  locale?: PreferredLocale,
+): ExerciseResponse {
   return {
+    canonical_exercise_id: row.canonical_exercise_id ?? null,
+    adopted: row.canonical_exercise_id != null,
     id: row.id,
-    name: row.name,
+    name: catalogName(row.name, row.created_by_coach_id, locale),
     name_en: row.name_en,
     exercise_type: row.exercise_type,
     main_lift_family: row.main_lift_family,

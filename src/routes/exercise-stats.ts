@@ -58,7 +58,7 @@ export function coachExerciseStatsRouter(deps: ExerciseStatsRouterDeps): Express
               ? { sets: query.data.sets, reps: query.data.reps }
               : undefined,
           )
-        : await fetchExerciseStatsOverview(deps.db, req.user.id, params.data.id);
+        : await fetchExerciseStatsOverview(deps.db, req.user.id, params.data.id, req.locale);
       res.status(200).json(response);
     }),
   );

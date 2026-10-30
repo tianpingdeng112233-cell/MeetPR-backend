@@ -33,7 +33,7 @@ import {
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
 import { notifyPlanPublished } from '../../services/notifications';
-import { pushDisplayName, tryEnqueuePushOutbox } from '../../services/push-outbox';
+import { pushDisplayNameFields, tryEnqueuePushOutbox } from '../../services/push-outbox';
 import { calculateTrainingMaxKg, formatTrainingMaxKg } from '../../services/trainingMax';
 import { uuidEquals } from '../../utils/uuid';
 import { localCalendarDate, normalizeDateOnly, utcDate, utcDateOnly } from '../../utils/date';
@@ -1975,7 +1975,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           aggregateId: randomUUID(),
           recipientId: plan.trainee_id,
           payload: {
-            coach_name: await pushDisplayName(deps.db, user.id),
+            ...(await pushDisplayNameFields(deps.db, user.id, 'coach_name')),
             student_id: plan.trainee_id,
             plan_id: plan.id,
           },
@@ -2236,7 +2236,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
             aggregateId: result.batchId,
             recipientId: result.traineeId,
             payload: {
-              coach_name: await pushDisplayName(deps.db, user.id),
+              ...(await pushDisplayNameFields(deps.db, user.id, 'coach_name')),
               student_id: result.traineeId,
               plan_id: params.data.id,
               anchor_date: body.data.anchor_date,
@@ -2295,7 +2295,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           aggregateId: result.batchId,
           recipientId: result.coachId,
           payload: {
-            student_name: await pushDisplayName(deps.db, user.id),
+            ...(await pushDisplayNameFields(deps.db, user.id, 'student_name')),
             shift_days: result.totalOffsetDays,
             student_id: user.id,
             plan_id: params.data.id,
@@ -2356,7 +2356,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
             aggregateId: result.batchId,
             recipientId: result.traineeId,
             payload: {
-              coach_name: await pushDisplayName(deps.db, user.id),
+              ...(await pushDisplayNameFields(deps.db, user.id, 'coach_name')),
               student_id: result.traineeId,
               plan_id: params.data.id,
             },

@@ -19,7 +19,7 @@ import {
 } from '../../handlers/attachments';
 import type { Logger } from '../../logger';
 import type { OssService } from '../../services/oss';
-import { pushDisplayName, tryEnqueuePushOutbox } from '../../services/push-outbox';
+import { pushDisplayNameFields, tryEnqueuePushOutbox } from '../../services/push-outbox';
 import { uuidEquals } from '../../utils/uuid';
 import { route, validationEnvelope } from '../http';
 import {
@@ -75,15 +75,16 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
           : await db
               .selectFrom('set_logs as sl')
               .innerJoin('exercises as e', 'e.id', 'sl.exercise_id')
-              .select('e.name')
+              .select(['e.name', 'e.created_by_coach_id'])
               .where('sl.id', '=', attachment.set_log_id)
               .executeTakeFirst();
       return {
         aggregateId: attachment.id,
         recipientId,
         payload: {
-          student_name: await pushDisplayName(db, attachment.owner_id),
+          ...(await pushDisplayNameFields(db, attachment.owner_id, 'student_name')),
           exercise_name: exercise?.name ?? '训练',
+          exercise_is_custom: exercise?.created_by_coach_id != null,
           student_id: attachment.owner_id,
           video_id: attachment.id,
         },

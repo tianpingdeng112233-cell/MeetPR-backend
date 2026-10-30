@@ -61,6 +61,7 @@ describe('POST /uploads/:attachmentId/complete', () => {
     expect(row.payload).toEqual({
       student_name: 'Trainee One',
       exercise_name: 'Competition Squat',
+      exercise_is_custom: false,
       student_id: ids.trainee,
       video_id: attachmentId,
     });
