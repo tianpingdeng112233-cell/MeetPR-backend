@@ -452,7 +452,18 @@ function setIntensityWrite(set: CreatePlanSetBody): ReturnType<typeof intensityW
 async function normalizeLegacyBodyweightExercise(
   db: DbExecutor,
   exerciseId: string,
+  writes: Pick<CreatePlanSetBody, 'intensity_mode' | 'target_value'>[],
 ): Promise<void> {
+  // intensityWrite projects new-system values over the old fields. A conflicting
+  // old field in the original request must still disqualify the entire exercise.
+  if (
+    writes.some(
+      (set) =>
+        (set.intensity_mode !== undefined && set.intensity_mode !== 'rpe') ||
+        (set.target_value !== undefined && Number(set.target_value) !== 10),
+    )
+  )
+    return;
   const sets = await db
     .selectFrom('plan_sets')
     .selectAll()
@@ -463,7 +474,7 @@ async function normalizeLegacyBodyweightExercise(
   for (const set of normalized) {
     await db
       .updateTable('plan_sets')
-      .set({ load_mode: set.load_mode, coach_note: set.coach_note })
+      .set({ load_mode: set.load_mode, target_rpe: set.target_rpe, coach_note: set.coach_note })
       .where('id', '=', set.id)
       .execute();
   }
@@ -1942,7 +1953,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
                   })),
                 )
                 .execute();
-              await normalizeLegacyBodyweightExercise(trx, createdExercise.id);
+              await normalizeLegacyBodyweightExercise(trx, createdExercise.id, exercise.sets);
               setsCreated += exercise.sets.length;
             }
           }
@@ -2644,7 +2655,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           })
           .returningAll()
           .executeTakeFirstOrThrow();
-        await normalizeLegacyBodyweightExercise(trx, params.data.exerciseId);
+        await normalizeLegacyBodyweightExercise(trx, params.data.exerciseId, [body.data]);
         const saved = await trx
           .selectFrom('plan_sets')
           .selectAll()
@@ -2750,7 +2761,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           .where('id', '=', params.data.setId)
           .returningAll()
           .executeTakeFirstOrThrow();
-        await normalizeLegacyBodyweightExercise(trx, existing.plan_exercise_id);
+        await normalizeLegacyBodyweightExercise(trx, existing.plan_exercise_id, [body.data]);
         const saved = await trx
           .selectFrom('plan_sets')
           .selectAll()
