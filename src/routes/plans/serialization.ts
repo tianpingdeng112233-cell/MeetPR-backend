@@ -283,6 +283,28 @@ export function toPlanExercise(
   };
 }
 
+function projectBodyweight<T extends { load_mode?: unknown; coach_note?: unknown }>(set: T) {
+  // Shipped enums need bodyweight as null; free_weight stays explicit behind the minimum-version web gate.
+  if (set.load_mode !== 'bodyweight') return set;
+  return {
+    ...set,
+    load_mode: null,
+    intensity_mode: 'rpe' as const,
+    target_value: '10.00',
+    coach_note: bodyweightCoachNote(typeof set.coach_note === 'string' ? set.coach_note : null),
+  };
+}
+
+export function projectPlanSnapshot(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(projectPlanSnapshot);
+  if (value === null || typeof value !== 'object') return value;
+  return projectBodyweight(
+    Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [key, projectPlanSnapshot(child)]),
+    ),
+  );
+}
+
 export function toPlanSet(row: PlanSetRow): PlanSetResponse {
   const noLoad = row.load_mode === 'bodyweight' || row.load_mode === 'free_weight';
   const intensityMode = noLoad ? 'rpe' : row.intensity_mode;
@@ -291,7 +313,7 @@ export function toPlanSet(row: PlanSetRow): PlanSetResponse {
   if (intensityMode === null || targetValue === null) {
     throw new Error('legacy plan set is missing its intensity target');
   }
-  return {
+  return projectBodyweight({
     id: row.id,
     plan_exercise_id: row.plan_exercise_id,
     set_number: row.set_number,
@@ -314,10 +336,9 @@ export function toPlanSet(row: PlanSetRow): PlanSetResponse {
     ),
     set_type: row.set_type,
     rest_seconds: row.rest_seconds,
-    coach_note:
-      row.load_mode === 'bodyweight' ? bodyweightCoachNote(row.coach_note) : row.coach_note,
+    coach_note: row.coach_note,
     created_at: timestamp(row.created_at),
-  };
+  });
 }
 
 export function toImportedHistory(

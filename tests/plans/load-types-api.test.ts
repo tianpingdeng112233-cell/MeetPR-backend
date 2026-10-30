@@ -89,7 +89,139 @@ function batchBody(set: object | object[]) {
   };
 }
 
+function legacyBodyweightFixture(id: string, exerciseId: string, createdAt: string) {
+  return {
+    id,
+    plan_exercise_id: exerciseId,
+    ...baseSet(1),
+    ...newFieldDefaults,
+    intensity_mode: 'rpe',
+    target_value: '10.00',
+    rest_seconds: null,
+    coach_note: '自重 慢下放',
+    created_at: createdAt,
+  };
+}
+
 describe('spec 056 load types API', () => {
+  it('returns the exact legacy bodyweight fixture for a backfilled set to both apps', async () => {
+    const { ctx, plan } = await makePlanContext();
+    const id = await firstSetId(ctx, plan.planExerciseId);
+    const createdAt = '2026-10-28T00:00:00.000Z';
+    await ctx.db
+      .updateTable('plan_sets')
+      .set({
+        load_mode: 'bodyweight',
+        intensity_mode: 'rpe',
+        target_value: '10.00',
+        coach_note: '慢下放',
+        created_at: new Date(createdAt),
+      })
+      .where('id', '=', id)
+      .execute();
+    for (const token of [ctx.traineeToken, ctx.coachToken]) {
+      const read = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(token));
+      expect(read.status).toBe(200);
+      expect(read.body.days[0].exercises[0].sets[0]).toStrictEqual(
+        legacyBodyweightFixture(id, plan.planExerciseId, createdAt),
+      );
+    }
+  });
+
+  it('round-trips a new bodyweight write as the complete legacy fixture', async () => {
+    const { ctx, plan } = await makePlanContext();
+    await ctx.db
+      .deleteFrom('plan_sets')
+      .where('plan_exercise_id', '=', plan.planExerciseId)
+      .execute();
+    const created = await createSet(ctx, plan.planExerciseId, {
+      ...baseSet(1),
+      load_mode: 'bodyweight',
+      coach_note: '慢下放',
+    });
+    expect(created.status).toBe(201);
+    const expected = legacyBodyweightFixture(
+      responseId(created),
+      plan.planExerciseId,
+      created.body.created_at,
+    );
+    expect(created.body).toStrictEqual(expected);
+    const read = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.traineeToken));
+    expect(read.status).toBe(200);
+    expect(read.body.days[0].exercises[0].sets[0]).toStrictEqual(expected);
+    expect(
+      await ctx.db
+        .selectFrom('plan_sets')
+        .select(['load_mode', 'intensity_mode', 'target_value', 'coach_note'])
+        .where('id', '=', responseId(created))
+        .executeTakeFirstOrThrow(),
+    ).toStrictEqual({
+      load_mode: 'bodyweight',
+      intensity_mode: null,
+      target_value: null,
+      coach_note: '慢下放',
+    });
+  });
+
+  it.each(['existing', 'new'] as const)(
+    'projects bodyweight on read of a %s pending snapshot without changing storage',
+    async (source) => {
+      const { ctx, plan } = await makePlanContext();
+      const id = await firstSetId(ctx, plan.planExerciseId);
+      const legacy = legacyBodyweightFixture(id, plan.planExerciseId, '2026-10-28T00:00:00.000Z');
+      const stored = {
+        ...legacy,
+        load_mode: 'bodyweight',
+        intensity_mode: null,
+        target_value: null,
+        coach_note: '慢下放',
+      };
+      const freeWeight = { ...stored, load_mode: 'free_weight', coach_note: null };
+      const content = {
+        weeks: [{ days: [{ exercises: [{ sets: [stored, freeWeight, legacy] }] }] }],
+        published_snapshot: {
+          days: [{ exercises: [{ sets: [{ ...stored, coach_note: '自重 慢下放' }] }] }],
+        },
+        metadata: { label: 'bodyweight', arbitrary: [true, null, 3] },
+      };
+      const revision = { version: 1, content_hash: 'fixture-hash', content };
+      if (source === 'existing') {
+        await ctx.db
+          .insertInto('plan_pending_revisions')
+          .values({
+            ...revision,
+            plan_id: plan.planId,
+            coach_id: ids.coach,
+            content: JSON.stringify(content),
+          })
+          .execute();
+      } else {
+        const saved = await request(ctx.app)
+          .put(`/plans/${plan.planId}/pending-revision`)
+          .set(auth(ctx.coachToken))
+          .send(revision);
+        expect(saved.status).toBe(200);
+      }
+      const read = await request(ctx.app)
+        .get(`/plans/${plan.planId}/pending-revision`)
+        .set(auth(ctx.coachToken));
+      expect(read.status).toBe(200);
+      expect(read.body.content).toStrictEqual({
+        ...content,
+        weeks: [{ days: [{ exercises: [{ sets: [legacy, freeWeight, legacy] }] }] }],
+        published_snapshot: { days: [{ exercises: [{ sets: [legacy] }] }] },
+      });
+      const saved = await ctx.db
+        .selectFrom('plan_pending_revisions')
+        .select('content')
+        .where('plan_id', '=', plan.planId)
+        .executeTakeFirstOrThrow();
+      expect(
+        typeof saved.content === 'string' ? JSON.parse(saved.content) : saved.content,
+      ).toStrictEqual(content);
+    },
+  );
+
   it.each(['bodyweight', 'free_weight'])(
     'round-trips %s with no load or one intensity across create, patch and batch',
     async (load_mode) => {
@@ -110,7 +242,7 @@ describe('spec 056 load types API', () => {
         expect(created.status).toBe(201);
         expect(created.body).toMatchObject({
           ...newFieldDefaults,
-          load_mode,
+          load_mode: load_mode === 'bodyweight' ? null : load_mode,
           ...item.output,
           intensity_mode: 'rpe',
           target_value: '10.00',
@@ -143,7 +275,11 @@ describe('spec 056 load types API', () => {
       expect(batch.status).toBe(200);
       expect(batch.body.days[0].exercises[0].sets).toHaveLength(4);
       for (const set of batch.body.days[0].exercises[0].sets) {
-        expect(set).toMatchObject({ load_mode, intensity_mode: 'rpe', target_value: '10.00' });
+        expect(set).toMatchObject({
+          load_mode: load_mode === 'bodyweight' ? null : load_mode,
+          intensity_mode: 'rpe',
+          target_value: '10.00',
+        });
       }
     },
   );
@@ -210,7 +346,7 @@ describe('spec 056 load types API', () => {
       .set(auth(ctx.coachToken))
       .send({ load_mode: 'bodyweight', coach_note: '慢下放' });
     expect(changed.status).toBe(200);
-    expect(changed.body).toEqual({ ...old, load_mode: 'bodyweight' });
+    expect(changed.body).toStrictEqual(old);
     const read = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.traineeToken));
     expect(read.body.days[0].exercises[0].sets[0]).toEqual(changed.body);
     const weighted = await request(ctx.app)
@@ -262,7 +398,7 @@ describe('spec 056 legacy writes', () => {
       };
       const created = await createSet(ctx, plan.planExerciseId, body);
       expect(created.status).toBe(201);
-      expect(created.body).toMatchObject({ ...body, load_mode: 'bodyweight' });
+      expect(created.body).toMatchObject({ ...body, load_mode: null });
       expect(
         await ctx.db
           .selectFrom('plan_sets')
@@ -277,7 +413,7 @@ describe('spec 056 legacy writes', () => {
         .send(batchBody(body));
       expect(batch.status).toBe(200);
       const set = batch.body.days[0].exercises[0].sets[0];
-      expect(set).toMatchObject({ ...body, load_mode: 'bodyweight' });
+      expect(set).toMatchObject({ ...body, load_mode: null });
       expect(
         await ctx.db
           .selectFrom('plan_sets')
@@ -307,7 +443,7 @@ describe('spec 056 legacy writes', () => {
         .send(body);
       expect(patched.status).toBe(200);
       expect(patched.body).toMatchObject({
-        load_mode: 'bodyweight',
+        load_mode: null,
         intensity_mode: 'rpe',
         target_value: '10.00',
         coach_note: '自重',

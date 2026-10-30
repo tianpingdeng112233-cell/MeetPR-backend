@@ -118,7 +118,7 @@ describe('spec 056 socket-free load contract', () => {
         "weight_low": null,
       }
     `);
-    expect(toPlanSet(migrated)).toEqual({ ...toPlanSet(row), load_mode: 'bodyweight' });
+    expect(toPlanSet(migrated)).toStrictEqual(toPlanSet(row));
     expect(migrated.coach_note).toBe('慢下放');
     expect(toPlanSet({ ...migrated, coach_note: null }).coach_note).toBe('自重');
     expect(toPlanSet({ ...migrated, coach_note: '自重 慢下放' }).coach_note).toBe('自重 慢下放');

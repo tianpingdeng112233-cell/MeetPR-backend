@@ -72,6 +72,7 @@ import {
   validateIntensityState,
 } from './intensity';
 import {
+  projectPlanSnapshot,
   type PlanExerciseResponse,
   type PlanShiftSummaryResponse,
   type PlanSetResponse,
@@ -1287,7 +1288,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         plan_id: revision.plan_id,
         version: revision.version,
         content_hash: revision.content_hash,
-        content: parsedJson(revision.content),
+        content: projectPlanSnapshot(parsedJson(revision.content)),
         saved_at: timestamp(revision.saved_at),
       });
     }),
