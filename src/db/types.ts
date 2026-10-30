@@ -63,6 +63,8 @@ export const LOAD_MODES = [
   'weight_range',
   'rpe_range',
   'fixed_weight',
+  'free_weight',
+  'bodyweight',
 ] as const;
 export const PCT_ANCHORS = ['one_rm', 'e1rm', 'top_set'] as const;
 export const SET_TYPES = ['warmup', 'working', 'failed', 'amrap', 'backoff'] as const;
@@ -396,8 +398,8 @@ export interface PlanSetsTable {
   set_number: number;
   target_reps: number;
   target_reps_max: NullableColumn<number>;
-  intensity_mode: IntensityMode;
-  target_value: string;
+  intensity_mode: NullableColumn<IntensityMode>;
+  target_value: NullableColumn<string>;
   set_type: SetType;
   rest_seconds: number | null;
   coach_note: NullableColumn<string>;

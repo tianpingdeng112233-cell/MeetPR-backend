@@ -1,3 +1,4 @@
+import { bodyweightCoachNote } from './intensity';
 import { catalogName } from '../../i18n/copy';
 import type { PreferredLocale } from '../../i18n/locale';
 import type { Selectable } from 'kysely';
@@ -74,7 +75,7 @@ export interface PlanSetResponse {
   set_number: number;
   target_reps: number;
   target_reps_max: number | null;
-  intensity_mode: PlanSetRow['intensity_mode'];
+  intensity_mode: NonNullable<PlanSetRow['intensity_mode']>;
   target_value: string;
   load_mode: PlanSetRow['load_mode'];
   pct_anchor: PlanSetRow['pct_anchor'];
@@ -282,15 +283,44 @@ export function toPlanExercise(
   };
 }
 
-export function toPlanSet(row: PlanSetRow): PlanSetResponse {
+function projectBodyweight<T extends { load_mode?: unknown; coach_note?: unknown }>(set: T) {
+  // Shipped enums need bodyweight as null; free_weight stays explicit behind the minimum-version web gate.
+  if (set.load_mode !== 'bodyweight') return set;
   return {
+    ...set,
+    load_mode: null,
+    intensity_mode: 'rpe' as const,
+    target_value: '10.00',
+    coach_note: bodyweightCoachNote(typeof set.coach_note === 'string' ? set.coach_note : null),
+  };
+}
+
+export function projectPlanSnapshot(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(projectPlanSnapshot);
+  if (value === null || typeof value !== 'object') return value;
+  return projectBodyweight(
+    Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [key, projectPlanSnapshot(child)]),
+    ),
+  );
+}
+
+export function toPlanSet(row: PlanSetRow): PlanSetResponse {
+  const noLoad = row.load_mode === 'bodyweight' || row.load_mode === 'free_weight';
+  const intensityMode = noLoad ? 'rpe' : row.intensity_mode;
+  const targetValue = noLoad ? '10.00' : row.target_value;
+  // Migration 0080 still requires both old fields for all other load modes.
+  if (intensityMode === null || targetValue === null) {
+    throw new Error('legacy plan set is missing its intensity target');
+  }
+  return projectBodyweight({
     id: row.id,
     plan_exercise_id: row.plan_exercise_id,
     set_number: row.set_number,
     target_reps: row.target_reps,
     target_reps_max: row.target_reps_max,
-    intensity_mode: row.intensity_mode,
-    target_value: row.target_value,
+    intensity_mode: intensityMode,
+    target_value: targetValue,
     load_mode: row.load_mode,
     pct_anchor: row.pct_anchor,
     target_pct: nullableOneDecimal(row.target_pct),
@@ -308,7 +338,7 @@ export function toPlanSet(row: PlanSetRow): PlanSetResponse {
     rest_seconds: row.rest_seconds,
     coach_note: row.coach_note,
     created_at: timestamp(row.created_at),
-  };
+  });
 }
 
 export function toImportedHistory(
