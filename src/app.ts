@@ -19,8 +19,11 @@ import type { RealtimeHub } from './realtime/hub';
 import { mountRoutes } from './routes';
 import { inviteLandingPagesRouter } from './routes/invite-landing-pages';
 import type { OssService } from './services/oss';
+import type { PlanImportModel } from './services/plan-import/model';
+import { planImportJson } from './services/plan-import/json';
 
 export interface AppDeps {
+  planImportModel?: PlanImportModel | undefined;
   config: Config;
   logger: Logger;
   db: Kysely<Database>;
@@ -73,6 +76,7 @@ export function createApp(deps: AppDeps): Express {
   // Pending-revision content is capped at 1 MiB after serializing `content` alone.
   // Allow room for the envelope so the route can apply that exact cap.
   app.use('/plans/:id/pending-revision', express.json({ limit: '2mb' }), pendingRevisionJsonError);
+  app.use('/coach/plan-imports', ...planImportJson());
   app.use(express.json({ limit: '1mb' }));
   if (config.FORCE_HTTPS) {
     app.use((req, res, next) => {
@@ -98,6 +102,7 @@ export function createApp(deps: AppDeps): Express {
     hub: deps.hub,
     oss: deps.oss,
     requireAuth: createRequireAuth(config),
+    planImportModel: deps.planImportModel,
   });
 
   // Serve the bundled plan-web frontend (self-hosted, same-origin) when present.
