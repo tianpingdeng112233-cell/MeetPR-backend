@@ -28,3 +28,14 @@ David 直接要求修复。基底 `a1b2a8f`（现场核实 origin/staging 与 SA
 ## 同源部署产物
 
 网页源提交 `2788b29`，基于当前线上来源 c829c11；使用 `VITE_API_BASE='' npm run build`，入口 `/assets/index-CWzN3w9o.js`。除入口 HTML 和 JS 外，字体、CSS、图标与原产物一致。随此 PR 一起交付，避免仅后端代码上线而网页继续漏发字段。
+
+## 已批准执行与线上证据
+
+2026-11-01 David 明确“批准，放行”后执行：
+
+- Web #141 已合并为 `b09b5a235bb6fc3cbd43d2cf160800f1dbd4ba7c`；Backend #353 已合并为 `707c63c5f7f04557f2e29216cd19bb1117156932`。
+- 镜像构建 run [41305887839](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/41305887839) 成功；部署 run [41306247199](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/41306247199) 成功，SAE 变更单与 health/login/同源资源冒烟全部通过。无新迁移或环境变量修改。
+- 12:25 UTC 独立 HTTP 核查 health=200，入口 index-CWzN3w9o.js 与批准产物字节一致；SHA256 `078a1facfa017e7ac91bc2171e8cb8a4c14ff1b4c1b2495033046b680999390a`。
+- 目标记录原值/版本预检命中1行，事务锁定后先以0600权限备份并fsync/回读校验，再将anchor 3改2、刷新updated_at。更新计数1，其余计划字段逐一比对不变。修复脚本另经独立只读审查无阻塞。
+- 新连接只读回查确认 start_date=2026-11-03、anchor=2、W1位置[1,3,5,6]、后移0条；现行iOS日期函数以相同字段计算为11/3、11/5、11/7、11/8，断言通过。未声称用户真机UI已亲验。
+- 原始备份、修复回执、部署与数据核验文件保留在本会话 work/，交付摘要见 outputs/计划日期修复-上线结果.txt。规范台账由Opus据此定稿，本记录为执行事实。
