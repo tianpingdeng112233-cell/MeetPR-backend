@@ -36,7 +36,13 @@ import { notifyPlanPublished } from '../../services/notifications';
 import { pushDisplayNameFields, tryEnqueuePushOutbox } from '../../services/push-outbox';
 import { calculateTrainingMaxKg, formatTrainingMaxKg } from '../../services/trainingMax';
 import { uuidEquals } from '../../utils/uuid';
-import { localCalendarDate, normalizeDateOnly, utcDate, utcDateOnly } from '../../utils/date';
+import {
+  isoWeekday,
+  localCalendarDate,
+  normalizeDateOnly,
+  utcDate,
+  utcDateOnly,
+} from '../../utils/date';
 import { visibleExerciseForCoach, visibleExercisesForCoach } from '../exercises';
 import { route, validationEnvelope } from '../http';
 import {
@@ -1451,6 +1457,15 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (body.data.plan_weeks !== undefined) patch.plan_weeks = body.data.plan_weeks;
         if (body.data.status !== undefined) patch.status = body.data.status;
         if (body.data.anchor_weekday !== undefined) patch.anchor_weekday = body.data.anchor_weekday;
+        // Calendar edits move D1 itself; keep its display anchor on that date,
+        // including requests from older clients that omit or resend a stale anchor.
+        const anchor =
+          body.data.anchor_weekday !== undefined
+            ? body.data.anchor_weekday
+            : existing.anchor_weekday;
+        if (body.data.start_date !== undefined && anchor != null) {
+          patch.anchor_weekday = isoWeekday(body.data.start_date);
+        }
         if (existing.status === 'paused' && body.data.status === 'published') {
           patch.published_at = sql<Date>`now()`;
         }
@@ -1883,6 +1898,9 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           if (body.data.plan_patch.name !== undefined) patch.name = body.data.plan_patch.name;
           if (body.data.plan_patch.start_date !== undefined) {
             patch.start_date = body.data.plan_patch.start_date;
+            if (currentPlan.anchor_weekday != null) {
+              patch.anchor_weekday = isoWeekday(body.data.plan_patch.start_date);
+            }
           }
           if (body.data.plan_patch.end_date !== undefined) {
             patch.end_date = body.data.plan_patch.end_date;
