@@ -39,6 +39,11 @@ export function normalizeDateOnly(value: string | Date): string {
   return value instanceof Date ? utcDateOnly(value) : value;
 }
 
+/** ISO weekday (Monday = 1, Sunday = 7) of a date-only value. */
+export function isoWeekday(value: string | Date): number {
+  return utcDate(value).getUTCDay() || 7;
+}
+
 /** A session logged before this local wall-clock hour belongs to the previous day. */
 export const TRAINING_DAY_CUTOFF_HOUR = 4;
 
