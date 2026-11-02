@@ -14,7 +14,7 @@
 
 ## 变更
 
-### 1. 迁移（下一个空号，派卡时现场核实，目前应为 0081）
+### 1. 迁移（下一个空号，派卡时现场核实；2026-11-02 staging 已到 0081，应为 0082）
 
 - `bind_request_status` 增加枚举值 `ended`。
 - `bind_requests` 增加 `ended_at TIMESTAMPTZ NULL`。
