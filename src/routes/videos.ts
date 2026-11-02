@@ -3,7 +3,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
 
-import { hasAcceptedBond } from '../db/bonds';
+import { hasCoachReadAccess } from '../db/bonds';
 import type { Database } from '../db/types';
 import { timestamp } from '../handlers/serialization';
 import { coachSetVideoProvenancePredicate } from '../handlers/set-video-access';
@@ -49,7 +49,9 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
 
       const isSelf = uuidEquals(req.user.id, studentId);
       const isBondedCoach =
-        !isSelf && req.user.role === 'coach' && (await hasAcceptedBond(db, req.user.id, studentId));
+        !isSelf &&
+        req.user.role === 'coach' &&
+        (await hasCoachReadAccess(db, req.user.id, studentId));
       if (!isSelf && !isBondedCoach) {
         res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
         return;

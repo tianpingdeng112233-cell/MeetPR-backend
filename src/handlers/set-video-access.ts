@@ -1,7 +1,7 @@
 import type { Kysely, RawBuilder } from 'kysely';
 import { sql } from 'kysely';
 
-import { hasAcceptedBond } from '../db/bonds';
+import { hasAcceptedBond, hasCoachReadAccess } from '../db/bonds';
 import type { Database, UserRole } from '../db/types';
 import { uuidEquals } from '../utils/uuid';
 import type { AttachmentRow } from './attachments';
@@ -40,6 +40,7 @@ export async function resolveSetVideoAccess(
   db: Kysely<Database>,
   actor: { id: string; role: UserRole },
   videoId: string,
+  mode: 'read' | 'write' = 'read',
 ): Promise<SetVideoAccess> {
   const video = await db
     .selectFrom('attachments')
@@ -55,7 +56,8 @@ export async function resolveSetVideoAccess(
     return { outcome: 'allowed', relation: 'owner', video };
   }
 
-  if (actor.role !== 'coach' || !(await hasAcceptedBond(db, actor.id, video.owner_id))) {
+  const hasAccess = mode === 'read' ? hasCoachReadAccess : hasAcceptedBond;
+  if (actor.role !== 'coach' || !(await hasAccess(db, actor.id, video.owner_id))) {
     return { outcome: 'forbidden' };
   }
 

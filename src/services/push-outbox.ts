@@ -10,6 +10,7 @@ export type PerEventPushType =
   | 'video_pending'
   | 'bind_request'
   | 'bind_accepted'
+  | 'bind_ended'
   | 'plan_shift'
   | 'plan_updated'
   | 'plan_shifted'

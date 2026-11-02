@@ -2,7 +2,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
 
-import { hasAcceptedBond } from '../db/bonds';
+import { hasCoachReadAccess } from '../db/bonds';
 import type { Database } from '../db/types';
 import { fetchExerciseStatsDetail, fetchExerciseStatsOverview } from '../handlers/exercise-stats';
 import { requireRole } from '../middleware/auth';
@@ -43,7 +43,7 @@ export function coachExerciseStatsRouter(deps: ExerciseStatsRouterDeps): Express
         res.status(400).json(validationEnvelope(query.error));
         return;
       }
-      if (!(await hasAcceptedBond(deps.db, req.user.id, params.data.id))) {
+      if (!(await hasCoachReadAccess(deps.db, req.user.id, params.data.id))) {
         res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
         return;
       }

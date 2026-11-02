@@ -14,7 +14,8 @@ export interface BindRequestResponse {
   coach_id: string;
   coach_display_name: string | null;
   invite_code_id: string | null;
-  status: BindRequestRow['status'];
+  status: Exclude<BindRequestRow['status'], 'ended'>;
+  ended_at: string | null;
   submitted_at: string;
   responded_at: string | null;
   expired_at: string;
@@ -32,7 +33,8 @@ export function toBindRequest(
     coach_id: row.coach_id,
     coach_display_name: coachDisplayName,
     invite_code_id: row.invite_code_id,
-    status: row.status,
+    status: row.status === 'ended' ? 'cancelled' : row.status,
+    ended_at: row.status === 'ended' && row.ended_at != null ? timestamp(row.ended_at) : null,
     submitted_at: timestamp(row.submitted_at),
     responded_at: row.responded_at === null ? null : timestamp(row.responded_at),
     expired_at: timestamp(row.expired_at),
@@ -252,7 +254,25 @@ export async function fetchMyBindRequest(
     .selectAll('br')
     .select('cp.display_name as coach_display_name')
     .where('br.student_id', '=', studentId)
+    // A historical unbind must not hide a still-active coach. Other request
+    // statuses keep their existing chronological ordering.
+    .where((eb) =>
+      eb.or([
+        eb('br.status', '!=', 'ended'),
+        eb(
+          'br.student_id',
+          'not in',
+          eb
+            .selectFrom('bind_requests as active')
+            .select('active.student_id')
+            .where('active.student_id', '=', studentId)
+            .where('active.status', '=', 'accepted'),
+        ),
+      ]),
+    )
+    .orderBy(sql`coalesce(br.ended_at, br.submitted_at)`, 'desc')
     .orderBy('br.submitted_at', 'desc')
+    .orderBy('br.id', 'desc')
     .limit(1)
     .executeTakeFirst();
 

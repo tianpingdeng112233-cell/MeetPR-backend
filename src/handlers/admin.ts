@@ -329,6 +329,7 @@ export async function listAdminBindings(db: Kysely<Database>) {
       'br.student_id as student_id',
       'sp.display_name as student_name',
       'br.status as status',
+      'br.ended_at as ended_at',
       'br.submitted_at as submitted_at',
       'br.responded_at as responded_at',
     ])
@@ -343,7 +344,8 @@ export async function listAdminBindings(db: Kysely<Database>) {
       coachName: row.coach_name,
       studentId: row.student_id,
       studentName: row.student_name,
-      status: row.status,
+      status: row.status === 'ended' ? 'cancelled' : row.status,
+      ended_at: row.status === 'ended' ? nullableTimestamp(row.ended_at) : null,
       submittedAt: timestamp(row.submitted_at),
       respondedAt: nullableTimestamp(row.responded_at),
     })),

@@ -224,6 +224,8 @@ async function makeContext(configOverride: Partial<Config> = {}): Promise<TestCo
       UNIQUE (plan_day_id, batch_id)
     );
 
+    CREATE TABLE bind_requests (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), coach_id UUID NOT NULL REFERENCES users(id), student_id UUID NOT NULL REFERENCES users(id), status TEXT NOT NULL, expired_at TIMESTAMPTZ NOT NULL);
+
     CREATE TABLE notification_outbox (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       event_type TEXT NOT NULL,
@@ -274,6 +276,16 @@ async function makeContext(configOverride: Partial<Config> = {}): Promise<TestCo
     .execute();
 
   const now = new Date();
+  await db
+    .insertInto('bind_requests')
+    .values({
+      coach_id: coachId,
+      student_id: traineeId,
+      status: 'accepted',
+      expired_at: new Date(),
+    })
+    .execute();
+
   return {
     app: createApp({
       config: { ...config, ...configOverride },

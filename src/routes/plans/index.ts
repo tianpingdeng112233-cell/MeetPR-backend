@@ -1141,6 +1141,41 @@ function mergedSetValidation(
 export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
   const router = Router();
 
+  // Every nested plan mutation passes through one of these public identifiers.
+  // Keep ownership-based 404s; an ended relationship gets a write-only 403.
+  for (const name of ['id', 'dayId', 'exerciseId', 'setId']) {
+    router.param(name, (req, res, next, value: string) => {
+      const user = req.user;
+      if (
+        user?.role !== 'coach' ||
+        req.method === 'GET' ||
+        req.method === 'HEAD' ||
+        (req.method === 'POST' &&
+          (req.path.endsWith('/publish') || req.path.endsWith('/imported-history'))) ||
+        !IdParamSchema.safeParse({ id: value }).success
+      ) {
+        next();
+        return;
+      }
+      void (async () => {
+        const planId =
+          name === 'dayId'
+            ? await planIdForDay(deps.db, value, user.id)
+            : name === 'exerciseId'
+              ? await planIdForExercise(deps.db, value, user.id)
+              : name === 'setId'
+                ? await planIdForSet(deps.db, value, user.id)
+                : value;
+        const plan = planId ? await selectOwnedPlan(deps.db, planId, user.id) : undefined;
+        if (plan && !(await hasAcceptedBond(deps.db, user.id, plan.trainee_id))) {
+          res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+          return;
+        }
+        next();
+      })().catch(next);
+    });
+  }
+
   router.post(
     '/',
     requireRole('coach'),
@@ -1169,6 +1204,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
+      if (!(await hasAcceptedBond(deps.db, user.id, body.data.trainee_id))) {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
       const plan = await deps.db
         .insertInto('plans')
         .values({

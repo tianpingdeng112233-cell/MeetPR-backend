@@ -42,6 +42,7 @@ export interface CoachBindRequestOnboardingSummary {
 }
 
 export interface CoachBindRequestItem {
+  previously_ended_at: string | null;
   id: string;
   student_id: string;
   display_name: string;
@@ -131,7 +132,24 @@ export async function fetchCoachBindRequestQueue(
     }
   }
 
+  const previousEnds = new Map<string, string>();
+  if (studentIds.length > 0) {
+    const ended = await db
+      .selectFrom('bind_requests')
+      .select('student_id')
+      .select((eb) => eb.fn.max<Date | null>('ended_at').as('ended_at'))
+      .where('coach_id', '=', coachId)
+      .where('student_id', 'in', studentIds)
+      .where('status', '=', 'ended')
+      .groupBy('student_id')
+      .execute();
+    for (const row of ended) {
+      if (row.ended_at !== null) previousEnds.set(row.student_id, timestamp(row.ended_at));
+    }
+  }
+
   return rows.map((row) => ({
+    previously_ended_at: previousEnds.get(row.student_id) ?? null,
     id: row.id,
     student_id: row.student_id,
     display_name: row.display_name,

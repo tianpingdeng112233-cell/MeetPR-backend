@@ -6,9 +6,9 @@ import { sql } from 'kysely';
 
 import type { Database } from '../../db/types';
 import { requesterOssSignOptions } from '../../handlers/oss-sign-options';
+import { hasCoachReadAccess } from '../../db/bonds';
 import { resolveSetVideoAccess } from '../../handlers/set-video-access';
 import {
-  coachHasAcceptedBind,
   deleteAttachmentMetadata,
   findAttachment,
   findOwnedAttachment,
@@ -707,9 +707,11 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
           res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
           return;
         }
-        // Only the owner's accepted-bind coach may read; everyone else gets the
+        // Only the owner's accepted/ended coach may read; everyone else gets the
         // same 404 as a missing row so attachment existence never leaks.
-        const bound = await coachHasAcceptedBind(db, req.user.id, attachment.owner_id);
+        const bound =
+          req.user.role === 'coach' &&
+          (await hasCoachReadAccess(db, req.user.id, attachment.owner_id));
         if (!bound) {
           res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
           return;

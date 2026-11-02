@@ -296,6 +296,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       status TEXT NOT NULL DEFAULT 'pending',
       submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       responded_at TIMESTAMPTZ,
+      ended_at TIMESTAMPTZ,
       expired_at TIMESTAMPTZ NOT NULL,
       skip_evaluation BOOLEAN NOT NULL DEFAULT FALSE,
       rejection_silent BOOLEAN NOT NULL DEFAULT TRUE
@@ -579,13 +580,19 @@ export async function makeContext(
   extras: {
     oss?: OssService;
     hub?: RealtimeHub;
-    afterQuery?: (sql: string) => Promise<void>;
+    afterQuery?: (sql: string, rowCount: number) => Promise<void>;
     config?: Partial<Config>;
   } = {},
 ): Promise<TestContext> {
   const mem = newDb();
   registerPgMemFunctions(mem);
   createSchema(mem);
+  // Fixtures use text status; exercise the remaining production 0082 schema verbatim.
+  mem.public.none(
+    fs
+      .readFileSync('db/migrations/0082-coach-unbind-alias.sql', 'utf8')
+      .replace("ALTER TYPE bind_request_status ADD VALUE IF NOT EXISTS 'ended';", ''),
+  );
 
   const { Pool } = mem.adapters.createPg();
   const pool = new Pool();
@@ -647,7 +654,7 @@ export async function makeContext(
             const result = (await Reflect.apply(target, thisArg, args)) as unknown;
             const query = args[0] as string | { text?: string } | undefined;
             const text = typeof query === 'string' ? query : query?.text;
-            if (text) await afterQuery(text);
+            if (text) await afterQuery(text, (result as { rows?: unknown[] }).rows?.length ?? 0);
             return result;
           },
         });

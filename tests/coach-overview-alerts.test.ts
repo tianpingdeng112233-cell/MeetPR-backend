@@ -341,3 +341,16 @@ describe('coach overview alert routes', () => {
     expect(count).toBeLessThanOrEqual(10);
   });
 });
+
+it('excludes ended students from overview alerts and plan-viewed writes', async () => {
+  const ctx = await context();
+  await seed(ctx);
+  expect((await get(ctx)).body.training).toHaveLength(1);
+  await request(ctx.app).post(`/coach/students/${ids.trainee}/unbind`).set(auth(ctx.coachToken));
+  expect((await get(ctx)).body).toEqual({
+    generated_at: now.toISOString(),
+    plan_ending: [],
+    training: [],
+  });
+  expect((await viewed(ctx)).status).toBe(403);
+});
