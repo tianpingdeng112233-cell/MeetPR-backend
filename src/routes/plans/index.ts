@@ -45,6 +45,7 @@ import {
 } from '../../utils/date';
 import { visibleExerciseForCoach, visibleExercisesForCoach } from '../exercises';
 import { route, validationEnvelope } from '../http';
+import { isPurePlanExtension } from './plan-extension';
 import {
   ExerciseIdParamSchema,
   BatchDaysBodySchema,
@@ -1471,6 +1472,8 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (
           hasCalendarMetadataMutation &&
           lockedTree &&
+          (body.data.source_template_id !== undefined ||
+            !isPurePlanExtension(existing, body.data)) &&
           (await planHistoryLocked(trx, existing.id, lockedTree.exerciseIds))
         ) {
           return { type: 'history-immutable' } as const;
@@ -1896,7 +1899,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           const lockedTree = await lockOwnedPlanTree(trx, plan.id, user.id);
           if (!lockedTree) return { type: 'not-found' } as const;
           currentPlan = lockedTree.plan;
-          if (await planHistoryLocked(trx, plan.id, lockedTree.exerciseIds)) {
+          if (
+            !isPurePlanExtension(currentPlan, body.data.plan_patch ?? {}) &&
+            (await planHistoryLocked(trx, plan.id, lockedTree.exerciseIds))
+          ) {
             return { type: 'plan-history-immutable' } as const;
           }
         }

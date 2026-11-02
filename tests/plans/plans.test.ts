@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import type { Kysely } from 'kysely';
 import { DataType, newDb } from 'pg-mem';
 import pino from 'pino';
-import request, { type Response } from 'supertest';
+import { request, type InMemoryResponse as Response } from '../helpers/inMemoryRequest';
 import { describe, expect, it } from 'vitest';
 
 import { createApp } from '../../src/app';
@@ -419,6 +419,24 @@ async function createCompleteDraft(ctx: TestContext) {
   return { plan, day, exercise, set };
 }
 
+async function createDraftWithHistory(ctx: TestContext) {
+  const tree = await createCompleteDraft(ctx);
+  await ctx.db
+    .insertInto('set_logs')
+    .values({
+      student_id: traineeId,
+      plan_exercise_id: responseId(tree.exercise),
+      exercise_id: await firstSystemExerciseId(ctx.db),
+      set_index: 0,
+      weight_kg: '180.00',
+      reps: 5,
+      completed: true,
+      logged_date: '2026-05-04',
+    })
+    .execute();
+  return tree;
+}
+
 describe('coach planning CRUD', () => {
   it('POST /plans creates a draft plan for a student-role trainee', async () => {
     const ctx = await makeContext();
@@ -570,6 +588,83 @@ describe('coach planning CRUD', () => {
       expect(updated.body.anchor_weekday).toBe(2);
       const loaded = await request(ctx.app).get(`/plans/${id}`).set(auth(ctx.coachToken));
       expect(loaded.body).toMatchObject({ start_date: '2026-11-03', anchor_weekday: 2 });
+    },
+  );
+
+  it('PATCH /plans/:id extends a draft plan with history and preserves its existing days', async () => {
+    const ctx = await makeContext();
+    const { plan } = await createDraftWithHistory(ctx);
+    const id = responseId(plan);
+    const before = await request(ctx.app).get(`/plans/${id}`).set(auth(ctx.coachToken));
+    expect(before.status).toBe(200);
+
+    const response = await request(ctx.app)
+      .patch(`/plans/${id}`)
+      .set(auth(ctx.coachToken))
+      .send({ plan_weeks: 6, end_date: '2026-06-15' });
+
+    expect(response.status).toBe(200);
+    expect(new Date(response.body.start_date)).toEqual(new Date('2026-05-04'));
+    expect(new Date(response.body.end_date)).toEqual(new Date('2026-06-15'));
+    expect(response.body).toMatchObject({
+      plan_weeks: 6,
+      status: 'draft',
+    });
+    const loaded = await request(ctx.app).get(`/plans/${id}`).set(auth(ctx.coachToken));
+    expect(loaded.status).toBe(200);
+    expect(loaded.body).toMatchObject(response.body);
+    expect(loaded.body.days).toEqual(before.body.days);
+  });
+
+  it.each([
+    { plan_weeks: 3, end_date: '2026-06-15' },
+    { end_date: '2026-05-31', plan_weeks: 6 },
+    { start_date: '2026-05-05', plan_weeks: 6 },
+    { source_template_id: '10000000-0000-4000-8000-000000000099', plan_weeks: 6 },
+    { source_template_id: null, end_date: '2026-06-15' },
+  ])('PATCH /plans/:id keeps history locked for %j', async (patch) => {
+    const ctx = await makeContext();
+    const { plan } = await createDraftWithHistory(ctx);
+    const id = responseId(plan);
+    const before = await request(ctx.app).get(`/plans/${id}`).set(auth(ctx.coachToken));
+
+    const response = await request(ctx.app)
+      .patch(`/plans/${id}`)
+      .set(auth(ctx.coachToken))
+      .send(patch);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: 'PLAN_HISTORY_IMMUTABLE' });
+    const loaded = await request(ctx.app).get(`/plans/${id}`).set(auth(ctx.coachToken));
+    expect(loaded.status).toBe(200);
+    expect(loaded.body).toEqual(before.body);
+  });
+
+  it.each([
+    { plan_weeks: 5 },
+    { end_date: '2026-06-02' },
+    { start_date: '2026-05-04', end_date: '2026-06-01', plan_weeks: 4 },
+  ])(
+    'PATCH /plans/:id accepts partial or equal extension %j on published history',
+    async (patch) => {
+      const ctx = await makeContext();
+      const { plan } = await createDraftWithHistory(ctx);
+      const id = responseId(plan);
+      await ctx.db.updateTable('plans').set({ status: 'published' }).where('id', '=', id).execute();
+
+      const response = await request(ctx.app)
+        .patch(`/plans/${id}`)
+        .set(auth(ctx.coachToken))
+        .send(patch);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        start_date: '2026-05-04',
+        end_date: '2026-06-01',
+        plan_weeks: 4,
+        status: 'published',
+        ...patch,
+      });
     },
   );
 
