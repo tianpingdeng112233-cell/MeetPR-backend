@@ -74,6 +74,7 @@ export const BIND_REQUEST_STATUSES = [
   'rejected',
   'expired',
   'cancelled',
+  'ended',
 ] as const;
 export const PLAN_KINDS = ['regular', 'adaptation'] as const;
 export const INVITE_CODE_TYPES = ['personal_permanent', 'single_use', 'time_limited'] as const;
@@ -442,6 +443,14 @@ export interface StudentProfilesTable {
   updated_at: TimestampColumn;
 }
 
+export interface CoachStudentAliasesTable {
+  coach_id: string;
+  student_id: string;
+  alias: string;
+  created_at: TimestampColumn;
+  updated_at: TimestampColumn;
+}
+
 export interface BindRequestsTable {
   id: Generated<string>;
   student_id: string;
@@ -449,6 +458,7 @@ export interface BindRequestsTable {
   status: Generated<BindRequestStatus>;
   submitted_at: TimestampColumn;
   responded_at: NullableColumn<Date>;
+  ended_at: NullableColumn<Date>;
   expired_at: TimestampColumn;
   skip_evaluation: Generated<boolean>;
   rejection_silent: Generated<boolean>;
@@ -885,6 +895,7 @@ export interface Database {
   coach_student_plan_views: CoachStudentPlanViewsTable;
   student_profiles: StudentProfilesTable;
   bind_requests: BindRequestsTable;
+  coach_student_aliases: CoachStudentAliasesTable;
   set_logs: SetLogsTable;
   session_reviews: SessionReviewsTable;
   readiness_checkins: ReadinessCheckinsTable;

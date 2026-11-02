@@ -4,8 +4,13 @@ import { z } from 'zod';
 
 import type { Database } from '../db/types';
 import { updateCoachRpe } from '../handlers/coach-rpe';
-import { listCoachStudents, renameCoachStudent } from '../handlers/coach-students';
+import {
+  listCoachStudents,
+  renameCoachStudent,
+  unbindCoachStudent,
+} from '../handlers/coach-students';
 import type { Logger } from '../logger';
+import { tryEnqueuePushOutbox } from '../services/push-outbox';
 import { requireRole } from '../middleware/auth';
 import { notImplemented } from '../utils/notImplemented';
 import { route, validationEnvelope } from './http';
@@ -13,15 +18,20 @@ import { route, validationEnvelope } from './http';
 interface CoachRouterDeps {
   db: Kysely<Database>;
   logger: Logger;
+  pushEnabled?: boolean;
 }
 
 const StudentIdParamsSchema = z.object({ id: z.string().uuid() });
 const SetLogIdParamsSchema = z.object({ id: z.string().uuid() });
 const RenameStudentBodySchema = z
   .object({
-    display_name: z.string().trim().min(1).max(100),
+    alias: z.string().trim().max(100).nullable().optional(),
+    display_name: z.string().trim().max(100).optional(),
   })
-  .strict();
+  .strict()
+  .refine((body) => body.alias !== undefined || body.display_name !== undefined, {
+    message: 'alias or display_name is required',
+  });
 const CoachRpeBodySchema = z
   .object({
     coach_rpe: z.number().min(0).max(10).multipleOf(0.5).nullable(),
@@ -44,8 +54,53 @@ export function coachRouter(deps: CoachRouterDeps): Router {
         return;
       }
 
-      const students = await listCoachStudents(deps.db, req.user.id);
+      const students = await listCoachStudents(
+        deps.db,
+        req.user.id,
+        req.query.include_ended === '1',
+      );
       res.status(200).json({ students });
+    }),
+  );
+
+  router.post(
+    '/students/:id/unbind',
+    requireRole('coach'),
+    route(async (req, res) => {
+      if (!req.user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      const params = StudentIdParamsSchema.safeParse(req.params);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+      const ended = await unbindCoachStudent(deps.db, req.user.id, params.data.id);
+      if (!ended) {
+        res.status(404).json({ error: 'COACH_STUDENT_NOT_FOUND' });
+        return;
+      }
+      if (deps.pushEnabled) {
+        const coachId = req.user.id;
+        await tryEnqueuePushOutbox(deps.db, deps.logger, 'bind_ended', async () => {
+          const coach = await deps.db
+            .selectFrom('coach_profiles')
+            .select('display_name')
+            .where('user_id', '=', coachId)
+            .executeTakeFirst();
+          return {
+            aggregateId: ended.id,
+            recipientId: ended.student_id,
+            payload: {
+              coach_name: coach?.display_name ?? null,
+              student_id: ended.student_id,
+              request_id: ended.id,
+            },
+          };
+        });
+      }
+      res.status(200).json({});
     }),
   );
 
@@ -120,7 +175,7 @@ export function coachRouter(deps: CoachRouterDeps): Router {
         deps.db,
         req.user.id,
         params.data.id,
-        body.data.display_name,
+        body.data.alias !== undefined ? body.data.alias : (body.data.display_name ?? null),
       );
       if (!student) {
         res.status(404).json({ error: 'COACH_STUDENT_NOT_FOUND' });

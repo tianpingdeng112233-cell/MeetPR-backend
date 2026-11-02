@@ -1,4 +1,4 @@
-import request from 'supertest';
+import { request } from './helpers/inMemoryRequest';
 import pino from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -90,6 +90,7 @@ describe('student bind requests', () => {
         coach_id: ids.coach,
         coach_display_name: null,
         status: 'accepted',
+        ended_at: null,
         submitted_at: created.body.submitted_at,
         responded_at: expect.any(String),
         expired_at: created.body.expired_at,
@@ -475,4 +476,108 @@ describe('student bind requests', () => {
     expect(camel.status).toBe(400);
     expect(camel.body.error).toBe('VALIDATION_ERROR');
   });
+});
+
+describe('ended binding compatibility', () => {
+  it('returns the ended row from /mine as cancelled with coach name and ended_at', async () => {
+    const ctx = await makeContext();
+    const endedAt = new Date('2026-11-02T12:00:00Z');
+    await ctx.db
+      .updateTable('bind_requests')
+      .set({ status: 'ended', ended_at: endedAt })
+      .where('student_id', '=', ids.boundStudent)
+      .execute();
+    const res = await request(ctx.app).get('/bind-requests/mine').set(auth(ctx.boundStudentToken));
+    expect(res.status).toBe(200);
+    expect(res.body.bind_request).toMatchObject({
+      status: 'cancelled',
+      ended_at: endedAt.toISOString(),
+      coach_display_name: 'Coach A',
+      first_run: null,
+    });
+  });
+});
+
+it('shows the latest unbind until a newer application supersedes it', async () => {
+  const ctx = await makeContext();
+  await ctx.db
+    .updateTable('bind_requests')
+    .set({
+      submitted_at: new Date('2026-09-01T00:00:00Z'),
+      status: 'ended',
+      ended_at: new Date('2026-11-01T00:00:00Z'),
+    })
+    .where('student_id', '=', ids.boundStudent)
+    .execute();
+  await ctx.db
+    .insertInto('bind_requests')
+    .values({
+      student_id: ids.boundStudent,
+      coach_id: ids.otherCoach,
+      status: 'rejected',
+      submitted_at: new Date('2026-10-01T00:00:00Z'),
+      expired_at: new Date(),
+    })
+    .execute();
+  const mine = () => request(ctx.app).get('/bind-requests/mine').set(auth(ctx.boundStudentToken));
+  expect((await mine()).body.bind_request).toMatchObject({
+    status: 'cancelled',
+    coach_id: ids.coach,
+    ended_at: '2026-11-01T00:00:00.000Z',
+  });
+  await ctx.db
+    .insertInto('bind_requests')
+    .values({
+      student_id: ids.boundStudent,
+      coach_id: ids.coach,
+      status: 'pending',
+      submitted_at: new Date('2026-11-02T00:00:00Z'),
+      expired_at: new Date('2099-01-01'),
+    })
+    .execute();
+  expect((await mine()).body.bind_request).toMatchObject({ status: 'pending', ended_at: null });
+});
+
+it('keeps the other accepted coach current when one of two coaches unbinds', async () => {
+  const ctx = await makeContext();
+  await ctx.db
+    .updateTable('bind_requests')
+    .set({ submitted_at: new Date('2026-09-01T00:00:00Z') })
+    .where('student_id', '=', ids.boundStudent)
+    .execute();
+  const other = await ctx.db
+    .insertInto('bind_requests')
+    .values({
+      student_id: ids.boundStudent,
+      coach_id: ids.otherCoach,
+      status: 'accepted',
+      submitted_at: new Date('2026-10-01T00:00:00Z'),
+      expired_at: new Date(),
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  const unbound = await request(ctx.app)
+    .post(`/coach/students/${ids.boundStudent}/unbind`)
+    .set(auth(ctx.coachToken));
+  expect(unbound.status).toBe(200);
+  const mine = () => request(ctx.app).get('/bind-requests/mine').set(auth(ctx.boundStudentToken));
+  expect((await mine()).body.bind_request).toMatchObject({
+    id: other.id,
+    coach_id: ids.otherCoach,
+    status: 'accepted',
+    ended_at: null,
+  });
+  // A newer non-ended request retains the pre-057 submitted_at ordering.
+  const pending = await ctx.db
+    .insertInto('bind_requests')
+    .values({
+      student_id: ids.boundStudent,
+      coach_id: ids.coach,
+      status: 'pending',
+      submitted_at: new Date('2098-01-01T00:00:00Z'),
+      expired_at: new Date('2099-01-01T00:00:00Z'),
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  expect((await mine()).body.bind_request).toMatchObject({ id: pending.id, status: 'pending' });
 });

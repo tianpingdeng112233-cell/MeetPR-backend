@@ -119,6 +119,7 @@ function makeContext(): TestContext {
       status TEXT NOT NULL DEFAULT 'pending',
       submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       responded_at TIMESTAMPTZ,
+      ended_at TIMESTAMPTZ,
       expired_at TIMESTAMPTZ NOT NULL,
       skip_evaluation BOOLEAN NOT NULL DEFAULT FALSE,
       rejection_silent BOOLEAN NOT NULL DEFAULT TRUE,
@@ -601,6 +602,7 @@ describe('admin read-only API', () => {
       studentId: ids.student,
       studentName: 'Student One',
       status: 'pending',
+      ended_at: null,
       submittedAt: '2026-07-12T10:00:00.000Z',
       respondedAt: null,
     });

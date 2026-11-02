@@ -2,7 +2,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
 
-import { hasAcceptedBond } from '../db/bonds';
+import { hasCoachReadAccess } from '../db/bonds';
 import type { Database } from '../db/types';
 import { fetchSessionReviews, upsertSessionReview } from '../handlers/reviews';
 import { requireRole } from '../middleware/auth';
@@ -105,7 +105,7 @@ export function studentReviewsRouter(deps: ReviewsRouterDeps): ExpressRouter {
       if (!isSelf) {
         const bonded =
           req.user.role === 'coach' &&
-          (await hasAcceptedBond(deps.db, req.user.id, params.data.id));
+          (await hasCoachReadAccess(deps.db, req.user.id, params.data.id));
         if (!bonded) {
           res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
           return;

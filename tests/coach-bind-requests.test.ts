@@ -1,4 +1,4 @@
-import request from 'supertest';
+import { request } from './helpers/inMemoryRequest';
 import { describe, expect, it } from 'vitest';
 
 import { auth, ids, makeContext, type TestContext } from './helpers/bindEval';
@@ -290,4 +290,49 @@ describe('coach bind request queue', () => {
       .set(auth(ctx.freeStudentToken));
     expect(queue.status).toBe(403);
   });
+});
+
+it('reports the latest previously ended date only for the requesting coach', async () => {
+  const ctx = await makeContext();
+  const requestId = await createPendingRequest(ctx);
+  const endedAt = new Date('2026-10-31T12:00:00Z');
+  await ctx.db
+    .insertInto('bind_requests')
+    .values([
+      {
+        coach_id: ids.coach,
+        student_id: ids.freeStudent,
+        status: 'ended',
+        ended_at: new Date('2026-10-01T00:00:00Z'),
+        expired_at: new Date(),
+      },
+      {
+        coach_id: ids.coach,
+        student_id: ids.freeStudent,
+        status: 'ended',
+        ended_at: endedAt,
+        expired_at: new Date(),
+      },
+      {
+        coach_id: ids.otherCoach,
+        student_id: ids.freeStudent,
+        status: 'ended',
+        ended_at: new Date('2026-11-02T00:00:00Z'),
+        expired_at: new Date(),
+      },
+    ])
+    .execute();
+  const queue = await request(ctx.app).get('/coach/bind-requests').set(auth(ctx.coachToken));
+  expect(queue.status).toBe(200);
+  expect(queue.body.bind_requests).toHaveLength(1);
+  expect(queue.body.bind_requests[0]).toMatchObject({
+    id: requestId,
+    previously_ended_at: endedAt.toISOString(),
+  });
+  const accepted = await request(ctx.app)
+    .post(`/coach/bind-requests/${requestId}/accept`)
+    .set(auth(ctx.coachToken))
+    .send({ skip_evaluation: true });
+  expect(accepted.status).toBe(200);
+  expect(accepted.body.bind_request).toMatchObject({ status: 'accepted', ended_at: null });
 });

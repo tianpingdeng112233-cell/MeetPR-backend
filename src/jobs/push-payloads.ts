@@ -332,6 +332,27 @@ export const PUSH_PAYLOAD_BUILDERS = {
       },
     };
   },
+  bind_ended: (payload, locale = 'zh') => {
+    const value = BindAcceptedSchema.parse(decodedPayload(payload));
+    const coachName = value.coach_name;
+    return {
+      alert:
+        locale === 'en'
+          ? {
+              title: `${coachName && cjkFree(coachName) ? coachName : 'Your coach'} has unlinked you`,
+              body: 'Your training history is kept. Enter an invite code to link again.',
+            }
+          : {
+              title: coachName
+                ? copy(locale, '{0}已与你解绑', [coachName])
+                : copy(locale, '教练已与你解绑'),
+              body: copy(locale, '训练记录都还在，输入邀请码可重新绑定'),
+            },
+      collapseId: `bind-ended-${value.request_id}`,
+      threadId: 'bind_ended',
+      custom: { kind: 'bind_ended', student_id: value.student_id, request_id: value.request_id },
+    };
+  },
   plan_shift: (payload, locale = 'zh') => {
     const value = PlanShiftSchema.parse(decodedPayload(payload));
     value.student_name = displayName(value.student_name, value.display_name_is_fallback, locale);

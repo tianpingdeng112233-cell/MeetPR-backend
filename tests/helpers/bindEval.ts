@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import type { Kysely } from 'kysely';
@@ -185,6 +186,25 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       sort_order INT NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE plan_day_shifts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      seq BIGSERIAL NOT NULL,
+      plan_day_id UUID NOT NULL REFERENCES plan_days(id),
+      student_id UUID NOT NULL REFERENCES users(id),
+      batch_id UUID NOT NULL,
+      shifted_to_date DATE NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE attachments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      owner_id UUID NOT NULL REFERENCES users(id),
+      kind TEXT NOT NULL,
+      status TEXT NOT NULL,
+      source_coach_id UUID REFERENCES users(id),
+      is_unlinked_explicit BOOLEAN NOT NULL DEFAULT FALSE,
+      coach_viewed_at TIMESTAMPTZ
+    );
+
     CREATE TABLE plan_exercises (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       plan_day_id UUID NOT NULL REFERENCES plan_days(id) ON DELETE CASCADE,
@@ -261,6 +281,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       status TEXT NOT NULL DEFAULT 'pending',
       submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       responded_at TIMESTAMPTZ,
+      ended_at TIMESTAMPTZ,
       expired_at TIMESTAMPTZ NOT NULL,
       skip_evaluation BOOLEAN NOT NULL DEFAULT FALSE,
       rejection_silent BOOLEAN NOT NULL DEFAULT TRUE,
@@ -374,6 +395,12 @@ export async function makeContext(
   const mem = newDb();
   registerPgMemFunctions(mem);
   createSchema(mem);
+  // Fixtures use text status; exercise the remaining production 0082 schema verbatim.
+  mem.public.none(
+    fs
+      .readFileSync('db/migrations/0082-coach-unbind-alias.sql', 'utf8')
+      .replace("ALTER TYPE bind_request_status ADD VALUE IF NOT EXISTS 'ended';", ''),
+  );
 
   const { Pool } = mem.adapters.createPg();
   const pool = new Pool();

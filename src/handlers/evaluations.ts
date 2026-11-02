@@ -1,6 +1,7 @@
 import type { Kysely, Selectable, Transaction } from 'kysely';
 import { sql } from 'kysely';
 
+import { hasAcceptedBond } from '../db/bonds';
 import type { Database, EvaluationPeriodsTable } from '../db/types';
 import { timestamp } from './serialization';
 
@@ -78,7 +79,8 @@ export async function fetchEvaluationForStudent(
 export type CompleteEvaluationResult =
   | { type: 'completed'; evaluationPeriod: EvaluationPeriodResponse }
   | { type: 'not-found' }
-  | { type: 'already-completed' };
+  | { type: 'already-completed' }
+  | { type: 'forbidden' };
 
 export async function completeEvaluation(
   db: Kysely<Database>,
@@ -88,12 +90,13 @@ export async function completeEvaluation(
   return db.transaction().execute(async (trx): Promise<CompleteEvaluationResult> => {
     const existing = await trx
       .selectFrom('evaluation_periods')
-      .select(['id', 'completed_at'])
+      .select(['id', 'completed_at', 'student_id'])
       .where('id', '=', evaluationId)
       .where('coach_id', '=', coachId)
       .executeTakeFirst();
 
     if (!existing) return { type: 'not-found' };
+    if (!(await hasAcceptedBond(trx, coachId, existing.student_id))) return { type: 'forbidden' };
     if (existing.completed_at !== null) return { type: 'already-completed' };
 
     const updated = await trx
