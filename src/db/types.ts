@@ -63,6 +63,8 @@ export const LOAD_MODES = [
   'weight_range',
   'rpe_range',
   'fixed_weight',
+  'free_weight',
+  'bodyweight',
 ] as const;
 export const PCT_ANCHORS = ['one_rm', 'e1rm', 'top_set'] as const;
 export const SET_TYPES = ['warmup', 'working', 'failed', 'amrap', 'backoff'] as const;
@@ -396,8 +398,8 @@ export interface PlanSetsTable {
   set_number: number;
   target_reps: number;
   target_reps_max: NullableColumn<number>;
-  intensity_mode: IntensityMode;
-  target_value: string;
+  intensity_mode: NullableColumn<IntensityMode>;
+  target_value: NullableColumn<string>;
   set_type: SetType;
   rest_seconds: number | null;
   coach_note: NullableColumn<string>;
@@ -843,6 +845,18 @@ export interface AnalyticsFeedbackTable {
   ts_server: TimestampColumn;
 }
 
+export interface PlanImportRunsTable {
+  id: Generated<string>;
+  coach_id: string;
+  trainee_id: string;
+  source: 'file' | 'paste';
+  input_chars: number;
+  week_calls: Generated<number>;
+  prompt_tokens: Generated<number>;
+  completion_tokens: Generated<number>;
+  created_at: TimestampColumn;
+}
+
 export interface CoachStudentPlanViewsTable {
   coach_id: string;
   student_id: string;
@@ -850,6 +864,7 @@ export interface CoachStudentPlanViewsTable {
 }
 
 export interface Database {
+  plan_import_runs: PlanImportRunsTable;
   users: UsersTable;
   user_identities: UserIdentitiesTable;
   auth_challenges: AuthChallengesTable;

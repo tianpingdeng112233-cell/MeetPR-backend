@@ -543,6 +543,36 @@ describe('coach planning CRUD', () => {
     }
   });
 
+  it.each([undefined, 3])(
+    'keeps the anchor on the new start date when PATCH sends anchor %s',
+    async (anchor) => {
+      const ctx = await makeContext();
+      const created = await request(ctx.app).post('/plans').set(auth(ctx.coachToken)).send({
+        trainee_id: traineeId,
+        name: 'Calendar regression',
+        source: 'coach',
+        plan_weeks: 4,
+        start_date: '2026-11-04',
+        end_date: '2026-12-01',
+        anchor_weekday: 3,
+      });
+      expect(created.status).toBe(201);
+      const id = responseId(created);
+      const updated = await request(ctx.app)
+        .patch(`/plans/${id}`)
+        .set(auth(ctx.coachToken))
+        .send({
+          start_date: '2026-11-03',
+          end_date: '2026-11-30',
+          ...(anchor === undefined ? {} : { anchor_weekday: anchor }),
+        });
+      expect(updated.status).toBe(200);
+      expect(updated.body.anchor_weekday).toBe(2);
+      const loaded = await request(ctx.app).get(`/plans/${id}`).set(auth(ctx.coachToken));
+      expect(loaded.body).toMatchObject({ start_date: '2026-11-03', anchor_weekday: 2 });
+    },
+  );
+
   it('DELETE /plans/:id deletes an owned draft plan and cascades its tree', async () => {
     const ctx = await makeContext();
     const { plan } = await createCompleteDraft(ctx);

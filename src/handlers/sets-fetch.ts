@@ -15,6 +15,7 @@ type SerializableSetLogRow = Pick<
   | 'weight_kg'
   | 'reps'
   | 'rpe'
+  | 'actual_rir'
   | 'coach_rpe'
   | 'completed'
   | 'failed'
@@ -34,6 +35,7 @@ export interface SetLogResponse {
   weight_kg: string;
   reps: number;
   rpe: string | null;
+  actual_rir: number | null;
   coach_rpe: string | null;
   completed: boolean;
   failed: boolean;
@@ -54,6 +56,7 @@ export function toSetLog(row: SerializableSetLogRow): SetLogResponse {
     weight_kg: Number(row.weight_kg).toFixed(2),
     reps: row.reps,
     rpe: row.rpe == null ? null : Number(row.rpe).toFixed(1),
+    actual_rir: row.actual_rir ?? null,
     coach_rpe: row.coach_rpe == null ? null : Number(row.coach_rpe).toFixed(1),
     completed: row.completed,
     failed: row.failed,
@@ -122,6 +125,7 @@ export async function fetchCoachSetLogs(
       'sl.weight_kg as weight_kg',
       'sl.reps as reps',
       'sl.rpe as rpe',
+      'sl.actual_rir as actual_rir',
       'sl.coach_rpe as coach_rpe',
       'sl.completed as completed',
       'sl.failed as failed',

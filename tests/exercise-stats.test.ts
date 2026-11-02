@@ -1025,6 +1025,7 @@ describe('spec 051 exercise history detail', () => {
   }
 
   const expectedSet = (setIndex: number, videoId: string | null = null) => ({
+    actual_rir: null,
     set_index: setIndex,
     weight_kg: '100.00',
     reps: 2,

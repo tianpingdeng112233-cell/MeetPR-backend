@@ -436,6 +436,27 @@ describe('POST /plans/:id/days/batch', () => {
     expect(await treeCounts(ctx, plan.id)).toEqual(before);
   });
 
+  it.each([3, null])('keeps batch calendar updates consistent with anchor %s', async (anchor) => {
+    const ctx = await makeBatchContext();
+    const plan = await createDraftPlan(ctx);
+    await ctx.db
+      .updateTable('plans')
+      .set({ anchor_weekday: anchor })
+      .where('id', '=', plan.id)
+      .execute();
+    const updated = await batch(ctx, plan.id, {
+      plan_patch: { start_date: '2026-07-05' },
+      delete_day_ids: [],
+      upsert_days: [upsertDay(1, 1)],
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.body.anchor_weekday).toBe(anchor === null ? null : 7);
+    const loaded = await request(ctx.app).get(`/plans/${plan.id}`).set(auth(ctx.coachToken));
+    expect(loaded.status).toBe(200);
+    expect(loaded.body.anchor_weekday).toBe(anchor === null ? null : 7);
+    expect(normalizeDateOnly(new Date(loaded.body.start_date))).toBe('2026-07-05');
+  });
+
   it('updates plan calendar fields atomically and rejects merged inverted dates without writes', async () => {
     const ctx = await makeBatchContext();
     const plan = await createDraftPlan(ctx);

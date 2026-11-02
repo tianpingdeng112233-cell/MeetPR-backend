@@ -21,6 +21,7 @@ export interface SetLogInput {
   weight_kg: string;
   reps: number;
   rpe: string | null;
+  actual_rir?: number | null;
   completed: boolean;
   failed: boolean;
 }
@@ -33,6 +34,7 @@ export interface AdhocSetLogInput {
   weight_kg: string;
   reps: number;
   rpe: string | null;
+  actual_rir?: number | null;
   completed: boolean;
   failed: boolean;
 }
@@ -110,6 +112,18 @@ export async function exerciseExists(db: Kysely<Database>, exerciseId: string): 
   return row !== undefined;
 }
 
+export async function isAccessoryExercise(
+  db: Kysely<Database>,
+  exerciseId: string,
+): Promise<boolean> {
+  const row = await db
+    .selectFrom('exercises')
+    .select('exercise_type')
+    .where('id', '=', exerciseId)
+    .executeTakeFirst();
+  return row?.exercise_type === 'accessory';
+}
+
 export async function upsertSetLog(
   db: Kysely<Database>,
   studentId: string,
@@ -134,6 +148,7 @@ export async function upsertSetLog(
       weight_kg: input.weight_kg,
       reps: input.reps,
       rpe: input.rpe,
+      actual_rir: input.actual_rir ?? null,
       completed: input.completed,
       failed,
       assumed: false,
@@ -144,6 +159,9 @@ export async function upsertSetLog(
             weight_kg: (eb) => eb.ref('excluded.weight_kg'),
             reps: (eb) => eb.ref('excluded.reps'),
             rpe: (eb) => eb.ref('excluded.rpe'),
+            ...(input.actual_rir !== undefined || input.rpe !== null
+              ? { actual_rir: input.actual_rir ?? null }
+              : {}),
             completed: (eb) => eb.ref('excluded.completed'),
             failed: (eb) => eb.ref('excluded.failed'),
             assumed: false,
@@ -154,6 +172,9 @@ export async function upsertSetLog(
             weight_kg: (eb) => eb.ref('excluded.weight_kg'),
             reps: (eb) => eb.ref('excluded.reps'),
             rpe: (eb) => eb.ref('excluded.rpe'),
+            ...(input.actual_rir !== undefined || input.rpe !== null
+              ? { actual_rir: input.actual_rir ?? null }
+              : {}),
             completed: (eb) => eb.ref('excluded.completed'),
             failed: (eb) => eb.ref('excluded.failed'),
             assumed: false,
@@ -186,6 +207,9 @@ async function updateAdhocSetLog(
       weight_kg: input.weight_kg,
       reps: input.reps,
       rpe: input.rpe,
+      ...(input.actual_rir !== undefined || input.rpe !== null
+        ? { actual_rir: input.actual_rir ?? null }
+        : {}),
       completed: input.completed,
       failed: input.failed,
       assumed: false,
@@ -237,6 +261,7 @@ export async function upsertAdhocSetLog(
         weight_kg: input.weight_kg,
         reps: input.reps,
         rpe: input.rpe,
+        actual_rir: input.actual_rir ?? null,
         completed: input.completed,
         failed: input.failed,
         assumed: false,

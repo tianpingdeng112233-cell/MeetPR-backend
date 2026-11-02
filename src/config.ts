@@ -29,6 +29,8 @@ export const ConfigSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().positive().default(3000),
+    MIN_IOS_BUILD: z.coerce.number().int().nonnegative().default(0),
+    MIN_ANDROID_VERSION_CODE: z.coerce.number().int().nonnegative().default(0),
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
     JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be >= 32 chars'),
     JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be >= 32 chars'),
@@ -96,6 +98,10 @@ export const ConfigSchema = z
     COACH_ONBOARDING_URL: z.string().url().optional(),
     MAIL_LOCALE: z.enum(['en', 'zh']).default('en'),
     RESEND_API_KEY: z.string().min(1).optional(),
+    DEEPSEEK_API_KEY: z.string().trim().optional(),
+    DEEPSEEK_BASE_URL: HttpsUrlSchema.optional(),
+    DEEPSEEK_MODEL: z.string().trim().min(1).optional(),
+    PLAN_IMPORT_DEBUG_DIR: z.string().trim().min(1).optional(),
     EMAIL_FROM: z.string().min(1).optional(),
     SIWA_KEY_ID: z.string().min(1).optional(),
     SIWA_TEAM_ID: z.string().min(1).optional(),
@@ -179,6 +185,14 @@ export const ConfigSchema = z
 
     if (config.NODE_ENV !== 'production') return;
 
+    if (config.PLAN_IMPORT_DEBUG_DIR !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PLAN_IMPORT_DEBUG_DIR'],
+        message: 'PLAN_IMPORT_DEBUG_DIR is dev-only and must be unset in production',
+      });
+    }
+
     // HTTPS is a go-live blocker, not an immediate deploy gate: these checks
     // only run once FORCE_HTTPS is switched on, so a pre-TLS production build
     // still boots.
@@ -254,7 +268,11 @@ export type Config = Omit<
   | 'GOOGLE_CLIENT_IDS'
   | 'EMAIL_SIGNUP_VERIFICATION'
   | 'MAIL_LOCALE'
+  | 'MIN_IOS_BUILD'
+  | 'MIN_ANDROID_VERSION_CODE'
 > & {
+  MIN_IOS_BUILD?: ParsedConfig['MIN_IOS_BUILD'];
+  MIN_ANDROID_VERSION_CODE?: ParsedConfig['MIN_ANDROID_VERSION_CODE'];
   EMAIL_SIGNUP_VERIFICATION?: ParsedConfig['EMAIL_SIGNUP_VERIFICATION'];
   MAIL_LOCALE?: ParsedConfig['MAIL_LOCALE'];
   STORAGE_BACKEND?: ParsedConfig['STORAGE_BACKEND'];

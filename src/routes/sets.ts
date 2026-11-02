@@ -10,6 +10,7 @@ import {
   AdhocDayConflictError,
   canLogPlanDay,
   exerciseExists,
+  isAccessoryExercise,
   resolvePlanExercise,
   upsertAdhocSetLog,
   upsertSetLog,
@@ -48,6 +49,7 @@ const SetLogCommonFields = {
   ),
   reps: z.number().int().min(0).max(99),
   rpe: RpeSchema.nullable().optional(),
+  actual_rir: z.number().int().min(0).max(9).nullable().optional(),
   completed: z.boolean(),
   failed: z.boolean().optional(),
 };
@@ -77,6 +79,10 @@ const CoachedSetLogBodySchema = z
     ...SetLogCommonFields,
   })
   .strict()
+  .refine((body) => body.rpe == null || body.actual_rir == null, {
+    path: ['actual_rir'],
+    message: 'Choose either actual RPE or actual RIR',
+  })
   .transform(normalizeSetLogBody);
 
 const AdhocSetLogBodySchema = z
@@ -87,6 +93,10 @@ const AdhocSetLogBodySchema = z
     ...SetLogCommonFields,
   })
   .strict()
+  .refine((body) => body.rpe == null || body.actual_rir == null, {
+    path: ['actual_rir'],
+    message: 'Choose either actual RPE or actual RIR',
+  })
   .transform(normalizeSetLogBody);
 
 const SetLogBodySchema = z.union([CoachedSetLogBodySchema, AdhocSetLogBodySchema]);
@@ -138,6 +148,13 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
           return;
         }
 
+        if (
+          body.data.actual_rir != null &&
+          !(await isAccessoryExercise(deps.db, resolved.exerciseId))
+        ) {
+          res.status(400).json({ error: 'SETS_RIR_ACCESSORY_ONLY' });
+          return;
+        }
         const result = await upsertSetLog(deps.db, req.user.id, {
           plan_id: resolved.planId,
           plan_day_id: resolved.planDayId,
@@ -149,6 +166,7 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
           weight_kg: body.data.weight_kg,
           reps: body.data.reps,
           rpe: body.data.rpe,
+          ...(body.data.actual_rir !== undefined ? { actual_rir: body.data.actual_rir } : {}),
           completed: body.data.completed,
           failed: body.data.failed,
         });
@@ -181,6 +199,13 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
         return;
       }
 
+      if (
+        body.data.actual_rir != null &&
+        !(await isAccessoryExercise(deps.db, body.data.exercise_id))
+      ) {
+        res.status(400).json({ error: 'SETS_RIR_ACCESSORY_ONLY' });
+        return;
+      }
       let result;
       try {
         result = await upsertAdhocSetLog(deps.db, req.user.id, {
@@ -191,6 +216,7 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
           weight_kg: body.data.weight_kg,
           reps: body.data.reps,
           rpe: body.data.rpe,
+          ...(body.data.actual_rir !== undefined ? { actual_rir: body.data.actual_rir } : {}),
           completed: body.data.completed,
           failed: body.data.failed,
         });

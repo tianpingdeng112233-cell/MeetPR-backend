@@ -8,6 +8,7 @@ import type { Logger } from '../logger';
 import { createOptionalAuth } from '../middleware/auth';
 import type { RealtimeHub } from '../realtime/hub';
 import { adminRouter } from './admin';
+import { appMinVersionRouter } from './app-min-version';
 import { coachOnboardingPagesRouter } from './coach-onboarding-pages';
 import { publicInvitesRouter } from './public-invites';
 import { coachApplicationsRouter } from './coach-applications';
@@ -27,6 +28,8 @@ import { meRouter } from './me';
 import { coachOneRmRouter, studentOnboardingRouter } from './onboarding';
 import { studentVideosRouter } from './videos';
 import { plansRouter, studentPlansRouter } from './plans';
+import { planImportsRouter } from './plan-imports';
+import type { PlanImportModel } from '../services/plan-import/model';
 import { studentReadinessRouter } from './readiness';
 import { studentReviewsRouter } from './reviews';
 import { setsRouter, studentSetsRouter } from './sets';
@@ -38,6 +41,7 @@ import { videoMarkersRouter } from './video-markers';
 import type { OssService } from '../services/oss';
 
 interface RouteDeps {
+  planImportModel?: PlanImportModel | undefined;
   config: Config;
   db: Kysely<Database>;
   logger: Logger;
@@ -52,6 +56,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   });
 
   app.use(createPreferredLocale(deps.config, deps.db, deps.logger));
+  app.use('/app', appMinVersionRouter(deps.config));
 
   if (deps.config.COACH_ONBOARDING_ENABLED === true) {
     app.use(coachOnboardingPagesRouter());
@@ -113,6 +118,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
       pushEnabled: deps.config.PUSH_ENABLED,
     }),
   );
+  app.use('/coach/plan-imports', deps.requireAuth, planImportsRouter(deps));
   app.use('/coach', deps.requireAuth, coachRouter({ db: deps.db, logger: deps.logger }));
   app.use('/coach', deps.requireAuth, coachOverviewAlertsRouter({ db: deps.db }));
   app.use('/coach', deps.requireAuth, coachExerciseStatsRouter({ db: deps.db }));
