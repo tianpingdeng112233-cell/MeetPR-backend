@@ -32,6 +32,29 @@ const fullProfile = {
   note_to_coach: '想突破 200kg 深蹲',
 };
 
+const requiredProfile = {
+  unit_preference: 'kg',
+  gender: 'male',
+  birth_date: '2001-03-12',
+  height_cm: '178',
+  weight_kg: '83',
+  training_years: 0,
+  squat_stance: 'low_bar',
+  deadlift_style: 'conventional',
+  squat_1rm_kg: '180',
+  bench_1rm_kg: '120',
+  deadlift_1rm_kg: '220',
+  is_competing: false,
+};
+
+const relaxedFields = {
+  gym_tier: null,
+  daily_life_intensity: null,
+  life_stress: null,
+  recovery_speed: null,
+  sleep_hours: null,
+};
+
 async function putOnboarding(ctx: TestContext, token: string, body: Record<string, unknown>) {
   return request(ctx.app).put('/students/me/onboarding').set(auth(token)).send(body);
 }
@@ -107,7 +130,7 @@ describe('student onboarding profile', () => {
       .set(auth(ctx.boundStudentToken));
     expect(tooEarly.status).toBe(422);
     expect(tooEarly.body.error).toBe('ONBOARDING_INCOMPLETE');
-    expect(tooEarly.body.missing_fields).toContain('unit_preference');
+    expect(tooEarly.body.missing_fields).toEqual(Object.keys(requiredProfile));
 
     const { competition_date, ...withoutCompetitionDate } = fullProfile;
     await putOnboarding(ctx, ctx.boundStudentToken, withoutCompetitionDate);
@@ -125,6 +148,13 @@ describe('student onboarding profile', () => {
       .set(auth(ctx.boundStudentToken));
     expect(completed.status).toBe(200);
     expect(completed.body.completed_at).not.toBeNull();
+    expect(completed.body).toMatchObject({
+      gym_tier: 'commercial',
+      daily_life_intensity: 3,
+      life_stress: 4,
+      recovery_speed: 3,
+      sleep_hours: 3,
+    });
 
     // Idempotent re-complete keeps the original timestamp.
     const again = await request(ctx.app)
@@ -132,6 +162,73 @@ describe('student onboarding profile', () => {
       .set(auth(ctx.boundStudentToken));
     expect(again.status).toBe(200);
     expect(again.body.completed_at).toBe(completed.body.completed_at);
+  });
+
+  it('completes with only the 12 required fields and five relaxed fields null', async () => {
+    const ctx = await makeContext();
+    // Omitted fields persist as null; the existing PUT schema rejects explicit nulls.
+    const saved = await putOnboarding(ctx, ctx.boundStudentToken, requiredProfile);
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject(relaxedFields);
+
+    const completed = await request(ctx.app)
+      .post('/students/me/onboarding/complete')
+      .set(auth(ctx.boundStudentToken));
+    expect(completed.status).toBe(200);
+    expect(completed.body.completed_at).toEqual(expect.any(String));
+    expect(completed.body).toMatchObject(relaxedFields);
+    expect(completed.body.training_days).toBeNull();
+    expect(completed.body.competition_date).toBeNull();
+  });
+
+  it.each(Object.keys(requiredProfile))('requires %s even after the wizard trim', async (field) => {
+    const ctx = await makeContext();
+    const partialProfile = Object.fromEntries(
+      Object.entries(requiredProfile).filter(([key]) => key !== field),
+    );
+    const saved = await putOnboarding(ctx, ctx.boundStudentToken, partialProfile);
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject(relaxedFields);
+    expect(saved.body[field]).toBeNull();
+
+    const incomplete = await request(ctx.app)
+      .post('/students/me/onboarding/complete')
+      .set(auth(ctx.boundStudentToken));
+    expect(incomplete.status).toBe(422);
+    expect(incomplete.body).toEqual({
+      error: 'ONBOARDING_INCOMPLETE',
+      missing_fields: [field],
+    });
+  });
+
+  it('still requires the competition date for a competing student after the wizard trim', async () => {
+    const ctx = await makeContext();
+    const saved = await putOnboarding(ctx, ctx.boundStudentToken, {
+      ...requiredProfile,
+      is_competing: true,
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject(relaxedFields);
+
+    const incomplete = await request(ctx.app)
+      .post('/students/me/onboarding/complete')
+      .set(auth(ctx.boundStudentToken));
+    expect(incomplete.status).toBe(422);
+    expect(incomplete.body).toEqual({
+      error: 'ONBOARDING_INCOMPLETE',
+      missing_fields: ['competition_date'],
+    });
+
+    const updated = await putOnboarding(ctx, ctx.boundStudentToken, {
+      competition_date: '2026-07-25',
+    });
+    expect(updated.status).toBe(200);
+    const completed = await request(ctx.app)
+      .post('/students/me/onboarding/complete')
+      .set(auth(ctx.boundStudentToken));
+    expect(completed.status).toBe(200);
+    expect(completed.body.completed_at).toEqual(expect.any(String));
+    expect(completed.body).toMatchObject(relaxedFields);
   });
 
   it('allows completion when training days are uncertain', async () => {

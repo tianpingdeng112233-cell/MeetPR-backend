@@ -54,18 +54,13 @@ const REQUIRED_FOR_COMPLETION = [
   'squat_1rm_kg',
   'bench_1rm_kg',
   'deadlift_1rm_kg',
-  'gym_tier',
-  'daily_life_intensity',
-  'life_stress',
-  'recovery_speed',
-  'sleep_hours',
   'is_competing',
 ] as const satisfies readonly OnboardingField[];
 
 /**
  * Solo students complete with the unit alone (spec 013): the 2-screen light
  * onboarding makes weight and the three 1RMs skippable, so the coached
- * 18-field wizard requirement would leave them permanently incomplete.
+ * wizard requirements would leave them permanently incomplete.
  */
 const REQUIRED_FOR_COMPLETION_SELF_TRAIN = [
   'unit_preference',
@@ -242,7 +237,7 @@ export type CompleteOnboardingResult =
   | { type: 'incomplete'; missingFields: string[] };
 
 /**
- * Server-side required-field gate for the 7-step wizard. Idempotent:
+ * Server-side required-field gate for onboarding. Idempotent:
  * re-completing keeps the original completed_at.
  */
 export async function completeOnboardingProfile(
