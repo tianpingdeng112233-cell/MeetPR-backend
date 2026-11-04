@@ -2,7 +2,7 @@ import { sql, type Kysely } from 'kysely';
 
 import type { Database } from '../db/types';
 import { effectivePlanDays } from '../domain/plan-calendar';
-import { trainingDay } from '../utils/date';
+import { normalizeDateOnly, trainingDay } from '../utils/date';
 import { DEFAULT_TIME_ZONE } from '../utils/timezone';
 import { coachSetVideoProvenancePredicate } from './set-video-access';
 import { timestamp } from './serialization';
@@ -15,6 +15,7 @@ export interface CoachStudentEvaluation {
 
 export interface CoachStudentSummary {
   alias: string | null;
+  service_until: string | null;
   pending_video_count: number;
   bond_status: 'active' | 'ended';
   ended_at: string | null;
@@ -70,6 +71,7 @@ export async function listCoachStudents(
       'alias.alias as alias',
       'br.status as bond_status',
       'br.ended_at as ended_at',
+      'br.service_until as service_until',
       'br.submitted_at as submitted_at',
       'u.created_at as user_created_at',
       'sp.display_name as display_name',
@@ -201,6 +203,10 @@ export async function listCoachStudents(
     return {
       id: row.id,
       alias: row.alias,
+      service_until:
+        row.bond_status === 'accepted' && row.service_until !== null
+          ? normalizeDateOnly(row.service_until)
+          : null,
       pending_video_count: videoCounts.get(row.id) ?? 0,
       bond_status: row.bond_status === 'accepted' ? 'active' : 'ended',
       ended_at:
@@ -222,6 +228,27 @@ export async function listCoachStudents(
       evaluation,
     };
   });
+}
+
+/** Update only the current accepted binding, including when unbind races this write. */
+export async function setCoachStudentServiceTerm(
+  db: Kysely<Database>,
+  coachId: string,
+  studentId: string,
+  serviceUntil: string | null,
+): Promise<{ service_until: string | null } | null> {
+  const updated = await db
+    .updateTable('bind_requests')
+    .set({ service_until: serviceUntil })
+    .where('coach_id', '=', coachId)
+    .where('student_id', '=', studentId)
+    .where('status', '=', 'accepted')
+    .returning('service_until')
+    .executeTakeFirst();
+  if (!updated) return null;
+  return {
+    service_until: updated.service_until === null ? null : normalizeDateOnly(updated.service_until),
+  };
 }
 
 /** Only active coaches can change their own private student alias. */

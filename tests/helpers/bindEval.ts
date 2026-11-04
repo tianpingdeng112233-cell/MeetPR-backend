@@ -402,6 +402,8 @@ export async function makeContext(
       .replace("ALTER TYPE bind_request_status ADD VALUE IF NOT EXISTS 'ended';", ''),
   );
 
+  mem.public.none(fs.readFileSync('db/migrations/0083-service-term.sql', 'utf8'));
+
   const { Pool } = mem.adapters.createPg();
   const pool = new Pool();
   const db = createDb(pool);

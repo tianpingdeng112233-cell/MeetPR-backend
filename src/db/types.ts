@@ -464,6 +464,7 @@ export interface BindRequestsTable {
   rejection_silent: Generated<boolean>;
   invite_code_id: NullableColumn<string>;
   skip_reason: NullableColumn<string>;
+  service_until: NullableColumn<string>;
 }
 
 export interface InviteCodesTable {

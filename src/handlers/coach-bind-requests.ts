@@ -199,6 +199,7 @@ export type RespondBindRequestResult =
 interface AcceptInput {
   skip_evaluation: boolean;
   skip_reason: string | null;
+  service_until?: string | null;
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -226,6 +227,7 @@ export async function acceptBindRequest(
           responded_at: sql<Date>`now()`,
           skip_evaluation: input.skip_evaluation,
           skip_reason: input.skip_reason,
+          service_until: input.service_until ?? null,
         })
         .where('id', '=', bindRequestId)
         .where('status', '=', 'pending')
