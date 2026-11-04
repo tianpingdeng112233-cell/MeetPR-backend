@@ -4,6 +4,7 @@ import { request } from './helpers/inMemoryRequest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { auth, createPublishedPlan, ids, makeContext, signToken } from './helpers/studentActions';
+import { ids as bindIds, makeContext as makeBindContext } from './helpers/bindEval';
 
 describe('GET /coach/students', () => {
   it('returns accepted bonded students with snake_case profile fields', async () => {
@@ -842,4 +843,138 @@ it('bounds roster calendar rows to published plans and recent completions despit
     plan_day_shifts: 1,
     plan_day_completions: 2,
   });
+});
+
+describe('service terms', () => {
+  it('sets, modifies and clears the accepted binding service term in the roster', async () => {
+    const ctx = await makeContext();
+    const roster = () => request(ctx.app).get('/coach/students').set(auth(ctx.coachToken));
+    expect((await roster()).body.students[0].service_until).toBeNull();
+    for (const service_until of ['2027-02-28', '2028-02-29', null]) {
+      const response = await request(ctx.app)
+        .put(`/coach/students/${ids.trainee}/service-term`)
+        .set(auth(ctx.coachToken))
+        .send({ service_until });
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ service_until });
+      expect((await roster()).body.students[0].service_until).toBe(service_until);
+    }
+  });
+
+  it('keeps historical terms on ended rows, hides them, and starts a rebind unset', async () => {
+    const ctx = await makeBindContext();
+    const updated = await request(ctx.app)
+      .put(`/coach/students/${bindIds.boundStudent}/service-term`)
+      .set(auth(ctx.coachToken))
+      .send({ service_until: '2027-02-28' });
+    expect(updated.status).toBe(200);
+    const ended = await request(ctx.app)
+      .post(`/coach/students/${bindIds.boundStudent}/unbind`)
+      .set(auth(ctx.coachToken));
+    expect(ended.status).toBe(200);
+    const roster = () =>
+      request(ctx.app).get('/coach/students?include_ended=1').set(auth(ctx.coachToken));
+    expect((await roster()).body.students[0]).toMatchObject({
+      bond_status: 'ended',
+      service_until: null,
+    });
+    const rejected = await request(ctx.app)
+      .put(`/coach/students/${bindIds.boundStudent}/service-term`)
+      .set(auth(ctx.coachToken))
+      .send({ service_until: null });
+    expect(rejected.status).toBe(404);
+    expect(rejected.body).toEqual({ error: 'COACH_STUDENT_NOT_FOUND' });
+    const code = await request(ctx.app)
+      .post('/coach/invite-codes')
+      .set(auth(ctx.coachToken))
+      .send({ type: 'personal_permanent' });
+    expect(code.status).toBe(201);
+    const pending = await request(ctx.app)
+      .post('/bind-requests')
+      .set(auth(ctx.boundStudentToken))
+      .send({ code: code.body.code, display_name: 'Rebound student' });
+    expect(pending.status).toBe(201);
+    const accepted = await request(ctx.app)
+      .post(`/coach/bind-requests/${pending.body.id as string}/accept`)
+      .set(auth(ctx.coachToken))
+      .send({ skip_evaluation: true });
+    expect(accepted.status).toBe(200);
+    const rebound = await roster();
+    expect(rebound.body.students).toHaveLength(1);
+    expect(rebound.body.students[0]).toMatchObject({ bond_status: 'active', service_until: null });
+    const historical = await ctx.db
+      .selectFrom('bind_requests')
+      .select('service_until')
+      .where('student_id', '=', bindIds.boundStudent)
+      .where('status', '=', 'ended')
+      .executeTakeFirstOrThrow();
+    expect(historical.service_until).not.toBeNull();
+  });
+
+  it('returns the same 404 for another coach, an unbound student and an unknown student', async () => {
+    const ctx = await makeContext();
+    // This fixture starts with a second accepted coach; remove that bond for the foreign-coach case.
+    await ctx.db.deleteFrom('bind_requests').where('coach_id', '=', ids.otherCoach).execute();
+    for (const [token, student] of [
+      [ctx.otherCoachToken, ids.trainee],
+      [ctx.coachToken, ids.otherStudent],
+      [ctx.coachToken, '10000000-0000-4000-8000-000000000099'],
+    ] as const) {
+      const response = await request(ctx.app)
+        .put(`/coach/students/${student}/service-term`)
+        .set(auth(token))
+        .send({ service_until: '2027-02-28' });
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: 'COACH_STUDENT_NOT_FOUND' });
+    }
+  });
+
+  it('requires authentication and the coach role', async () => {
+    const ctx = await makeContext();
+    const path = `/coach/students/${ids.trainee}/service-term`;
+    expect((await request(ctx.app).put(path).send({ service_until: null })).status).toBe(401);
+    const response = await request(ctx.app)
+      .put(path)
+      .set(auth(ctx.traineeToken))
+      .send({ service_until: null });
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
+  });
+
+  it.each([
+    {},
+    { service_until: '2027-02-29' },
+    { service_until: '2026-04-31' },
+    { service_until: '2026-13-01' },
+    { service_until: '2026-1-01' },
+    { service_until: '2026-11-04T00:00:00Z' },
+    { service_until: 20261104 },
+    { service_until: '2031-11-05' },
+    { service_until: null, extra: true },
+  ])('rejects invalid or extra fields: %j', async (body) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-04T12:00:00Z'));
+    const ctx = await makeContext();
+    const response = await request(ctx.app)
+      .put(`/coach/students/${ids.trainee}/service-term`)
+      .set(auth(ctx.coachToken))
+      .send(body);
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+  });
+
+  it.each(['2020-02-29', '2031-11-04'])(
+    'allows a past date and the inclusive five-year limit: %s',
+    async (service_until) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-11-04T12:00:00Z'));
+      const ctx = await makeContext();
+      const response = await request(ctx.app)
+        .put(`/coach/students/${ids.trainee}/service-term`)
+        .set(auth(ctx.coachToken))
+        .send({ service_until });
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ service_until });
+    },
+  );
 });

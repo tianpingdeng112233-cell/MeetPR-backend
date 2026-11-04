@@ -7,6 +7,7 @@ import { updateCoachRpe } from '../handlers/coach-rpe';
 import {
   listCoachStudents,
   renameCoachStudent,
+  setCoachStudentServiceTerm,
   unbindCoachStudent,
 } from '../handlers/coach-students';
 import type { Logger } from '../logger';
@@ -14,6 +15,7 @@ import { tryEnqueuePushOutbox } from '../services/push-outbox';
 import { requireRole } from '../middleware/auth';
 import { notImplemented } from '../utils/notImplemented';
 import { route, validationEnvelope } from './http';
+import { ServiceUntilSchema } from './service-term-schema';
 
 interface CoachRouterDeps {
   db: Kysely<Database>;
@@ -23,6 +25,7 @@ interface CoachRouterDeps {
 
 const StudentIdParamsSchema = z.object({ id: z.string().uuid() });
 const SetLogIdParamsSchema = z.object({ id: z.string().uuid() });
+const ServiceTermBodySchema = z.object({ service_until: ServiceUntilSchema }).strict();
 const RenameStudentBodySchema = z
   .object({
     alias: z.string().trim().max(100).nullable().optional(),
@@ -60,6 +63,38 @@ export function coachRouter(deps: CoachRouterDeps): Router {
         req.query.include_ended === '1',
       );
       res.status(200).json({ students });
+    }),
+  );
+
+  router.put(
+    '/students/:id/service-term',
+    requireRole('coach'),
+    route(async (req, res) => {
+      if (!req.user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      const params = StudentIdParamsSchema.safeParse(req.params);
+      const body = ServiceTermBodySchema.safeParse(req.body);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+      if (!body.success) {
+        res.status(400).json(validationEnvelope(body.error));
+        return;
+      }
+      const result = await setCoachStudentServiceTerm(
+        deps.db,
+        req.user.id,
+        params.data.id,
+        body.data.service_until,
+      );
+      if (!result) {
+        res.status(404).json({ error: 'COACH_STUDENT_NOT_FOUND' });
+        return;
+      }
+      res.status(200).json(result);
     }),
   );
 
