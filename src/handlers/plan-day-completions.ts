@@ -1,8 +1,9 @@
 import type { Selectable, Transaction } from 'kysely';
 
 import type { Database, PlanDayCompletionsTable, PlanDaysTable, PlansTable } from '../db/types';
-import { trainingDay } from '../utils/date';
 import { uuidEquals } from '../utils/uuid';
+
+const COMPLETION_UNDO_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 type PlanRow = Selectable<PlansTable>;
 type PlanDayRow = Selectable<PlanDaysTable>;
@@ -125,9 +126,7 @@ export async function undoPlanDayCompletion(
   if (latest?.id !== completion.id) {
     return { type: 'error', error: 'NOT_LATEST_COMPLETION' };
   }
-  if (
-    trainingDay(completion.completed_at, context.timezone) !== trainingDay(now, context.timezone)
-  ) {
+  if (now.getTime() - completion.completed_at.getTime() >= COMPLETION_UNDO_WINDOW_MS) {
     return { type: 'error', error: 'UNDO_WINDOW_PASSED' };
   }
 

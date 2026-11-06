@@ -57,6 +57,39 @@ describe('plan-day manual completion transaction', () => {
 });
 
 describe('plan-day completion undo transaction', () => {
+  it.each([
+    ['next day', '2026-11-02T12:00:00Z', { type: 'deleted' }],
+    ['3 days', '2026-11-04T12:00:00Z', { type: 'deleted' }],
+    ['6 days 23 hours', '2026-11-08T11:00:00Z', { type: 'deleted' }],
+    ['7 days minus 1 ms', '2026-11-08T11:59:59.999Z', { type: 'deleted' }],
+    ['exactly 7 days', '2026-11-08T12:00:00Z', { type: 'error', error: 'UNDO_WINDOW_PASSED' }],
+    [
+      '7 days plus 1 minute',
+      '2026-11-08T12:01:00Z',
+      { type: 'error', error: 'UNDO_WINDOW_PASSED' },
+    ],
+  ])('uses elapsed time at %s after completion', async (_label, now, expected) => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    await ctx.db
+      .insertInto('plan_day_completions')
+      .values({
+        plan_day_id: plan.dayId,
+        student_id: ids.trainee,
+        source: 'manual',
+        completed_at: new Date('2026-11-01T12:00:00Z'),
+      })
+      .execute();
+
+    const result = await ctx.db
+      .transaction()
+      .execute((trx) => undoPlanDayCompletion(trx, plan.dayId, ids.trainee, new Date(now)));
+    expect(result).toEqual(expected);
+    expect(await ctx.db.selectFrom('plan_day_completions').selectAll().execute()).toHaveLength(
+      expected.type === 'deleted' ? 0 : 1,
+    );
+  });
+
   it('rejects a non-latest completion and deletes the latest one', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
@@ -100,7 +133,7 @@ describe('plan-day completion undo transaction', () => {
     ['Europe/London', '2026-07-13T02:59:59Z', '2026-07-13T03:00:00Z'],
     ['America/New_York', '2026-07-13T07:59:59Z', '2026-07-13T08:00:00Z'],
   ])(
-    'changes the %s gym-day exactly at 04:00 and reports missing completion',
+    'allows crossing the %s 04:00 gym-day boundary and reports missing completion',
     async (timezone, before, at) => {
       const ctx = await makeContext();
       const plan = await createPublishedPlan(ctx);
@@ -119,12 +152,7 @@ describe('plan-day completion undo transaction', () => {
       const crossedCutoff = await ctx.db
         .transaction()
         .execute((trx) => undoPlanDayCompletion(trx, plan.dayId, ids.trainee, new Date(at)));
-      expect(crossedCutoff).toEqual({ type: 'error', error: 'UNDO_WINDOW_PASSED' });
-
-      const sameGymDay = await ctx.db
-        .transaction()
-        .execute((trx) => undoPlanDayCompletion(trx, plan.dayId, ids.trainee, completedAt));
-      expect(sameGymDay).toEqual({ type: 'deleted' });
+      expect(crossedCutoff).toEqual({ type: 'deleted' });
 
       const missing = await ctx.db
         .transaction()
