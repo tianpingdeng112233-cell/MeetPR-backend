@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { formatSetRefFirstLine, type SetRefV1 } from '../src/domain/set-ref';
 import { conversationsRouter } from '../src/routes/conversations';
-import type { OssService } from '../src/services/oss';
+import { VIDEO_POSTER_PROCESS, type OssService } from '../src/services/oss';
 import type { TestContext } from './helpers/studentActions';
 import { auth, createPublishedPlan, ids, makeContext } from './helpers/studentActions';
 import { makeFakeOss, makeUploadsContext } from './helpers/uploads';
@@ -496,9 +496,7 @@ describe('POST /conversations/:id/messages set_ref', () => {
       },
     });
     const poster = new URL(sent.body.message.poster_url as string);
-    expect(poster.searchParams.get('x-oss-process')).toBe(
-      'video/snapshot,t_1000,f_jpg,w_640,m_fast',
-    );
+    expect(poster.searchParams.get('x-oss-process')).toBe(VIDEO_POSTER_PROCESS);
     expect(poster.searchParams.get('expires')).toBe('900');
     expect(sent.body.message).not.toHaveProperty('video_id');
 
@@ -593,15 +591,11 @@ describe('POST /conversations/:id/messages set_ref', () => {
       (response.body as { messages: { poster_url: string; duration_seconds: null }[] }).messages,
     ).toEqual([
       expect.objectContaining({
-        poster_url: expect.stringContaining(
-          'x-oss-process=video/snapshot,t_1000,f_jpg,w_640,m_fast',
-        ),
+        poster_url: expect.stringContaining(`x-oss-process=${VIDEO_POSTER_PROCESS}`),
         duration_seconds: null,
       }),
       expect.objectContaining({
-        poster_url: expect.stringContaining(
-          'x-oss-process=video/snapshot,t_1000,f_jpg,w_640,m_fast',
-        ),
+        poster_url: expect.stringContaining(`x-oss-process=${VIDEO_POSTER_PROCESS}`),
         duration_seconds: null,
       }),
     ]);

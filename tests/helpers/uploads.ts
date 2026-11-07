@@ -1,6 +1,6 @@
 import { request } from './inMemoryRequest';
 
-import type { CompletedPart, OssService } from '../../src/services/oss';
+import { VIDEO_POSTER_PROCESS, type CompletedPart, type OssService } from '../../src/services/oss';
 import { auth, makeContext, type TestContext } from './studentActions';
 
 export interface FakeOssCalls {
@@ -89,7 +89,7 @@ export function makeFakeOss(options: FakeOssOptions = {}): FakeOss {
     signVideoPosterUrl(key, expiresSeconds) {
       calls.signPoster.push({ key, expiresSeconds });
       return Promise.resolve(
-        `https://fake-oss.invalid/${key}?expires=${String(expiresSeconds)}&sig=poster&x-oss-process=video/snapshot,t_1000,f_jpg,w_640,m_fast`,
+        `https://fake-oss.invalid/${key}?expires=${String(expiresSeconds)}&sig=poster&x-oss-process=${VIDEO_POSTER_PROCESS}`,
       );
     },
     headObject(key) {
