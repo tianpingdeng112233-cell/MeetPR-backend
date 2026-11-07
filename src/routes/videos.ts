@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { hasCoachReadAccess } from '../db/bonds';
 import type { Database } from '../db/types';
 import { timestamp } from '../handlers/serialization';
-import { coachSetVideoProvenancePredicate } from '../handlers/set-video-access';
+import type { OssService } from '../services/oss';
+import { coachSetVideoProvenancePredicate, videoPreview } from '../handlers/set-video-access';
 import { uuidEquals } from '../utils/uuid';
 import { route, validationEnvelope } from './http';
 
@@ -16,12 +17,13 @@ const ParamsSchema = z.object({ id: z.string().uuid() });
 
 interface StudentVideosRouterDeps {
   db: Kysely<Database>;
+  oss?: OssService | undefined;
 }
 
 /**
  * GET /students/:id/videos — the coach-side video wall source (spec 007).
- * Metadata only: playback goes through GET /uploads/:id/url per item, so a
- * single intercepted response never leaks a wall of live URLs (Codex review).
+ * Includes signed poster URLs (spec 060); playback still goes through
+ * GET /uploads/:id/url per item.
  * Authorization mirrors GET /students/:id/sets — student self, or an
  * accepted-bind coach scoped by immutable upload provenance (dual-coach
  * students don't leak across coaches). Only uploads explicitly created without
@@ -66,6 +68,7 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
         .leftJoin('plans as p', 'p.id', 'pd.plan_id')
         .select([
           'a.id as id',
+          'a.oss_key as oss_key',
           'a.set_log_id as set_log_id',
           'sl.plan_exercise_id as plan_exercise_id',
           'e.name as exercise_name',
@@ -93,27 +96,30 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
 
       const rows = await query.orderBy('a.created_at', 'desc').limit(WALL_LIMIT).execute();
 
-      const videos = rows.map((row) => ({
-        id: row.id,
-        set_log_id: row.set_log_id,
-        plan_exercise_id: row.plan_exercise_id,
-        exercise_name:
-          row.exercise_name === null
-            ? null
-            : catalogName(row.exercise_name, row.exercise_owner, req.locale),
-        set_index: row.set_index,
-        weight_kg: row.weight_kg === null ? null : Number(row.weight_kg).toFixed(2),
-        reps: row.reps,
-        rpe: row.rpe === null ? null : Number(row.rpe).toFixed(1),
-        actual_rir: row.actual_rir ?? null,
-        coach_rpe: row.coach_rpe === null ? null : Number(row.coach_rpe).toFixed(1),
-        content_type: row.content_type,
-        size_bytes: Number(row.size_bytes),
-        filename: row.filename,
-        viewed_at: row.viewed_at === null ? null : timestamp(row.viewed_at),
-        created_at: timestamp(row.created_at),
-        logged_at: row.logged_at === null ? null : timestamp(row.logged_at),
-      }));
+      const videos = await Promise.all(
+        rows.map(async (row) => ({
+          id: row.id,
+          ...(await videoPreview(row.oss_key, deps.oss)),
+          set_log_id: row.set_log_id,
+          plan_exercise_id: row.plan_exercise_id,
+          exercise_name:
+            row.exercise_name === null
+              ? null
+              : catalogName(row.exercise_name, row.exercise_owner, req.locale),
+          set_index: row.set_index,
+          weight_kg: row.weight_kg === null ? null : Number(row.weight_kg).toFixed(2),
+          reps: row.reps,
+          rpe: row.rpe === null ? null : Number(row.rpe).toFixed(1),
+          actual_rir: row.actual_rir ?? null,
+          coach_rpe: row.coach_rpe === null ? null : Number(row.coach_rpe).toFixed(1),
+          content_type: row.content_type,
+          size_bytes: Number(row.size_bytes),
+          filename: row.filename,
+          viewed_at: row.viewed_at === null ? null : timestamp(row.viewed_at),
+          created_at: timestamp(row.created_at),
+          logged_at: row.logged_at === null ? null : timestamp(row.logged_at),
+        })),
+      );
 
       res.status(200).json({ videos });
     }),

@@ -12,6 +12,7 @@ import {
   coachOwnsPublishedPlanExercise,
   createFeedback,
 } from '../handlers/feedback-post';
+import type { OssService } from '../services/oss';
 import { requireRole } from '../middleware/auth';
 import { isIsoCalendarDate, isoCalendarDateSchemaMessage } from '../utils/date';
 import { uuidEquals } from '../utils/uuid';
@@ -19,6 +20,7 @@ import { route, validationEnvelope } from './http';
 
 interface FeedbackRouterDeps {
   db: Kysely<Database>;
+  oss?: OssService | undefined;
 }
 
 const UuidSchema = z.string().uuid();
@@ -141,7 +143,7 @@ export function studentFeedbackRouter(deps: FeedbackRouterDeps): ExpressRouter {
       }
 
       if (uuidEquals(req.user.id, params.data.id)) {
-        const items = await fetchOwnFeedback(deps.db, req.user.id, req.locale);
+        const items = await fetchOwnFeedback(deps.db, req.user.id, req.locale, deps.oss);
         res.status(200).json({ items });
         return;
       }
@@ -157,7 +159,13 @@ export function studentFeedbackRouter(deps: FeedbackRouterDeps): ExpressRouter {
         return;
       }
 
-      const items = await fetchCoachFeedback(deps.db, req.user.id, params.data.id, req.locale);
+      const items = await fetchCoachFeedback(
+        deps.db,
+        req.user.id,
+        params.data.id,
+        req.locale,
+        deps.oss,
+      );
       res.status(200).json({ items });
     }),
   );

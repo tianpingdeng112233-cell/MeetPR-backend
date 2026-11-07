@@ -1,6 +1,7 @@
 import type { PreferredLocale } from '../i18n/locale';
 import type { Kysely } from 'kysely';
 
+import type { OssService } from '../services/oss';
 import type { Database } from '../db/types';
 import { type FeedbackWithVideoResponse, toFeedbackWithVideo } from './feedback-serialization';
 
@@ -13,6 +14,7 @@ function feedbackWithVideoQuery(db: Kysely<Database>) {
     .selectAll('f')
     .select([
       'a.id as video_attachment_id',
+      'a.oss_key as video_oss_key',
       'e.name as video_exercise_name',
       'e.created_by_coach_id as video_exercise_owner',
       'e.name_en as video_exercise_name_en',
@@ -28,13 +30,14 @@ export async function fetchOwnFeedback(
   db: Kysely<Database>,
   studentId: string,
   locale?: PreferredLocale,
+  oss?: OssService,
 ): Promise<FeedbackWithVideoResponse[]> {
   const rows = await feedbackWithVideoQuery(db)
     .where('f.student_id', '=', studentId)
     .orderBy('f.posted_at', 'desc')
     .execute();
 
-  return rows.map((row) => toFeedbackWithVideo(row, locale));
+  return Promise.all(rows.map((row) => toFeedbackWithVideo(row, locale, oss)));
 }
 
 export async function fetchCoachFeedback(
@@ -42,6 +45,7 @@ export async function fetchCoachFeedback(
   coachId: string,
   studentId: string,
   locale?: PreferredLocale,
+  oss?: OssService,
 ): Promise<FeedbackWithVideoResponse[]> {
   const rows = await feedbackWithVideoQuery(db)
     .where('f.student_id', '=', studentId)
@@ -49,5 +53,5 @@ export async function fetchCoachFeedback(
     .orderBy('f.posted_at', 'desc')
     .execute();
 
-  return rows.map((row) => toFeedbackWithVideo(row, locale));
+  return Promise.all(rows.map((row) => toFeedbackWithVideo(row, locale, oss)));
 }

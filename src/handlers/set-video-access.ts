@@ -3,6 +3,7 @@ import { sql } from 'kysely';
 
 import { hasAcceptedBond, hasCoachReadAccess } from '../db/bonds';
 import type { Database, UserRole } from '../db/types';
+import type { OssService, OssSignOptions } from '../services/oss';
 import { uuidEquals } from '../utils/uuid';
 import type { AttachmentRow } from './attachments';
 
@@ -72,4 +73,25 @@ export async function resolveSetVideoAccess(
   }
 
   return { outcome: 'allowed', relation: 'bonded_coach', video };
+}
+
+export interface VideoPreview {
+  poster_url: string | null;
+  duration_seconds: number | null;
+}
+
+/** Call only after the existing video authorization gate has passed. */
+export async function videoPreview(
+  key: string | null,
+  oss: OssService | undefined,
+  signOptions?: OssSignOptions,
+): Promise<VideoPreview> {
+  return {
+    poster_url:
+      key !== null && oss?.signVideoPosterUrl
+        ? await oss.signVideoPosterUrl(key, 900, signOptions)
+        : null,
+    // Staging video/info is unavailable (spec 060 spike: 403 AccessDenied).
+    duration_seconds: null,
+  };
 }

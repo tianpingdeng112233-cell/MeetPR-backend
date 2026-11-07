@@ -11,6 +11,7 @@ export interface AttachmentWire {
   owner_id: string;
   kind: AttachmentKind;
   oss_key: string;
+  duration_seconds?: number | null;
   content_type: string;
   size_bytes: number;
   filename: string | null;
@@ -30,6 +31,7 @@ export function serializeAttachment(row: AttachmentRow): AttachmentWire {
     id: row.id,
     owner_id: row.owner_id,
     kind: row.kind,
+    ...(row.kind === 'set_video' ? { duration_seconds: null } : {}),
     oss_key: row.oss_key,
     content_type: row.content_type,
     // BIGINT arrives as string from node-pg; caps (<= 200 MB) keep Number() exact.
