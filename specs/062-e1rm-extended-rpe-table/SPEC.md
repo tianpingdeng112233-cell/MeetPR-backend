@@ -58,8 +58,9 @@
 
 1. 换表：iOS `rtsTable`、RN `RTS_INTENSITY_TABLE` 换成上表 1–12 行。
 2. **一次性历史重算**（每个学员每台设备跑一次，带版本键，例如 `e1rm-extended-rpe-table-v1`）：
-   - 对本地每个 e1RM 历史点，用自己存的 `sourceWeightKg / sourceReps` 与有效 RPE（`sourceCoachRPE` 优先，否则 `sourceRPE`，与现有 `effectiveSourceRPE` 口径一致）按新表重算 `e1RMKg`。
-   - 只改 `e1RMKg`；`id / setLogId / computedAt / origin / confidence / source*` 原样保留。重算结果为空（按新表不在公式范围内）的点保持原值不动。
+   - **只重算查表点**：有效 RPE（`sourceCoachRPE` 优先，否则 `sourceRPE`，与现有 `effectiveSourceRPE` 口径一致）在 [6, 10] 的点，用自己存的 `sourceWeightKg / sourceReps` 按新表重算 `e1RMKg`。有效 RPE 为空或 < 6 的点（走 Epley，含没填 RPE 的录入基线）**保持原值**——它们不依赖 RPE 表，套公式反而会把录入的 1RM 抬高 3.3%（2026-11-07 安卓收货发现，修订）。
+   - 只改 `e1RMKg`；`id / setLogId / computedAt / origin / confidence / source*` 原样保留。重算结果为空的点保持原值不动。
+   - **时机**：必须在训练侧（建议重量、`pct_anchor = e1rm`、组完成后实时 e1RM、记录器的异常 / PR 基线）第一次读 e1RM 历史**之前**完成，不能只挂在 Progress / 成长曲线页（2026-11-07 修订）。
    - **不丢弃、不重判 PR 事件，不动 `weightBaselines`**（与 `E1RMCompetitionLiftMigration` 丢 PR 的做法相反，这里必须保留）。
    - 原子替换、可重入：重算本身是幂等的，跑一半被杀，下次启动重跑结果相同；与正在记录的新组并发时不丢点（RN 沿用 `replaceHistoryIfUnchanged` + revision；iOS 沿用 actor 内 `replaceHistory`）。
    - 存储读不出来时不重算、不覆盖，照现有只读兜底显示。
@@ -84,7 +85,7 @@
 - [ ] C2 表逐格断言：1–12 行与本 spec 相等。
 - [ ] C3 建议重量：e1RM 123.3、处方 2 次 @9 → 112.5 kg（123.3 × 0.922 = 113.68，向下取整到 2.5）；由 100 × 5 @8 算出的 e1RM（100 ÷ 0.811）再开 5 次 @8 → 100 kg（往返不因浮点误差掉到 97.5）。
 - [ ] C4 `pct_anchor = e1rm` 80% 处方：按新的当前 e1RM 解析，结果随之下调。
-- [ ] C5 历史重算：预置一份旧表算出的本地历史（含 `logged` 与 `imported`、含教练改过 RPE 的点、含 PR 事件），升级后每个点 `e1RMKg` = 新表按 source 字段重算值，其余字段与 PR 事件、`weightBaselines` 字节级不变；再次启动不重复改动。
+- [ ] C5 历史重算：预置一份旧表算出的本地历史（含 `logged` 与 `imported`、含教练改过 RPE 的点、含 RPE 为空 / < 6 的点、含 PR 事件），升级后有效 RPE 6–10 的点 `e1RMKg` = 新表重算值，RPE 为空 / < 6 的点不变，其余字段与 PR 事件、`weightBaselines` 字节级不变；再次启动不重复改动；不打开 Progress、直接进训练页时读到的已是新值。
 - [ ] C6 重算中途杀进程 → 再启动结果与一次跑完相同；重算期间记一组新组，新点不丢。
 - [ ] C7 带历史的老用户升级后第一屏（今日页、训练页、成长曲线 / Progress）正常：曲线整体下移、不出现断崖、PR 徽章仍在。
 - [ ] C8 三语界面无新增 / 变更文案（grep 本次 diff 无 i18n 改动）。
