@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { toFeedbackWithVideo } from '../../src/handlers/feedback-serialization';
+import { VIDEO_POSTER_PROCESS } from '../../src/services/oss';
 import { makeFakeOss } from '../helpers/uploads';
 
 const row = {
@@ -68,9 +69,7 @@ describe('feedback video serialization (spec 060)', () => {
     });
     const poster = new URL(result.video?.poster_url ?? 'https://missing.invalid');
     expect(poster.pathname).toBe('/attachments/student-1/video.mp4');
-    expect(poster.searchParams.get('x-oss-process')).toBe(
-      'video/snapshot,t_1000,f_jpg,w_640,m_fast',
-    );
+    expect(poster.searchParams.get('x-oss-process')).toBe(VIDEO_POSTER_PROCESS);
     expect(poster.searchParams.get('expires')).toBe('900');
   });
 });

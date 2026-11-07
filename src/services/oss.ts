@@ -2,6 +2,8 @@ import OSS from 'ali-oss';
 
 import type { Config } from '../config';
 
+export const VIDEO_POSTER_PROCESS = 'video/snapshot,t_1000,f_jpg,w_640,m_fast,ar_auto';
+
 export interface CompletedPart {
   part_number: number;
   etag: string;
@@ -148,7 +150,7 @@ export function createOssService(options: OssServiceOptions): OssService {
         signingClient(signOptions).signatureUrl(key, {
           method: 'GET',
           expires: expiresSeconds,
-          process: 'video/snapshot,t_1000,f_jpg,w_640,m_fast',
+          process: VIDEO_POSTER_PROCESS,
         }),
       );
     },

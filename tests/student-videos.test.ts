@@ -1,5 +1,6 @@
 import { request } from './helpers/inMemoryRequest';
 import { describe, expect, it } from 'vitest';
+import { VIDEO_POSTER_PROCESS } from '../src/services/oss';
 
 import { auth, createPublishedPlan, ids, makeContext } from './helpers/studentActions';
 import { makeFakeOss, makeUploadsContext } from './helpers/uploads';
@@ -171,9 +172,7 @@ describe('GET /students/:id/videos (spec 007)', () => {
       duration_seconds: null,
     });
     const poster = new URL(linked.poster_url as string);
-    expect(poster.searchParams.get('x-oss-process')).toBe(
-      'video/snapshot,t_1000,f_jpg,w_640,m_fast',
-    );
+    expect(poster.searchParams.get('x-oss-process')).toBe(VIDEO_POSTER_PROCESS);
     expect(poster.searchParams.get('expires')).toBe('900');
     expect(linked.plan_exercise_id).toEqual(expect.any(String));
     expect(linked.logged_at).toEqual(expect.any(String));

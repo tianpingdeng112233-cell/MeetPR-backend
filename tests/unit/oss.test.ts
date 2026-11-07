@@ -143,7 +143,7 @@ describe('OSS endpoint selection', () => {
 });
 
 describe('OSS video posters (spec 060)', () => {
-  it('signs the snapshot operation into the URL without changing playback signing', async () => {
+  it('signs an auto-rotated snapshot into the URL without changing playback signing', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-11-06T12:00:00.000Z'));
     const service = makeService(false);
@@ -154,7 +154,7 @@ describe('OSS video posters (spec 060)', () => {
     const playback = new URL(await service.signGetUrl('attachments/video.mp4', 900));
 
     expect(poster.searchParams.get('x-oss-process')).toBe(
-      'video/snapshot,t_1000,f_jpg,w_640,m_fast',
+      'video/snapshot,t_1000,f_jpg,w_640,m_fast,ar_auto',
     );
     expect(poster.hostname).toBe(playback.hostname);
     expect(poster.pathname).toBe(playback.pathname);

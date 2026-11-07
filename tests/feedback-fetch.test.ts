@@ -1,5 +1,6 @@
 import { request } from './helpers/inMemoryRequest';
 import { describe, expect, it } from 'vitest';
+import { VIDEO_POSTER_PROCESS } from '../src/services/oss';
 import { makeUploadsContext } from './helpers/uploads';
 
 import {
@@ -72,7 +73,7 @@ describe('GET /students/:id/feedback', () => {
       });
       expect(
         new URL(res.body.items[0].video.poster_url as string).searchParams.get('x-oss-process'),
-      ).toBe('video/snapshot,t_1000,f_jpg,w_640,m_fast');
+      ).toBe(VIDEO_POSTER_PROCESS);
     }
     ctx.oss.calls.signPoster.length = 0;
     const denied = await request(ctx.app)
