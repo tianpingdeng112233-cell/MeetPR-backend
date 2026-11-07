@@ -9,6 +9,7 @@ import { resolveCanonicalAcceptedBond, resolveCanonicalAcceptedBonds } from '../
 import type { ConversationsTable, Database, MessagesTable } from '../../db/types';
 import { bodyMatchesSetRef, SetRefV1Schema, type SetRefV1 } from '../../domain/set-ref';
 import { requesterOssSignOptions } from '../../handlers/oss-sign-options';
+import { videoPreview, type VideoPreview } from '../../handlers/set-video-access';
 import { timestamp } from '../../handlers/serialization';
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
@@ -68,7 +69,7 @@ interface VisibilityContext {
   showSetRefs: boolean;
 }
 
-interface MessageWire {
+interface MessageWire extends VideoPreview {
   id: string;
   conversation_id: string;
   seq: number;
@@ -281,6 +282,7 @@ async function serializeMessage(
     image_expires_in: isImage ? IMAGE_URL_TTL_SECONDS : null,
     set_ref: row.set_ref,
     video_url: videoUrl,
+    ...(await videoPreview(row.video_id === null ? null : row.video_oss_key, oss, signOptions)),
     video_expires_in: videoUrl === null ? null : IMAGE_URL_TTL_SECONDS,
     client_id: row.client_id,
     created_at: timestamp(row.created_at),

@@ -1,4 +1,4 @@
-import request from 'supertest';
+import { request } from './helpers/inMemoryRequest';
 import { describe, expect, it } from 'vitest';
 
 import { auth, createPublishedPlan, ids } from './helpers/studentActions';
@@ -21,6 +21,18 @@ const parts = {
 };
 
 describe('POST /uploads/:attachmentId/complete', () => {
+  it('returns a null duration after complete and reconcile when video/info is unavailable', async () => {
+    const ctx = await makeUploadsContext();
+    const id = await initiatedAttachmentId(ctx, ctx.traineeToken);
+    for (const operation of ['complete', 'reconcile']) {
+      const completed = await request(ctx.app)
+        .post(`/uploads/${id}/${operation}`)
+        .set(auth(ctx.traineeToken))
+        .send(operation === 'complete' ? parts : {});
+      expect(completed.status).toBe(200);
+      expect(completed.body).toMatchObject({ id, status: 'ready', duration_seconds: null });
+    }
+  });
   it('enqueues video_pending for a linked set_video on complete', async () => {
     const ctx = await makeUploadsContext({ pushEnabled: true });
     const plan = await createPublishedPlan(ctx);
@@ -81,6 +93,7 @@ describe('POST /uploads/:attachmentId/complete', () => {
       id: attachmentId,
       owner_id: ids.trainee,
       kind: 'set_video',
+      duration_seconds: null,
       oss_key: expect.stringMatching(/^attachments\//),
       content_type: 'video/mp4',
       size_bytes: 50 * 1024 * 1024,
