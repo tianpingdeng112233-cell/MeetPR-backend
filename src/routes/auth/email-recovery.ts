@@ -1,5 +1,6 @@
+import { mailLocale } from '../../i18n/locale';
 import bcrypt from 'bcrypt';
-import { createHash, randomInt, timingSafeEqual } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
@@ -18,21 +19,34 @@ import { sendPasswordResetEmail } from '../../services/mail';
 import { storePasswordAndRevokeSessions } from '../../services/password';
 import { route, validationEnvelope } from '../http';
 import { BCRYPT_COST } from './constants';
+import { codeHash, hashesEqual } from './email-code';
 import { PasswordSchema } from './schemas';
 
 const RESET_CODE_TTL_MS = 10 * 60 * 1000;
 const RESET_CODE_MAX_ATTEMPTS = 5;
 const EmailSchema = z.string().trim().email().max(320);
 const ForgotBodySchema = z.object({ email: EmailSchema }).strict();
-const ResetBodySchema = z
-  .object({
-    email: EmailSchema,
-    code: z.string().regex(/^\d{6}$/),
-    newPassword: PasswordSchema,
-  })
-  .strict();
+const ResetBodySchema = z.union([
+  z
+    .object({
+      email: EmailSchema,
+      code: z.string().regex(/^\d{6}$/),
+      newPassword: PasswordSchema,
+    })
+    .strict(),
+  z
+    .object({
+      email: EmailSchema,
+      token: z.string().regex(/^[a-f0-9]{64}$/),
+      newPassword: PasswordSchema,
+    })
+    .strict(),
+]);
 
-type EmailRecoveryConfig = Pick<Config, 'RESEND_API_KEY' | 'EMAIL_FROM'>;
+type EmailRecoveryConfig = Pick<
+  Config,
+  'RESEND_API_KEY' | 'EMAIL_FROM' | 'MAIL_LOCALE' | 'COACH_ONBOARDING_ENABLED'
+>;
 
 interface EmailRecoveryRouterDeps {
   config: EmailRecoveryConfig;
@@ -43,16 +57,6 @@ interface EmailRecoveryRouterDeps {
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
-}
-
-function codeHash(code: string): string {
-  return createHash('sha256').update(code, 'utf8').digest('hex');
-}
-
-function hashesEqual(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left, 'utf8');
-  const rightBuffer = Buffer.from(right, 'utf8');
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function invalidResetCode(res: Parameters<Parameters<typeof route>[0]>[1]): void {
@@ -119,6 +123,7 @@ export function emailRecoveryRouter(deps: EmailRecoveryRouterDeps): ExpressRoute
               from: deps.config.EMAIL_FROM,
               to: email,
               code: issued.code,
+              locale: mailLocale(req.get('X-MeetPR-Locale'), deps.config.MAIL_LOCALE),
             },
             deps.fetch,
           ).catch((error: unknown) => {
@@ -140,13 +145,29 @@ export function emailRecoveryRouter(deps: EmailRecoveryRouterDeps): ExpressRoute
         return;
       }
 
+      const setupToken = 'token' in body.data ? body.data.token : undefined;
+      if (setupToken !== undefined && deps.config.COACH_ONBOARDING_ENABLED !== true) {
+        invalidResetCode(res);
+        return;
+      }
+      const credential = 'token' in body.data ? body.data.token : body.data.code;
       const email = normalizeEmail(body.data.email);
       // Hash before opening the transaction so bcrypt never extends the row
       // lock. Doing it for invalid codes too avoids an account-existence timing
       // split on this public endpoint.
       const passwordHash = await bcrypt.hash(body.data.newPassword, BCRYPT_COST);
       const resetUserId = await deps.db.transaction().execute(async (trx) => {
-        const candidate = await trx
+        // Match issuance/resend's lock order: user first, then reset codes.
+        // This prevents reset-versus-resend deadlocks on the same account.
+        await trx
+          .selectFrom('users as user')
+          .innerJoin('user_identities as identity', 'identity.user_id', 'user.id')
+          .select('user.id')
+          .where('identity.provider', '=', 'email')
+          .where('identity.provider_uid', '=', email)
+          .forUpdate()
+          .executeTakeFirst();
+        let candidateQuery = trx
           .selectFrom('password_reset_codes as reset_code')
           .innerJoin('user_identities as identity', 'identity.user_id', 'reset_code.user_id')
           .select([
@@ -162,8 +183,15 @@ export function emailRecoveryRouter(deps: EmailRecoveryRouterDeps): ExpressRoute
           .where('reset_code.attempts', '<', RESET_CODE_MAX_ATTEMPTS)
           .orderBy('reset_code.created_at', 'desc')
           .orderBy('reset_code.id', 'desc')
-          .forUpdate()
-          .executeTakeFirst();
+          .forUpdate();
+        if (setupToken !== undefined) {
+          candidateQuery = candidateQuery
+            .where('reset_code.purpose', '=', 'coach_setup')
+            .where('reset_code.code_hash', '=', codeHash(setupToken));
+        } else if (deps.config.COACH_ONBOARDING_ENABLED === true) {
+          candidateQuery = candidateQuery.where('reset_code.purpose', '=', 'password_reset');
+        }
+        const candidate = await candidateQuery.executeTakeFirst();
         if (!candidate) return null;
 
         const attempts = candidate.attempts + 1;
@@ -173,7 +201,7 @@ export function emailRecoveryRouter(deps: EmailRecoveryRouterDeps): ExpressRoute
           .where('id', '=', candidate.id)
           .execute();
 
-        if (!hashesEqual(codeHash(body.data.code), candidate.code_hash)) {
+        if (!hashesEqual(codeHash(credential), candidate.code_hash)) {
           if (attempts >= RESET_CODE_MAX_ATTEMPTS) {
             await trx
               .updateTable('password_reset_codes')
@@ -185,10 +213,18 @@ export function emailRecoveryRouter(deps: EmailRecoveryRouterDeps): ExpressRoute
         }
 
         await storePasswordAndRevokeSessions(trx, candidate.user_id, passwordHash);
+        if (setupToken !== undefined) {
+          await trx
+            .updateTable('users')
+            .set({ email_verified_at: sql<Date>`now()` })
+            .where('id', '=', candidate.user_id)
+            .execute();
+        }
         await trx
           .updateTable('password_reset_codes')
           .set({ used_at: sql<Date>`now()` })
-          .where('id', '=', candidate.id)
+          .where('user_id', '=', candidate.user_id)
+          .where('used_at', 'is', null)
           .execute();
         return candidate.user_id;
       });

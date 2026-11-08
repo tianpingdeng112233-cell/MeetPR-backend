@@ -13,10 +13,14 @@ import {
   listAdminUsers,
 } from '../handlers/admin';
 import { requireRole } from '../middleware/auth';
+import { adminCustomExercisesRouter } from './admin-custom-exercises';
+import { adminCoachApplicationsRouter } from './admin-coach-applications';
+import type { CoachApplicationDeps } from './coach-applications';
 import { route, validationEnvelope } from './http';
 
 interface AdminRouterDeps {
   db: Kysely<Database>;
+  onboarding?: CoachApplicationDeps;
 }
 
 const IdParamSchema = z.object({ id: z.string().uuid() });
@@ -47,10 +51,16 @@ export function adminRouter(deps: AdminRouterDeps): ExpressRouter {
     })().catch(next);
   });
 
+  router.use('/custom-exercises', adminCustomExercisesRouter(deps.db));
+
+  if (deps.onboarding?.config.COACH_ONBOARDING_ENABLED === true) {
+    router.use('/coach-applications', adminCoachApplicationsRouter(deps.onboarding));
+  }
+
   router.get(
     '/exercise-usage',
-    route(async (_req, res) => {
-      res.status(200).json(await listAdminExerciseUsage(deps.db));
+    route(async (req, res) => {
+      res.status(200).json(await listAdminExerciseUsage(deps.db, req.locale));
     }),
   );
 
@@ -107,7 +117,7 @@ export function adminRouter(deps: AdminRouterDeps): ExpressRouter {
         res.status(400).json(validationEnvelope(params.error));
         return;
       }
-      const plan = await getAdminPlan(deps.db, params.data.id);
+      const plan = await getAdminPlan(deps.db, params.data.id, req.locale);
       if (!plan) {
         res.status(404).json({ error: 'ADMIN_PLAN_NOT_FOUND' });
         return;

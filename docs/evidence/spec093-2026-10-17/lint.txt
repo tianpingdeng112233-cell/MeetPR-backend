@@ -1,0 +1,4 @@
+
+> meetpr-backend@0.0.1 lint /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+> eslint .
+

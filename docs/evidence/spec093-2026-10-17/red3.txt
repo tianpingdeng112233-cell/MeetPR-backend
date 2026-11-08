@@ -1,0 +1,35 @@
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+
+ ❯ tests/coach-applications.test.ts (3 tests | 1 failed) 1149ms
+   ✓ coach applications > accepts an application and sends the Chinese receipt without duplicate pending rows 843ms
+   × coach applications > sets the password from the welcome link, verifies email, logs in, and rejects replay 38ms
+     → expected 400 to be 204 // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/coach-applications.test.ts > coach applications > sets the password from the welcome link, verifies email, logs in, and rejects replay
+AssertionError: expected 400 to be 204 // Object.is equality
+
+- Expected
++ Received
+
+- 204
++ 400
+
+ ❯ tests/coach-applications.test.ts:64:79
+     62|     const link = new URL(/http:\/\/localhost:3000\/\S+/.exec(welcome.t…
+     63|     const reset = { email: applicant.email, token: link.searchParams.g…
+     64|     expect((await request(app).post('/auth/email/reset').send(reset)).…
+       |                                                                               ^
+     65|     const login = await request(app).post('/auth/email/login').send({ …
+     66|     expect(login.status).toBe(200);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed (3)
+   Start at  00:13:55
+   Duration  6.19s (transform 1.31s, setup 16ms, collect 3.24s, tests 1.15s, environment 0ms, prepare 323ms)
+

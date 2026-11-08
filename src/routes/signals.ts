@@ -3,6 +3,7 @@ import type { Kysely, Selectable } from 'kysely';
 import { sql } from 'kysely';
 import { z } from 'zod';
 
+import { hasAcceptedBond } from '../db/bonds';
 import {
   SIGNAL_STATUSES,
   type Database,
@@ -114,6 +115,7 @@ function defaultEventRange(
 
 type AckResult =
   | { type: 'not-found' }
+  | { type: 'forbidden' }
   | { type: 'not-open' }
   | { type: 'success'; signal: ReturnType<typeof signalResponse>; studentId: string };
 
@@ -193,6 +195,9 @@ export function coachSignalsRouter(deps: SignalsRouterDeps): ExpressRouter {
           .where('coach_id', '=', coachId)
           .executeTakeFirst();
         if (!located) return { type: 'not-found' };
+        if (!(await hasAcceptedBond(trx, coachId, located.student_id))) {
+          return { type: 'forbidden' };
+        }
 
         // LOCK CONTRACT: every student_signals writer locks the owning student
         // before writing. Re-read the signal after acquiring the lock so a
@@ -248,6 +253,10 @@ export function coachSignalsRouter(deps: SignalsRouterDeps): ExpressRouter {
         };
       });
 
+      if (result.type === 'forbidden') {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
       if (result.type === 'not-found') {
         res.status(404).json({ error: 'SIGNAL_NOT_FOUND' });
         return;

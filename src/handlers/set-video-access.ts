@@ -1,8 +1,9 @@
 import type { Kysely, RawBuilder } from 'kysely';
 import { sql } from 'kysely';
 
-import { hasAcceptedBond } from '../db/bonds';
+import { hasAcceptedBond, hasCoachReadAccess } from '../db/bonds';
 import type { Database, UserRole } from '../db/types';
+import type { OssService, OssSignOptions } from '../services/oss';
 import { uuidEquals } from '../utils/uuid';
 import type { AttachmentRow } from './attachments';
 
@@ -40,6 +41,7 @@ export async function resolveSetVideoAccess(
   db: Kysely<Database>,
   actor: { id: string; role: UserRole },
   videoId: string,
+  mode: 'read' | 'write' = 'read',
 ): Promise<SetVideoAccess> {
   const video = await db
     .selectFrom('attachments')
@@ -55,7 +57,8 @@ export async function resolveSetVideoAccess(
     return { outcome: 'allowed', relation: 'owner', video };
   }
 
-  if (actor.role !== 'coach' || !(await hasAcceptedBond(db, actor.id, video.owner_id))) {
+  const hasAccess = mode === 'read' ? hasCoachReadAccess : hasAcceptedBond;
+  if (actor.role !== 'coach' || !(await hasAccess(db, actor.id, video.owner_id))) {
     return { outcome: 'forbidden' };
   }
 
@@ -70,4 +73,25 @@ export async function resolveSetVideoAccess(
   }
 
   return { outcome: 'allowed', relation: 'bonded_coach', video };
+}
+
+export interface VideoPreview {
+  poster_url: string | null;
+  duration_seconds: number | null;
+}
+
+/** Call only after the existing video authorization gate has passed. */
+export async function videoPreview(
+  key: string | null,
+  oss: OssService | undefined,
+  signOptions?: OssSignOptions,
+): Promise<VideoPreview> {
+  return {
+    poster_url:
+      key !== null && oss?.signVideoPosterUrl
+        ? await oss.signVideoPosterUrl(key, 900, signOptions)
+        : null,
+    // Staging video/info is unavailable (spec 060 spike: 403 AccessDenied).
+    duration_seconds: null,
+  };
 }

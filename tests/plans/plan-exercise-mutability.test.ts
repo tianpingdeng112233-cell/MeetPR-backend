@@ -264,7 +264,7 @@ describe('spec 016 plan tree mutability', () => {
     expect(editable.status).toBe(200);
   });
 
-  it('locks only calendar metadata at plan level and always permits name', async () => {
+  it('locks non-extension plan metadata and permits pure extension and name changes', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
     await addSetLog(ctx, plan.planExerciseId);
@@ -278,8 +278,8 @@ describe('spec 016 plan tree mutability', () => {
 
     for (const patch of [
       { start_date: '2026-04-30' },
-      { end_date: '2026-05-29' },
-      { plan_weeks: 5 },
+      { end_date: '2026-05-27' },
+      { plan_weeks: 3 },
       { source_template_id: null },
     ]) {
       const response = await request(ctx.app)
@@ -288,6 +288,14 @@ describe('spec 016 plan tree mutability', () => {
         .send(patch);
       expect(response.status).toBe(409);
       expect(response.body).toEqual({ error: 'PLAN_HISTORY_IMMUTABLE' });
+    }
+
+    for (const patch of [{ end_date: '2026-05-29' }, { plan_weeks: 5 }]) {
+      const response = await request(ctx.app)
+        .patch(`/plans/${plan.planId}`)
+        .set(auth(ctx.coachToken))
+        .send(patch);
+      expect(response.status).toBe(200);
     }
   });
 

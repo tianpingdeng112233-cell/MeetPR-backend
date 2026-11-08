@@ -1,5 +1,7 @@
-import request from 'supertest';
+import { request } from './helpers/inMemoryRequest';
 import { describe, expect, it } from 'vitest';
+import { VIDEO_POSTER_PROCESS } from '../src/services/oss';
+import { makeUploadsContext } from './helpers/uploads';
 
 import {
   auth,
@@ -49,6 +51,38 @@ async function seedLinkedVideo(ctx: TestContext, rpe: string | null = '8.5'): Pr
 }
 
 describe('GET /students/:id/feedback', () => {
+  it('returns an OSS poster to the student and author, and denies an unrelated student', async () => {
+    const ctx = await makeUploadsContext();
+    const videoId = await seedLinkedVideo(ctx);
+    await ctx.db
+      .insertInto('feedback')
+      .values({
+        coach_id: ids.coach,
+        student_id: ids.trainee,
+        video_id: videoId,
+        text: 'Poster feedback',
+      })
+      .execute();
+    for (const token of [ctx.traineeToken, ctx.coachToken]) {
+      const res = await request(ctx.app).get(`/students/${ids.trainee}/feedback`).set(auth(token));
+      expect(res.status).toBe(200);
+      expect(res.body.items[0].video).toMatchObject({
+        id: videoId,
+        duration_seconds: null,
+        poster_url: expect.any(String),
+      });
+      expect(
+        new URL(res.body.items[0].video.poster_url as string).searchParams.get('x-oss-process'),
+      ).toBe(VIDEO_POSTER_PROCESS);
+    }
+    ctx.oss.calls.signPoster.length = 0;
+    const denied = await request(ctx.app)
+      .get(`/students/${ids.trainee}/feedback`)
+      .set(auth(ctx.otherStudentToken));
+    expect(denied.status).toBe(403);
+    expect(denied.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
+    expect(ctx.oss.calls.signPoster).toHaveLength(0);
+  });
   it('returns all own feedback ordered by posted_at descending', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
@@ -139,6 +173,8 @@ describe('GET /students/:id/feedback', () => {
         reps: 4,
         rpe: '8.5',
         logged_at: '2026-07-17T10:20:30.000Z',
+        poster_url: null,
+        duration_seconds: null,
       },
     });
     expect(res.body.items[0].video.url).toBeUndefined();

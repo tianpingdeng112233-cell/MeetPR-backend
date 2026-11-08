@@ -1,0 +1,27 @@
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+
+ ❯ tests/coach-applications.test.ts (15 tests | 1 failed | 14 skipped) 270ms
+   × coach applications > does not create a second application after rejection 269ms
+     → Cannot read properties of undefined (reading '1')
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/coach-applications.test.ts > coach applications > does not create a second application after rejection
+TypeError: Cannot read properties of undefined (reading '1')
+ ❯ tests/coach-applications.test.ts:271:40
+    269|     const submitted = await request(app).post('/coach-applications').s…
+    270|     await request(app).post(`/admin/coach-applications/${submitted.bod…
+    271|     expect(JSON.parse(mail.mock.calls[1]![1]!.body as string).text).to…
+       |                                        ^
+    272|     const duplicate = await request(app).post('/coach-applications').s…
+    273|     expect(duplicate.status).toBe(409);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 skipped (15)
+   Start at  00:20:27
+   Duration  3.08s (transform 731ms, setup 15ms, collect 1.61s, tests 270ms, environment 0ms, prepare 212ms)
+

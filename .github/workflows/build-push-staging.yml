@@ -51,6 +51,35 @@ jobs:
             exit 1
           fi
           echo "OK: web/$ENTRY carries same-origin base ''"
+      # 2026-10-24 and 2026-11-02 incident gate: bundles built without CN install
+      # links left the invite page showing "install links not open" to students.
+      - name: Verify bundled plan-web carries CN install links
+        run: |
+          if [ ! -f web/index.html ]; then
+            echo "web/ absent — nothing to verify"
+            exit 0
+          fi
+          REBUILD_COMMAND="VITE_API_BASE='' VITE_CN_TESTFLIGHT_URL=https://testflight.apple.com/join/aKmSgx4b VITE_CN_ANDROID_URL=https://dl.meetpr.cn/android/meetpr-cn.apk npm run build"
+          ENTRY=$(grep -o 'assets/index[^"]*\.js' web/index.html | head -1)
+          if [ -z "$ENTRY" ] || [ ! -f "web/$ENTRY" ]; then
+            echo "::error::web/index.html references no existing entry bundle"
+            echo "$REBUILD_COMMAND"
+            exit 1
+          fi
+          MISSING=0
+          if ! grep -qF 'testflight.apple.com/join/' "web/$ENTRY"; then
+            echo "::error::web/$ENTRY is missing VITE_CN_TESTFLIGHT_URL — rebuild plan-web with CN install links."
+            MISSING=1
+          fi
+          if ! grep -qF 'dl.meetpr.cn/android/meetpr-cn.apk' "web/$ENTRY"; then
+            echo "::error::web/$ENTRY is missing VITE_CN_ANDROID_URL — rebuild plan-web with CN install links."
+            MISSING=1
+          fi
+          if [ "$MISSING" -ne 0 ]; then
+            echo "$REBUILD_COMMAND"
+            exit 1
+          fi
+          echo "OK: web/$ENTRY carries CN install links"
 
   build-push:
     name: Build & push linux/amd64 image

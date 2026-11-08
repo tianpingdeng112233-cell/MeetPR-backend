@@ -70,7 +70,7 @@ export async function hasAcceptedBond(
 }
 
 /**
- * True when the coach may read the student's onboarding profile: accepted bond
+ * True when the coach may read the student's onboarding profile: accepted/ended bond
  * OR a live (not yet expired) pending bind request — the receive-queue
  * "view full profile" path (spec 005 D16). Read-only check: does not flip
  * stale pendings to expired.
@@ -87,12 +87,29 @@ export async function hasOnboardingReadAccess(
     .where('student_id', '=', studentId)
     .where((eb) =>
       eb.or([
-        eb('status', '=', 'accepted'),
+        eb('status', 'in', ['accepted', 'ended']),
         eb.and([eb('status', '=', 'pending'), eb('expired_at', '>', sql<Date>`now()`)]),
       ]),
     )
     .limit(1)
     .executeTakeFirst();
 
+  return row !== undefined;
+}
+
+/** A historical coaching relationship grants reads, never writes. */
+export async function hasCoachReadAccess(
+  db: DbExecutor,
+  coachId: string,
+  studentId: string,
+): Promise<boolean> {
+  const row = await db
+    .selectFrom('bind_requests')
+    .select('id')
+    .where('coach_id', '=', coachId)
+    .where('student_id', '=', studentId)
+    .where('status', 'in', ['accepted', 'ended'])
+    .limit(1)
+    .executeTakeFirst();
   return row !== undefined;
 }

@@ -2,7 +2,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
 
-import { hasAcceptedBond } from '../db/bonds';
+import { hasCoachReadAccess } from '../db/bonds';
 import type { Database } from '../db/types';
 import { READINESS_MUSCLE_GROUPS } from '../db/types';
 import { fetchReadinessCheckin } from '../handlers/readiness-fetch';
@@ -114,7 +114,7 @@ export function studentReadinessRouter(deps: ReadinessRouterDeps): ExpressRouter
           res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
           return;
         }
-        const bonded = await hasAcceptedBond(deps.db, req.user.id, params.data.id);
+        const bonded = await hasCoachReadAccess(deps.db, req.user.id, params.data.id);
         if (!bonded) {
           res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
           return;

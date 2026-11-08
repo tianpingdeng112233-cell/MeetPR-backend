@@ -2,6 +2,7 @@ import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 
 import type { Database } from '../db/types';
+import { uuidEquals } from '../utils/uuid';
 import { timestamp } from './serialization';
 
 export interface SetLogInput {
@@ -20,17 +21,20 @@ export interface SetLogInput {
   weight_kg: string;
   reps: number;
   rpe: string | null;
+  actual_rir?: number | null;
   completed: boolean;
   failed: boolean;
 }
 
 export interface AdhocSetLogInput {
+  plan_day_id?: string | null;
   exercise_id: string;
   logged_date: string;
   set_index: number;
   weight_kg: string;
   reps: number;
   rpe: string | null;
+  actual_rir?: number | null;
   completed: boolean;
   failed: boolean;
 }
@@ -81,6 +85,22 @@ export async function resolvePlanExercise(
       };
 }
 
+export async function canLogPlanDay(
+  db: Kysely<Database>,
+  planDayId: string,
+  studentId: string,
+): Promise<boolean> {
+  const day = await db
+    .selectFrom('plan_days as pd')
+    .innerJoin('plans as p', 'p.id', 'pd.plan_id')
+    .select('pd.id')
+    .where('pd.id', '=', planDayId)
+    .where('p.trainee_id', '=', studentId)
+    .where('p.status', '=', 'published')
+    .executeTakeFirst();
+  return day !== undefined;
+}
+
 export async function exerciseExists(db: Kysely<Database>, exerciseId: string): Promise<boolean> {
   const row = await db
     .selectFrom('exercises')
@@ -90,6 +110,18 @@ export async function exerciseExists(db: Kysely<Database>, exerciseId: string): 
     .executeTakeFirst();
 
   return row !== undefined;
+}
+
+export async function isAccessoryExercise(
+  db: Kysely<Database>,
+  exerciseId: string,
+): Promise<boolean> {
+  const row = await db
+    .selectFrom('exercises')
+    .select('exercise_type')
+    .where('id', '=', exerciseId)
+    .executeTakeFirst();
+  return row?.exercise_type === 'accessory';
 }
 
 export async function upsertSetLog(
@@ -116,6 +148,7 @@ export async function upsertSetLog(
       weight_kg: input.weight_kg,
       reps: input.reps,
       rpe: input.rpe,
+      actual_rir: input.actual_rir ?? null,
       completed: input.completed,
       failed,
       assumed: false,
@@ -126,6 +159,9 @@ export async function upsertSetLog(
             weight_kg: (eb) => eb.ref('excluded.weight_kg'),
             reps: (eb) => eb.ref('excluded.reps'),
             rpe: (eb) => eb.ref('excluded.rpe'),
+            ...(input.actual_rir !== undefined || input.rpe !== null
+              ? { actual_rir: input.actual_rir ?? null }
+              : {}),
             completed: (eb) => eb.ref('excluded.completed'),
             failed: (eb) => eb.ref('excluded.failed'),
             assumed: false,
@@ -136,6 +172,9 @@ export async function upsertSetLog(
             weight_kg: (eb) => eb.ref('excluded.weight_kg'),
             reps: (eb) => eb.ref('excluded.reps'),
             rpe: (eb) => eb.ref('excluded.rpe'),
+            ...(input.actual_rir !== undefined || input.rpe !== null
+              ? { actual_rir: input.actual_rir ?? null }
+              : {}),
             completed: (eb) => eb.ref('excluded.completed'),
             failed: (eb) => eb.ref('excluded.failed'),
             assumed: false,
@@ -150,6 +189,8 @@ export async function upsertSetLog(
     logged_at: timestamp(saved.logged_at),
   };
 }
+
+export class AdhocDayConflictError extends Error {}
 
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
@@ -166,6 +207,9 @@ async function updateAdhocSetLog(
       weight_kg: input.weight_kg,
       reps: input.reps,
       rpe: input.rpe,
+      ...(input.actual_rir !== undefined || input.rpe !== null
+        ? { actual_rir: input.actual_rir ?? null }
+        : {}),
       completed: input.completed,
       failed: input.failed,
       assumed: false,
@@ -176,6 +220,7 @@ async function updateAdhocSetLog(
     .where('logged_date', '=', input.logged_date)
     .where('set_index', '=', input.set_index)
     .where('adhoc', '=', true)
+    .where('plan_day_id', input.plan_day_id == null ? 'is' : '=', input.plan_day_id ?? null)
     .returning(['id', 'logged_at'])
     .executeTakeFirst();
 
@@ -208,6 +253,7 @@ export async function upsertAdhocSetLog(
       .values({
         student_id: studentId,
         plan_exercise_id: null,
+        plan_day_id: input.plan_day_id ?? null,
         exercise_id: input.exercise_id,
         logged_date: input.logged_date,
         adhoc: true,
@@ -215,6 +261,7 @@ export async function upsertAdhocSetLog(
         weight_kg: input.weight_kg,
         reps: input.reps,
         rpe: input.rpe,
+        actual_rir: input.actual_rir ?? null,
         completed: input.completed,
         failed: input.failed,
         assumed: false,
@@ -229,6 +276,22 @@ export async function upsertAdhocSetLog(
     }
     const raced = await updateAdhocSetLog(db, studentId, input);
     if (raced === null) {
+      const existing = await db
+        .selectFrom('set_logs')
+        .select('plan_day_id')
+        .where('student_id', '=', studentId)
+        .where('exercise_id', '=', input.exercise_id)
+        .where('logged_date', '=', input.logged_date)
+        .where('set_index', '=', input.set_index)
+        .where('adhoc', '=', true)
+        .executeTakeFirst();
+      if (
+        existing &&
+        !(existing.plan_day_id === null && input.plan_day_id == null) &&
+        !uuidEquals(existing.plan_day_id, input.plan_day_id)
+      ) {
+        throw new AdhocDayConflictError('SETS_ADHOC_DAY_CONFLICT');
+      }
       throw error;
     }
     return raced;

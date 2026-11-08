@@ -4,6 +4,80 @@ import { describe, expect, it } from 'vitest';
 import { buildPushPayload, REGISTERED_PUSH_EVENT_TYPES } from '../../src/jobs/push-payloads';
 
 describe('push payload builders', () => {
+  it('builds the bind_accepted contract for the student', () => {
+    const studentId = randomUUID();
+    const requestId = randomUUID();
+    expect(
+      buildPushPayload('bind_accepted', {
+        coach_name: '张教练',
+        student_id: studentId,
+        request_id: requestId,
+      }),
+    ).toEqual({
+      alert: {
+        title: '张教练已接受你的申请',
+        body: '打开 MeetPR 看看接下来做什么',
+      },
+      collapseId: `bind-accepted-${requestId}`,
+      threadId: 'bind_accepted',
+      custom: { kind: 'bind_accepted', student_id: studentId, request_id: requestId },
+    });
+    expect(REGISTERED_PUSH_EVENT_TYPES).toContain('bind_accepted');
+  });
+
+  it.each([
+    ['en', 'Alex', 'Alex accepted your request', "Open MeetPR to see what's next"],
+    ['zh-Hant', '张教练', '张教练已接受你的申請', '開啟 MeetPR 看看接下來做什麼'],
+  ] as const)(
+    'localizes bind_accepted in %s without rewriting the coach name',
+    (locale, name, title, body) => {
+      expect(
+        buildPushPayload(
+          'bind_accepted',
+          {
+            coach_name: name,
+            student_id: randomUUID(),
+            request_id: randomUUID(),
+          },
+          locale,
+        ).alert,
+      ).toEqual({ title, body });
+    },
+  );
+
+  it.each([undefined, null, '', '   '])(
+    'uses localized bind_accepted fallback for coach name %s',
+    (coachName) => {
+      const payload = { coach_name: coachName, student_id: randomUUID(), request_id: randomUUID() };
+      expect(buildPushPayload('bind_accepted', payload).alert).toEqual({
+        title: '教练已接受你的申请',
+        body: '打开 MeetPR 看看接下来做什么',
+      });
+      expect(buildPushPayload('bind_accepted', payload, 'zh-Hant').alert).toEqual({
+        title: '教練已接受你的申請',
+        body: '開啟 MeetPR 看看接下來做什麼',
+      });
+      expect(buildPushPayload('bind_accepted', payload, 'en').alert).toEqual({
+        title: 'Your coach accepted your request',
+        body: "Open MeetPR to see what's next",
+      });
+    },
+  );
+
+  it('uses neutral English bind_accepted copy for a Chinese coach name', () => {
+    expect(
+      buildPushPayload(
+        'bind_accepted',
+        {
+          coach_name: '张教练',
+          student_id: randomUUID(),
+          request_id: randomUUID(),
+        },
+        'en',
+      ).alert.title,
+    ).toBe('Your coach accepted your request');
+  });
+
   it('builds the coach plan_shifted contract in Chinese and English', () => {
     const studentId = randomUUID();
     const planId = randomUUID();

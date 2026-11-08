@@ -173,7 +173,7 @@ export function videoMarkersRouter(deps: VideoMarkersRouterDeps): ExpressRouter 
         return;
       }
 
-      const access = await resolveSetVideoAccess(db, req.user, params.data.videoId);
+      const access = await resolveSetVideoAccess(db, req.user, params.data.videoId, 'write');
       if (access.outcome === 'not_found') {
         res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
         return;
@@ -230,7 +230,7 @@ export function videoMarkersRouter(deps: VideoMarkersRouterDeps): ExpressRouter 
         return;
       }
 
-      const access = await resolveSetVideoAccess(db, req.user, params.data.videoId);
+      const access = await resolveSetVideoAccess(db, req.user, params.data.videoId, 'write');
       if (access.outcome === 'not_found') {
         res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
         return;
@@ -336,7 +336,7 @@ export function videoMarkersRouter(deps: VideoMarkersRouterDeps): ExpressRouter 
         return;
       }
 
-      const access = await resolveSetVideoAccess(db, req.user, params.data.videoId);
+      const access = await resolveSetVideoAccess(db, req.user, params.data.videoId, 'write');
       if (access.outcome === 'not_found') {
         res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
         return;

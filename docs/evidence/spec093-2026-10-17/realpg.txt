@@ -1,0 +1,14 @@
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+
+ ✓ tests/coach-applications.test.ts (16 tests) 2944ms
+   ✓ coach applications > sets the password from the welcome link, verifies email, logs in, and rejects replay 655ms
+   ✓ coach applications > receives existing student applications but refuses conversion, and allows rejection 374ms
+   ✓ coach applications > keeps setup links usable when a legacy six-digit attempt is wrong 439ms
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  00:22:59
+   Duration  4.16s (transform 469ms, setup 8ms, collect 893ms, tests 2.94s, environment 0ms, prepare 78ms)
+

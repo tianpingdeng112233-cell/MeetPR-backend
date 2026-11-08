@@ -23,7 +23,10 @@ const SESSION_SWEEP_CRON = '*/15 * * * *';
 export interface SchedulerDeps {
   db: Kysely<Database>;
   logger: Logger;
-  config: Pick<Config, 'SIGNALS_CRON_ENABLED' | 'PUSH_ENABLED' | 'PUSH_DAILY_DIGEST_ENABLED'>;
+  config: Pick<
+    Config,
+    'SIGNALS_CRON_ENABLED' | 'PUSH_ENABLED' | 'PUSH_DAILY_DIGEST_ENABLED' | 'JWT_AUDIENCE'
+  >;
 }
 
 export interface ActivityScheduler {
@@ -35,7 +38,7 @@ export type SchedulerFactory = (deps: SchedulerDeps) => ActivityScheduler;
 export interface PushSchedulerDeps {
   db: Kysely<Database>;
   logger: Logger;
-  config: Pick<Config, 'PUSH_ENABLED' | 'PUSH_DAILY_DIGEST_ENABLED'>;
+  config: Pick<Config, 'PUSH_ENABLED' | 'PUSH_DAILY_DIGEST_ENABLED' | 'JWT_AUDIENCE'>;
   apnsClient?: ApnsClient | undefined;
 }
 
@@ -138,7 +141,15 @@ export async function runTimeZoneBuckets(deps: SchedulerDeps, now = new Date()):
       const gymDay = bucket.gymDays[0];
       if (gymDay === undefined) continue;
       try {
-        await runDailyDigest(deps.db, gymDay, now, deps.logger, bucket.timezone, failedStudentIds);
+        await runDailyDigest(
+          deps.db,
+          gymDay,
+          now,
+          deps.logger,
+          bucket.timezone,
+          failedStudentIds,
+          deps.config,
+        );
       } catch (err) {
         deps.logger.error(
           { err, gymDay, timezone: bucket.timezone },
@@ -209,7 +220,7 @@ export function createPushConsumerScheduler(deps: PushSchedulerDeps): ActivitySc
         async () => {
           const now = new Date();
           try {
-            await consumePushOutbox(deps.db, apnsClient, now, deps.logger);
+            await consumePushOutbox(deps.db, apnsClient, now, deps.logger, deps.config);
           } catch (err) {
             deps.logger.error({ err }, 'push_outbox_consumer_failed');
           }

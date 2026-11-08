@@ -2,6 +2,8 @@ import OSS from 'ali-oss';
 
 import type { Config } from '../config';
 
+export const VIDEO_POSTER_PROCESS = 'video/snapshot,t_1000,f_jpg,w_640,m_fast,ar_auto';
+
 export interface CompletedPart {
   part_number: number;
   etag: string;
@@ -45,6 +47,12 @@ export interface OssService {
   abortMultipartUpload(key: string, uploadId: string): Promise<void>;
   /** Presigned GET URL (local HMAC signing, no OSS round-trip). */
   signGetUrl(key: string, expiresSeconds: number, options?: OssSignOptions): Promise<string>;
+  /** Optional OSS-native video snapshot capability; absent for S3/R2. */
+  signVideoPosterUrl?(
+    key: string,
+    expiresSeconds: number,
+    options?: OssSignOptions,
+  ): Promise<string>;
   /** Verify the completed object before it is exposed as ready. */
   headObject(key: string): Promise<{ sizeBytes: number } | null>;
   /** Best-effort compensation after a completed object fails verification. */
@@ -135,6 +143,16 @@ export function createOssService(options: OssServiceOptions): OssService {
     signGetUrl(key, expiresSeconds, signOptions) {
       const client = signingClient(signOptions);
       return Promise.resolve(client.signatureUrl(key, { method: 'GET', expires: expiresSeconds }));
+    },
+
+    signVideoPosterUrl(key, expiresSeconds, signOptions) {
+      return Promise.resolve(
+        signingClient(signOptions).signatureUrl(key, {
+          method: 'GET',
+          expires: expiresSeconds,
+          process: VIDEO_POSTER_PROCESS,
+        }),
+      );
     },
 
     async headObject(key) {

@@ -50,6 +50,39 @@ describe('chat push preview', () => {
 });
 
 describe('POST /conversations/:id/messages text', () => {
+  it.each([null, '教练'])(
+    'distinguishes a missing profile from the real nickname %s in push copy',
+    async (name) => {
+      const ctx = await makeContext(undefined, { config: { PUSH_ENABLED: true } });
+      const conversationId = await createConversation(ctx);
+      if (name === null) {
+        await ctx.db.deleteFrom('coach_profiles').where('user_id', '=', ids.coach).execute();
+      } else {
+        await ctx.db
+          .updateTable('coach_profiles')
+          .set({ display_name: name })
+          .where('user_id', '=', ids.coach)
+          .execute();
+      }
+      const created = await request(ctx.app)
+        .post(`/conversations/${conversationId}/messages`)
+        .set(auth(ctx.coachToken))
+        .send({ kind: 'text', body: '视频看过了', client_id: 'fallback-name' });
+      expect(created.status).toBe(201);
+      const row = await ctx.db
+        .selectFrom('notification_outbox')
+        .select('payload')
+        .where('event_type', '=', 'chat_message')
+        .executeTakeFirstOrThrow();
+      expect(row.payload).toEqual({
+        sender_name: '教练',
+        ...(name === null ? { display_name_is_fallback: true } : {}),
+        preview: '视频看过了',
+        conversation_id: conversationId,
+        seq: 1,
+      });
+    },
+  );
   it('enqueues one idempotent chat_message push for the conversation peer', async () => {
     const ctx = await makeContext(undefined, { config: { PUSH_ENABLED: true } });
     const conversationId = await createConversation(ctx);

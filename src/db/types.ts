@@ -1,3 +1,4 @@
+import type { PreferredLocale } from '../i18n/locale';
 import type { ColumnType, Generated } from 'kysely';
 
 import type { SetRefV1 } from '../domain/set-ref';
@@ -62,6 +63,8 @@ export const LOAD_MODES = [
   'weight_range',
   'rpe_range',
   'fixed_weight',
+  'free_weight',
+  'bodyweight',
 ] as const;
 export const PCT_ANCHORS = ['one_rm', 'e1rm', 'top_set'] as const;
 export const SET_TYPES = ['warmup', 'working', 'failed', 'amrap', 'backoff'] as const;
@@ -71,6 +74,7 @@ export const BIND_REQUEST_STATUSES = [
   'rejected',
   'expired',
   'cancelled',
+  'ended',
 ] as const;
 export const PLAN_KINDS = ['regular', 'adaptation'] as const;
 export const INVITE_CODE_TYPES = ['personal_permanent', 'single_use', 'time_limited'] as const;
@@ -140,7 +144,7 @@ export const VIDEO_MARKER_LEVELS = ['info', 'warn', 'bad'] as const;
 // Analytics event platform. The column is text for forward-compat; this const
 // is the current closed set (SPEC 008 §6). 'android' added 2026-07-19 for the
 // RN Android client (meetpr-rn W0).
-export const EVENT_PLATFORMS = ['ios', 'android'] as const;
+export const EVENT_PLATFORMS = ['ios', 'android', 'web'] as const;
 export const SESSION_STATUSES = ['in_progress', 'completed', 'partial'] as const;
 export const STUDENT_EVENT_TYPES = ['session_completed', 'session_partial', 'pr_e1rm'] as const;
 export const SIGNAL_TYPES = ['missed_training', 'pr_congrats'] as const;
@@ -204,6 +208,7 @@ type NullableJsonColumn<T> = ColumnType<T | null, T | string | null | undefined,
 
 export interface UsersTable {
   id: Generated<string>;
+  preferred_locale: NullableColumn<PreferredLocale>;
   phone: NullableColumn<string>;
   email: NullableColumn<string>;
   email_verified_at: NullableColumn<Date>;
@@ -231,7 +236,22 @@ export interface AuthChallengesTable {
   issued_at: Generated<Date>;
 }
 
+export interface CoachApplicationsTable {
+  id: Generated<string>;
+  name: string;
+  email: string;
+  contact: NullableColumn<string>;
+  student_count: number;
+  device: 'iphone' | 'android' | 'both';
+  status: Generated<'pending' | 'approved' | 'rejected'>;
+  user_id: NullableColumn<string>;
+  reviewed_by: NullableColumn<string>;
+  reviewed_at: NullableColumn<Date>;
+  created_at: Generated<Date>;
+}
+
 export interface PasswordResetCodesTable {
+  purpose: Generated<'password_reset' | 'coach_setup'>;
   id: Generated<string>;
   user_id: string;
   code_hash: string;
@@ -239,6 +259,13 @@ export interface PasswordResetCodesTable {
   attempts: Generated<number>;
   used_at: NullableColumn<Date>;
   created_at: Generated<Date>;
+}
+
+export interface EmailSignupCodesTable extends Omit<
+  PasswordResetCodesTable,
+  'user_id' | 'purpose'
+> {
+  email: string;
 }
 
 export interface SessionsTable {
@@ -253,6 +280,8 @@ export interface SessionsTable {
 }
 
 export interface ExercisesTable {
+  canonical_exercise_id: NullableColumn<string>;
+  adopted_at: NullableColumn<Date>;
   id: Generated<string>;
   name: string;
   name_en: NullableColumn<string>;
@@ -370,8 +399,8 @@ export interface PlanSetsTable {
   set_number: number;
   target_reps: number;
   target_reps_max: NullableColumn<number>;
-  intensity_mode: IntensityMode;
-  target_value: string;
+  intensity_mode: NullableColumn<IntensityMode>;
+  target_value: NullableColumn<string>;
   set_type: SetType;
   rest_seconds: number | null;
   coach_note: NullableColumn<string>;
@@ -414,6 +443,14 @@ export interface StudentProfilesTable {
   updated_at: TimestampColumn;
 }
 
+export interface CoachStudentAliasesTable {
+  coach_id: string;
+  student_id: string;
+  alias: string;
+  created_at: TimestampColumn;
+  updated_at: TimestampColumn;
+}
+
 export interface BindRequestsTable {
   id: Generated<string>;
   student_id: string;
@@ -421,11 +458,13 @@ export interface BindRequestsTable {
   status: Generated<BindRequestStatus>;
   submitted_at: TimestampColumn;
   responded_at: NullableColumn<Date>;
+  ended_at: NullableColumn<Date>;
   expired_at: TimestampColumn;
   skip_evaluation: Generated<boolean>;
   rejection_silent: Generated<boolean>;
   invite_code_id: NullableColumn<string>;
   skip_reason: NullableColumn<string>;
+  service_until: NullableColumn<string>;
 }
 
 export interface InviteCodesTable {
@@ -525,6 +564,7 @@ export interface OnboardingUploadsTable {
 export interface SetLogsTable {
   id: Generated<string>;
   student_id: string;
+  plan_day_id: NullableColumn<string>;
   plan_exercise_id: NullableColumn<string>;
   exercise_id: string;
   set_index: number;
@@ -824,11 +864,32 @@ export interface AnalyticsFeedbackTable {
   ts_server: TimestampColumn;
 }
 
+export interface PlanImportRunsTable {
+  id: Generated<string>;
+  coach_id: string;
+  trainee_id: string;
+  source: 'file' | 'paste';
+  input_chars: number;
+  week_calls: Generated<number>;
+  prompt_tokens: Generated<number>;
+  completion_tokens: Generated<number>;
+  created_at: TimestampColumn;
+}
+
+export interface CoachStudentPlanViewsTable {
+  coach_id: string;
+  student_id: string;
+  seen_at: Date;
+}
+
 export interface Database {
+  plan_import_runs: PlanImportRunsTable;
   users: UsersTable;
   user_identities: UserIdentitiesTable;
   auth_challenges: AuthChallengesTable;
+  coach_applications: CoachApplicationsTable;
   password_reset_codes: PasswordResetCodesTable;
+  email_signup_codes: EmailSignupCodesTable;
   sessions: SessionsTable;
   exercises: ExercisesTable;
   plans: PlansTable;
@@ -840,8 +901,10 @@ export interface Database {
   plan_exercises: PlanExercisesTable;
   plan_sets: PlanSetsTable;
   coach_profiles: CoachProfilesTable;
+  coach_student_plan_views: CoachStudentPlanViewsTable;
   student_profiles: StudentProfilesTable;
   bind_requests: BindRequestsTable;
+  coach_student_aliases: CoachStudentAliasesTable;
   set_logs: SetLogsTable;
   session_reviews: SessionReviewsTable;
   readiness_checkins: ReadinessCheckinsTable;

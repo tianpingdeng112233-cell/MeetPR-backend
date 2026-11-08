@@ -14,7 +14,8 @@ export interface BindRequestResponse {
   coach_id: string;
   coach_display_name: string | null;
   invite_code_id: string | null;
-  status: BindRequestRow['status'];
+  status: Exclude<BindRequestRow['status'], 'ended'>;
+  ended_at: string | null;
   submitted_at: string;
   responded_at: string | null;
   expired_at: string;
@@ -32,7 +33,8 @@ export function toBindRequest(
     coach_id: row.coach_id,
     coach_display_name: coachDisplayName,
     invite_code_id: row.invite_code_id,
-    status: row.status,
+    status: row.status === 'ended' ? 'cancelled' : row.status,
+    ended_at: row.status === 'ended' && row.ended_at != null ? timestamp(row.ended_at) : null,
     submitted_at: timestamp(row.submitted_at),
     responded_at: row.responded_at === null ? null : timestamp(row.responded_at),
     expired_at: timestamp(row.expired_at),
@@ -173,11 +175,77 @@ async function createBindRequestInTransaction(
   });
 }
 
+interface FirstRunResponse {
+  binding_plan_count: number;
+  has_settled_day: boolean;
+  first_plan: {
+    id: string;
+    published_at: string;
+    plan_weeks: number;
+    day_count: number;
+    has_settled_day: boolean;
+  } | null;
+}
+
+async function fetchFirstRun(
+  db: Kysely<Database>,
+  binding: BindRequestRow,
+): Promise<FirstRunResponse | null> {
+  if (binding.status !== 'accepted' || binding.responded_at === null) return null;
+
+  // One grouped query for all binding plans, including plans no longer visible
+  // to students. completed_at shares the plan-detail serialization's source.
+  const plans = await db
+    .selectFrom('plans as p')
+    .leftJoin('plan_days as pd', 'pd.plan_id', 'p.id')
+    .leftJoin('plan_day_completions as pdc', 'pdc.plan_day_id', 'pd.id')
+    .select(['p.id', 'p.status', 'p.published_at', 'p.plan_weeks'])
+    .select((eb) => [
+      eb.fn.count<string | number>('pd.id').as('day_count'),
+      eb.fn.count<string | number>('pdc.completed_at').as('settled_day_count'),
+    ])
+    .where('p.coach_id', '=', binding.coach_id)
+    .where('p.trainee_id', '=', binding.student_id)
+    .where('p.status', '!=', 'draft')
+    .where((eb) =>
+      eb.or([
+        eb('p.published_at', 'is', null),
+        eb.and([
+          eb('p.status', 'in', ['published', 'paused', 'completed']),
+          eb('p.published_at', '>=', binding.responded_at),
+        ]),
+      ]),
+    )
+    .groupBy(['p.id', 'p.status', 'p.published_at', 'p.plan_weeks'])
+    .orderBy('p.published_at', 'asc')
+    .orderBy('p.id', 'asc')
+    .execute();
+
+  // Any undated non-draft candidate makes this binding indeterminate.
+  if (plans.some((plan) => plan.published_at === null)) return null;
+
+  const first = plans[0];
+  return {
+    binding_plan_count: plans.length,
+    has_settled_day: plans.some((plan) => Number(plan.settled_day_count) > 0),
+    first_plan:
+      first?.status === 'published' && first.published_at !== null
+        ? {
+            id: first.id,
+            published_at: timestamp(first.published_at),
+            plan_weeks: first.plan_weeks,
+            day_count: Number(first.day_count),
+            has_settled_day: Number(first.settled_day_count) > 0,
+          }
+        : null,
+  };
+}
+
 /** Latest bind request for the student (any status), after lazy expiry. */
 export async function fetchMyBindRequest(
   db: Kysely<Database>,
   studentId: string,
-): Promise<BindRequestResponse | null> {
+): Promise<(BindRequestResponse & { first_run: FirstRunResponse | null }) | null> {
   await expireStaleBindRequests(db, { studentId });
 
   const row = await db
@@ -186,13 +254,34 @@ export async function fetchMyBindRequest(
     .selectAll('br')
     .select('cp.display_name as coach_display_name')
     .where('br.student_id', '=', studentId)
+    // A historical unbind must not hide a still-active coach. Other request
+    // statuses keep their existing chronological ordering.
+    .where((eb) =>
+      eb.or([
+        eb('br.status', '!=', 'ended'),
+        eb(
+          'br.student_id',
+          'not in',
+          eb
+            .selectFrom('bind_requests as active')
+            .select('active.student_id')
+            .where('active.student_id', '=', studentId)
+            .where('active.status', '=', 'accepted'),
+        ),
+      ]),
+    )
+    .orderBy(sql`coalesce(br.ended_at, br.submitted_at)`, 'desc')
     .orderBy('br.submitted_at', 'desc')
+    .orderBy('br.id', 'desc')
     .limit(1)
     .executeTakeFirst();
 
   if (!row) return null;
   const { coach_display_name, ...bindRow } = row;
-  return toBindRequest(bindRow, coach_display_name);
+  return {
+    ...toBindRequest(bindRow, coach_display_name),
+    first_run: await fetchFirstRun(db, bindRow),
+  };
 }
 
 export type CancelBindRequestResult = 'cancelled' | 'not-found' | 'not-pending';

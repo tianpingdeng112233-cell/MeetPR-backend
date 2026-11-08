@@ -33,12 +33,19 @@ import {
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
 import { notifyPlanPublished } from '../../services/notifications';
-import { pushDisplayName, tryEnqueuePushOutbox } from '../../services/push-outbox';
+import { pushDisplayNameFields, tryEnqueuePushOutbox } from '../../services/push-outbox';
 import { calculateTrainingMaxKg, formatTrainingMaxKg } from '../../services/trainingMax';
 import { uuidEquals } from '../../utils/uuid';
-import { localCalendarDate, normalizeDateOnly, utcDate, utcDateOnly } from '../../utils/date';
+import {
+  isoWeekday,
+  localCalendarDate,
+  normalizeDateOnly,
+  utcDate,
+  utcDateOnly,
+} from '../../utils/date';
 import { visibleExerciseForCoach, visibleExercisesForCoach } from '../exercises';
 import { route, validationEnvelope } from '../http';
+import { isPurePlanExtension } from './plan-extension';
 import {
   ExerciseIdParamSchema,
   BatchDaysBodySchema,
@@ -64,11 +71,15 @@ import {
   batchUsesNewIntensityShape,
   intensityState,
   intensityWrite,
+  legacyIntensityPatch,
   mergedIntensityState,
+  normalizeLegacyBodyweightSets,
+  usesLegacyIntensityShape,
   usesNewIntensityShape,
   validateIntensityState,
 } from './intensity';
 import {
+  projectPlanSnapshot,
   type PlanExerciseResponse,
   type PlanShiftSummaryResponse,
   type PlanSetResponse,
@@ -120,7 +131,7 @@ interface ImportedHistorySetRow {
   set_number: number;
   target_reps: number;
   intensity_mode: PlanSetRow['intensity_mode'];
-  target_value: string;
+  target_value: string | null;
 }
 
 interface ImportedHistoryCandidate {
@@ -432,7 +443,8 @@ function normalizeTargetValue(value: string): string {
 }
 
 function setIntensityWrite(set: CreatePlanSetBody): ReturnType<typeof intensityWrite> {
-  if (usesNewIntensityShape(set)) return intensityWrite(intensityState(set));
+  if (usesNewIntensityShape(set) && !usesLegacyIntensityShape(set))
+    return intensityWrite(intensityState(set));
   if (set.intensity_mode === undefined || set.target_value === undefined) {
     throw new Error('validated legacy intensity is incomplete');
   }
@@ -440,6 +452,39 @@ function setIntensityWrite(set: CreatePlanSetBody): ReturnType<typeof intensityW
     intensity_mode: set.intensity_mode,
     target_value: normalizeTargetValue(set.target_value),
   };
+}
+
+// Call only after acquiring the parent exercise lock (or creating a new
+// exercise in batch). Read the final row, then normalize all its sets together.
+async function normalizeLegacyBodyweightExercise(
+  db: DbExecutor,
+  exerciseId: string,
+  writes: Pick<CreatePlanSetBody, 'intensity_mode' | 'target_value'>[],
+): Promise<void> {
+  // intensityWrite projects new-system values over the old fields. A conflicting
+  // old field in the original request must still disqualify the entire exercise.
+  if (
+    writes.some(
+      (set) =>
+        (set.intensity_mode !== undefined && set.intensity_mode !== 'rpe') ||
+        (set.target_value !== undefined && Number(set.target_value) !== 10),
+    )
+  )
+    return;
+  const sets = await db
+    .selectFrom('plan_sets')
+    .selectAll()
+    .where('plan_exercise_id', '=', exerciseId)
+    .execute();
+  const normalized = normalizeLegacyBodyweightSets(sets);
+  if (normalized === sets) return;
+  for (const set of normalized) {
+    await db
+      .updateTable('plan_sets')
+      .set({ load_mode: set.load_mode, target_rpe: set.target_rpe, coach_note: set.coach_note })
+      .where('id', '=', set.id)
+      .execute();
+  }
 }
 
 async function planDayHasLogs(db: DbExecutor, dayId: string): Promise<boolean> {
@@ -887,7 +932,8 @@ export async function createImportedHistory(
       exercise_id: set.exercise_id,
       logged_date: plannedDate,
       set_index: setIndex,
-      weight_kg: set.intensity_mode === 'rpe' ? '0.00' : normalizeTargetValue(set.target_value),
+      weight_kg:
+        set.intensity_mode === 'rpe' ? '0.00' : normalizeTargetValue(set.target_value ?? '0'),
       reps: set.target_reps,
       rpe: set.intensity_mode === 'rpe' ? Number(set.target_value).toFixed(1) : null,
       completed: true,
@@ -1096,6 +1142,41 @@ function mergedSetValidation(
 export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
   const router = Router();
 
+  // Every nested plan mutation passes through one of these public identifiers.
+  // Keep ownership-based 404s; an ended relationship gets a write-only 403.
+  for (const name of ['id', 'dayId', 'exerciseId', 'setId']) {
+    router.param(name, (req, res, next, value: string) => {
+      const user = req.user;
+      if (
+        user?.role !== 'coach' ||
+        req.method === 'GET' ||
+        req.method === 'HEAD' ||
+        (req.method === 'POST' &&
+          (req.path.endsWith('/publish') || req.path.endsWith('/imported-history'))) ||
+        !IdParamSchema.safeParse({ id: value }).success
+      ) {
+        next();
+        return;
+      }
+      void (async () => {
+        const planId =
+          name === 'dayId'
+            ? await planIdForDay(deps.db, value, user.id)
+            : name === 'exerciseId'
+              ? await planIdForExercise(deps.db, value, user.id)
+              : name === 'setId'
+                ? await planIdForSet(deps.db, value, user.id)
+                : value;
+        const plan = planId ? await selectOwnedPlan(deps.db, planId, user.id) : undefined;
+        if (plan && !(await hasAcceptedBond(deps.db, user.id, plan.trainee_id))) {
+          res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+          return;
+        }
+        next();
+      })().catch(next);
+    });
+  }
+
   router.post(
     '/',
     requireRole('coach'),
@@ -1124,6 +1205,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
+      if (!(await hasAcceptedBond(deps.db, user.id, body.data.trainee_id))) {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
       const plan = await deps.db
         .insertInto('plans')
         .values({
@@ -1260,7 +1345,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         plan_id: revision.plan_id,
         version: revision.version,
         content_hash: revision.content_hash,
-        content: parsedJson(revision.content),
+        content: projectPlanSnapshot(parsedJson(revision.content)),
         saved_at: timestamp(revision.saved_at),
       });
     }),
@@ -1387,6 +1472,8 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (
           hasCalendarMetadataMutation &&
           lockedTree &&
+          (body.data.source_template_id !== undefined ||
+            !isPurePlanExtension(existing, body.data)) &&
           (await planHistoryLocked(trx, existing.id, lockedTree.exerciseIds))
         ) {
           return { type: 'history-immutable' } as const;
@@ -1412,6 +1499,15 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (body.data.plan_weeks !== undefined) patch.plan_weeks = body.data.plan_weeks;
         if (body.data.status !== undefined) patch.status = body.data.status;
         if (body.data.anchor_weekday !== undefined) patch.anchor_weekday = body.data.anchor_weekday;
+        // Calendar edits move D1 itself; keep its display anchor on that date,
+        // including requests from older clients that omit or resend a stale anchor.
+        const anchor =
+          body.data.anchor_weekday !== undefined
+            ? body.data.anchor_weekday
+            : existing.anchor_weekday;
+        if (body.data.start_date !== undefined && anchor != null) {
+          patch.anchor_weekday = isoWeekday(body.data.start_date);
+        }
         if (existing.status === 'paused' && body.data.status === 'published') {
           patch.published_at = sql<Date>`now()`;
         }
@@ -1803,7 +1899,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           const lockedTree = await lockOwnedPlanTree(trx, plan.id, user.id);
           if (!lockedTree) return { type: 'not-found' } as const;
           currentPlan = lockedTree.plan;
-          if (await planHistoryLocked(trx, plan.id, lockedTree.exerciseIds)) {
+          if (
+            !isPurePlanExtension(currentPlan, body.data.plan_patch ?? {}) &&
+            (await planHistoryLocked(trx, plan.id, lockedTree.exerciseIds))
+          ) {
             return { type: 'plan-history-immutable' } as const;
           }
         }
@@ -1844,6 +1943,9 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           if (body.data.plan_patch.name !== undefined) patch.name = body.data.plan_patch.name;
           if (body.data.plan_patch.start_date !== undefined) {
             patch.start_date = body.data.plan_patch.start_date;
+            if (currentPlan.anchor_weekday != null) {
+              patch.anchor_weekday = isoWeekday(body.data.plan_patch.start_date);
+            }
           }
           if (body.data.plan_patch.end_date !== undefined) {
             patch.end_date = body.data.plan_patch.end_date;
@@ -1914,6 +2016,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
                   })),
                 )
                 .execute();
+              await normalizeLegacyBodyweightExercise(trx, createdExercise.id, exercise.sets);
               setsCreated += exercise.sets.length;
             }
           }
@@ -1975,7 +2078,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           aggregateId: randomUUID(),
           recipientId: plan.trainee_id,
           payload: {
-            coach_name: await pushDisplayName(deps.db, user.id),
+            ...(await pushDisplayNameFields(deps.db, user.id, 'coach_name')),
             student_id: plan.trainee_id,
             plan_id: plan.id,
           },
@@ -2236,7 +2339,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
             aggregateId: result.batchId,
             recipientId: result.traineeId,
             payload: {
-              coach_name: await pushDisplayName(deps.db, user.id),
+              ...(await pushDisplayNameFields(deps.db, user.id, 'coach_name')),
               student_id: result.traineeId,
               plan_id: params.data.id,
               anchor_date: body.data.anchor_date,
@@ -2295,7 +2398,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           aggregateId: result.batchId,
           recipientId: result.coachId,
           payload: {
-            student_name: await pushDisplayName(deps.db, user.id),
+            ...(await pushDisplayNameFields(deps.db, user.id, 'student_name')),
             shift_days: result.totalOffsetDays,
             student_id: user.id,
             plan_id: params.data.id,
@@ -2356,7 +2459,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
             aggregateId: result.batchId,
             recipientId: result.traineeId,
             payload: {
-              coach_name: await pushDisplayName(deps.db, user.id),
+              ...(await pushDisplayNameFields(deps.db, user.id, 'coach_name')),
               student_id: result.traineeId,
               plan_id: params.data.id,
             },
@@ -2615,7 +2718,13 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           })
           .returningAll()
           .executeTakeFirstOrThrow();
-        return { type: 'created', planId, set } as const;
+        await normalizeLegacyBodyweightExercise(trx, params.data.exerciseId, [body.data]);
+        const saved = await trx
+          .selectFrom('plan_sets')
+          .selectAll()
+          .where('id', '=', set.id)
+          .executeTakeFirstOrThrow();
+        return { type: 'created', planId, set: saved } as const;
       });
 
       if (result.type === 'not-found') {
@@ -2682,7 +2791,11 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (body.data.target_reps_max !== undefined) {
           patch.target_reps_max = body.data.target_reps_max;
         }
-        if (usesNewIntensity) {
+        if (body.data.coach_note !== undefined) patch.coach_note = body.data.coach_note;
+        const legacyPatch = legacyIntensityPatch(existing, body.data);
+        if (legacyPatch !== null) {
+          Object.assign(patch, legacyPatch);
+        } else if (usesNewIntensityShape(body.data)) {
           const intensity = mergedIntensityState(existing, body.data);
           const issues = validateIntensityState(intensity);
           if (issues.length > 0) {
@@ -2702,8 +2815,6 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         }
         if (body.data.set_type !== undefined) patch.set_type = body.data.set_type;
         if (body.data.rest_seconds !== undefined) patch.rest_seconds = body.data.rest_seconds;
-        if (body.data.coach_note !== undefined) patch.coach_note = body.data.coach_note;
-
         const validation = mergedSetValidation(existing, patch);
         if (validation) return { type: 'validation', validation } as const;
 
@@ -2713,7 +2824,13 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           .where('id', '=', params.data.setId)
           .returningAll()
           .executeTakeFirstOrThrow();
-        return { type: 'updated', planId, set } as const;
+        await normalizeLegacyBodyweightExercise(trx, existing.plan_exercise_id, [body.data]);
+        const saved = await trx
+          .selectFrom('plan_sets')
+          .selectAll()
+          .where('id', '=', set.id)
+          .executeTakeFirstOrThrow();
+        return { type: 'updated', planId, set: saved } as const;
       });
 
       if (result.type === 'not-found') {

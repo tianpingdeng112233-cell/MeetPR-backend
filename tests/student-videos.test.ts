@@ -1,8 +1,9 @@
-import request from 'supertest';
+import { request } from './helpers/inMemoryRequest';
 import { describe, expect, it } from 'vitest';
+import { VIDEO_POSTER_PROCESS } from '../src/services/oss';
 
-import { auth, createPublishedPlan, ids } from './helpers/studentActions';
-import { makeUploadsContext } from './helpers/uploads';
+import { auth, createPublishedPlan, ids, makeContext } from './helpers/studentActions';
+import { makeFakeOss, makeUploadsContext } from './helpers/uploads';
 
 async function seedSetLog(ctx: Awaited<ReturnType<typeof makeUploadsContext>>): Promise<string> {
   const fixture = await createPublishedPlan(ctx);
@@ -98,6 +99,44 @@ describe('POST /uploads/initiate set_log_id linkage (spec 007)', () => {
 });
 
 describe('GET /students/:id/videos (spec 007)', () => {
+  it.each(['absent', 'non-OSS'] as const)(
+    'returns video metadata with null previews for %s storage',
+    async (storage) => {
+      const fake = makeFakeOss();
+      delete fake.service.signVideoPosterUrl;
+      const ctx = await makeContext(undefined, storage === 'absent' ? {} : { oss: fake.service });
+      await ctx.db
+        .insertInto('attachments')
+        .values({
+          owner_id: ids.trainee,
+          kind: 'set_video',
+          oss_key: 'attachments/video.mp4',
+          content_type: 'video/mp4',
+          size_bytes: 1024,
+          part_count: 1,
+          status: 'ready',
+          is_unlinked_explicit: true,
+        })
+        .execute();
+      const res = await request(ctx.app)
+        .get(`/students/${ids.trainee}/videos`)
+        .set(auth(ctx.traineeToken));
+      expect(res.status).toBe(200);
+      expect(res.body.videos).toHaveLength(1);
+      expect(res.body.videos[0]).toMatchObject({ poster_url: null, duration_seconds: null });
+    },
+  );
+
+  it('denies an unrelated student before signing any video poster', async () => {
+    const ctx = await makeUploadsContext();
+    await uploadReadyVideo(ctx);
+    const res = await request(ctx.app)
+      .get(`/students/${ids.trainee}/videos`)
+      .set(auth(ctx.otherStudentToken));
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
+    expect(ctx.oss.calls.signPoster).toHaveLength(0);
+  });
   it('returns ready set videos with linkage and a playback URL, newest first', async () => {
     const ctx = await makeUploadsContext();
     const setLogId = await seedSetLog(ctx);
@@ -129,7 +168,12 @@ describe('GET /students/:id/videos (spec 007)', () => {
       reps: 5,
       rpe: '7.5',
       coach_rpe: '8.0',
+      poster_url: expect.any(String),
+      duration_seconds: null,
     });
+    const poster = new URL(linked.poster_url as string);
+    expect(poster.searchParams.get('x-oss-process')).toBe(VIDEO_POSTER_PROCESS);
+    expect(poster.searchParams.get('expires')).toBe('900');
     expect(linked.plan_exercise_id).toEqual(expect.any(String));
     expect(linked.logged_at).toEqual(expect.any(String));
     // Metadata only: playback URLs come from GET /uploads/:id/url per item.

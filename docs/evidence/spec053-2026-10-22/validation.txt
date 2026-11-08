@@ -1,0 +1,74 @@
+Spec 053 validation record — 2026-10-22
+Formal HTTP red/green and full-suite green: NOT ACHIEVED.
+Supplemental in-memory transport is the existing tests/helpers/inMemoryRequest, with a temporary query-string wrapper; committed tests still import supertest.
+
+typecheck
+$ pnpm typecheck
+exit_code=0
+> meetpr-backend@0.0.1 typecheck /Users/david/Projects/apps/MeetPR-backend-wt-053-adopt
+> tsc --noEmit
+
+lint
+$ pnpm lint
+exit_code=0
+> meetpr-backend@0.0.1 lint /Users/david/Projects/apps/MeetPR-backend-wt-053-adopt
+> eslint .
+
+build
+$ pnpm build
+exit_code=0
+> meetpr-backend@0.0.1 build /Users/david/Projects/apps/MeetPR-backend-wt-053-adopt
+> tsc -p tsconfig.build.json
+
+full_test
+$ pnpm test -- --maxWorkers=2 --minWorkers=1
+exit_code=1
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+ Test Files  47 failed | 113 passed (160)
+      Tests  570 failed | 737 passed | 1 skipped (1308)
+     Errors  565 errors
+   Start at  10:10:41
+   Duration  196.93s (transform 13.03s, setup 901ms, collect 120.52s, tests 187.48s, environment 36ms, prepare 15.75s)
+
+ ELIFECYCLE  Test failed. See above for more details.
+
+inprocess_supplemental
+$ pnpm exec vitest run --config /tmp/053-inprocess.config.cjs tests/exercise-adoption.test.ts tests/exercise-crud.test.ts tests/exercise-stats.test.ts tests/admin.test.ts tests/plans/plans.test.ts tests/exercise-usage.test.ts tests/migrations/0077-exercise-adoption.test.ts tests/unit/in-memory-request.test.ts
+exit_code=0
+   ✓ GET /exercises/usage-stats > returns the current coach usage in descending count order 1973ms
+   ✓ GET /exercises/usage-stats > returns only positive usage rows for a different coach 1707ms
+   ✓ GET /exercises/usage-stats > rejects anonymous and student callers with the standard auth envelopes 585ms
+ ✓ tests/migrations/0077-exercise-adoption.test.ts (1 test) 1493ms
+   ✓ migration 0077 exercise adoption > is repeatable, preserves existing rows, and restricts target deletion 1458ms
+
+ Test Files  8 passed (8)
+      Tests  153 passed (153)
+   Start at  10:03:07
+   Duration  146.60s (transform 8.88s, setup 523ms, collect 75.52s, tests 160.17s, environment 5ms, prepare 6.32s)
+
+format_check
+$ pnpm format:check
+exit_code=1
+> meetpr-backend@0.0.1 format:check /Users/david/Projects/apps/MeetPR-backend-wt-053-adopt
+> prettier --check .
+
+Checking formatting...
+[warn] specs/053-exercise-adoption/CARD.md
+[warn] specs/053-exercise-adoption/SPEC.md
+[warn] Code style issues found in 2 files. Run Prettier with --write to fix.
+ ELIFECYCLE  Command failed with exit code 1.
+
+changed_files_format
+$ pnpm exec prettier --check <all changed TS files and migration-audit.json>
+exit_code=0
+Checking formatting...
+All matched files use Prettier code style!
+
+Formal suite failure classification:
+{"TypeError: Cannot read properties of null (reading 'port')": 565, 'Error: listen EPERM: operation not permitted 127.0.0.1': 5}
+
+Full original logs: .spec053-*.log (ignored by Git, retained in this worktree).
+Baseline and defaults had CPU-contention timeouts; bounded full run had no timeouts.
+No commit, push, PR, dependency/lockfile changes, remote mutations or deployment.

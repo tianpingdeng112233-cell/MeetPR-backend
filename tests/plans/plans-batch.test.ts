@@ -1,5 +1,5 @@
 import { sql } from 'kysely';
-import request from 'supertest';
+import { request } from '../helpers/inMemoryRequest';
 import { describe, expect, it } from 'vitest';
 
 import { normalizeDateOnly } from '../../src/utils/date';
@@ -436,6 +436,27 @@ describe('POST /plans/:id/days/batch', () => {
     expect(await treeCounts(ctx, plan.id)).toEqual(before);
   });
 
+  it.each([3, null])('keeps batch calendar updates consistent with anchor %s', async (anchor) => {
+    const ctx = await makeBatchContext();
+    const plan = await createDraftPlan(ctx);
+    await ctx.db
+      .updateTable('plans')
+      .set({ anchor_weekday: anchor })
+      .where('id', '=', plan.id)
+      .execute();
+    const updated = await batch(ctx, plan.id, {
+      plan_patch: { start_date: '2026-07-05' },
+      delete_day_ids: [],
+      upsert_days: [upsertDay(1, 1)],
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.body.anchor_weekday).toBe(anchor === null ? null : 7);
+    const loaded = await request(ctx.app).get(`/plans/${plan.id}`).set(auth(ctx.coachToken));
+    expect(loaded.status).toBe(200);
+    expect(loaded.body.anchor_weekday).toBe(anchor === null ? null : 7);
+    expect(normalizeDateOnly(new Date(loaded.body.start_date))).toBe('2026-07-05');
+  });
+
   it('updates plan calendar fields atomically and rejects merged inverted dates without writes', async () => {
     const ctx = await makeBatchContext();
     const plan = await createDraftPlan(ctx);
@@ -587,6 +608,94 @@ describe('POST /plans/:id/days/batch', () => {
         .where('id', '=', setLog.id)
         .executeTakeFirst(),
     ).toEqual({ id: setLog.id });
+  });
+
+  it('extends a plan with history before adding new weeks and enqueues one plan_updated', async () => {
+    const ctx = await makeBatchContext(true);
+    const plan = await createPublishedPlan(ctx);
+    const setLog = await addSetLog(ctx, plan.planExerciseId);
+    const historyBefore = await ctx.db
+      .selectFrom('set_logs')
+      .selectAll()
+      .where('id', '=', setLog.id)
+      .executeTakeFirstOrThrow();
+    const before = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.coachToken));
+    expect(before.status).toBe(200);
+
+    const response = await batch(ctx, plan.planId, {
+      plan_patch: { plan_weeks: 6, end_date: '2026-06-11' },
+      upsert_days: [upsertDay(5, 1), upsertDay(6, 1)],
+    });
+
+    expect(response.status).toBe(200);
+    const loaded = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.coachToken));
+    expect(loaded.status).toBe(200);
+    expect(new Date(loaded.body.start_date)).toEqual(new Date('2026-05-01'));
+    expect(new Date(loaded.body.end_date)).toEqual(new Date('2026-06-11'));
+    expect(loaded.body).toMatchObject({
+      plan_weeks: 6,
+      days: [before.body.days[0], { week_number: 5 }, { week_number: 6 }],
+    });
+    expect(loaded.body.days[0]).toEqual(before.body.days[0]);
+    expect(
+      await ctx.db
+        .selectFrom('set_logs')
+        .selectAll()
+        .where('id', '=', setLog.id)
+        .executeTakeFirst(),
+    ).toEqual(historyBefore);
+    expect(
+      await ctx.db
+        .selectFrom('notification_outbox')
+        .select(['event_type', 'recipient_id'])
+        .where('event_type', '=', 'plan_updated')
+        .execute(),
+    ).toEqual([{ event_type: 'plan_updated', recipient_id: ids.trainee }]);
+  });
+
+  it.each([
+    { plan_weeks: 3, end_date: '2026-06-11' },
+    { end_date: '2026-05-27', plan_weeks: 6 },
+    { start_date: '2026-05-02', plan_weeks: 6 },
+  ])('rejects a non-extension %j without writing new days', async (planPatch) => {
+    const ctx = await makeBatchContext();
+    const plan = await createPublishedPlan(ctx);
+    await addSetLog(ctx, plan.planExerciseId);
+    const before = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.coachToken));
+
+    const response = await batch(ctx, plan.planId, {
+      plan_patch: planPatch,
+      upsert_days: [upsertDay(5, 1)],
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: 'PLAN_HISTORY_IMMUTABLE' });
+    const loaded = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.coachToken));
+    expect(loaded.status).toBe(200);
+    expect(loaded.body).toEqual(before.body);
+  });
+
+  it('keeps deletion of a day with history locked even alongside a pure extension', async () => {
+    const ctx = await makeBatchContext(true);
+    const plan = await createPublishedPlan(ctx);
+    await addSetLog(ctx, plan.planExerciseId);
+    const before = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.coachToken));
+
+    const response = await batch(ctx, plan.planId, {
+      plan_patch: { plan_weeks: 6, end_date: '2026-06-11' },
+      delete_day_ids: [plan.dayId],
+      upsert_days: [upsertDay(5, 1)],
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      error: 'DAY_HISTORY_IMMUTABLE',
+      details: { day_ids: [plan.dayId] },
+    });
+    const loaded = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.coachToken));
+    expect(loaded.status).toBe(200);
+    expect(loaded.body).toEqual(before.body);
+    expect(await ctx.db.selectFrom('notification_outbox').select('id').execute()).toEqual([]);
   });
 
   it('locks calendar patches for any plan history, rolls back tree writes, and permits name-only patches', async () => {

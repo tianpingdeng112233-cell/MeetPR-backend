@@ -18,6 +18,7 @@ import {
 import { requireRole } from '../middleware/auth';
 import { tryEnqueuePushOutbox } from '../services/push-outbox';
 import { route, validationEnvelope } from './http';
+import { ServiceUntilSchema } from './service-term-schema';
 
 interface BindRequestsRouterDeps {
   db: Kysely<Database>;
@@ -40,6 +41,7 @@ const AcceptBindRequestBodySchema = z
   .object({
     skip_evaluation: z.boolean(),
     skip_reason: z.string().trim().min(1).max(500).nullable().optional(),
+    service_until: ServiceUntilSchema.optional(),
   })
   .strict()
   .superRefine((body, ctx) => {
@@ -206,11 +208,31 @@ export function coachBindRequestsRouter(deps: BindRequestsRouterDeps): ExpressRo
       const result = await acceptBindRequest(deps.db, req.user.id, params.data.id, {
         skip_evaluation: body.data.skip_evaluation,
         skip_reason: body.data.skip_reason ?? null,
+        service_until: body.data.service_until ?? null,
       });
 
       if (result.type !== 'accepted') {
         respondWithGateError(res, result);
         return;
+      }
+
+      if (deps.pushEnabled) {
+        await tryEnqueuePushOutbox(deps.db, deps.logger, 'bind_accepted', async () => {
+          const coach = await deps.db
+            .selectFrom('coach_profiles')
+            .select('display_name')
+            .where('user_id', '=', result.bindRequest.coach_id)
+            .executeTakeFirst();
+          return {
+            aggregateId: result.bindRequest.id,
+            recipientId: result.bindRequest.student_id,
+            payload: {
+              coach_name: coach?.display_name ?? null,
+              student_id: result.bindRequest.student_id,
+              request_id: result.bindRequest.id,
+            },
+          };
+        });
       }
 
       res.status(200).json({

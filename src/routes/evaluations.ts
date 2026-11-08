@@ -2,7 +2,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
 
-import { hasAcceptedBond } from '../db/bonds';
+import { hasAcceptedBond, hasCoachReadAccess } from '../db/bonds';
 import type { Database } from '../db/types';
 import {
   fetchEvaluationSummaryForCoach,
@@ -53,6 +53,10 @@ export function coachEvaluationsRouter(deps: EvaluationsRouterDeps): ExpressRout
         return;
       }
 
+      if (!(await hasCoachReadAccess(deps.db, req.user.id, params.data.id))) {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
       const evaluation = await fetchEvaluationForPair(deps.db, req.user.id, params.data.id);
       if (!evaluation) {
         res.status(404).json({ error: 'EVALUATION_NOT_FOUND' });
@@ -79,6 +83,10 @@ export function coachEvaluationsRouter(deps: EvaluationsRouterDeps): ExpressRout
       }
 
       const result = await completeEvaluation(deps.db, req.user.id, params.data.id);
+      if (result.type === 'forbidden') {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
       if (result.type === 'not-found') {
         res.status(404).json({ error: 'EVALUATION_NOT_FOUND' });
         return;
@@ -182,7 +190,7 @@ export function studentEvaluationsRouter(deps: EvaluationsRouterDeps): ExpressRo
         return;
       }
 
-      const bonded = await hasAcceptedBond(deps.db, req.user.id, params.data.id);
+      const bonded = await hasCoachReadAccess(deps.db, req.user.id, params.data.id);
       if (!bonded) {
         res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
         return;

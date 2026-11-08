@@ -1,4 +1,4 @@
-import request from 'supertest';
+import { request } from './helpers/inMemoryRequest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { auth, createPublishedPlan, ids, makeContext } from './helpers/studentActions';

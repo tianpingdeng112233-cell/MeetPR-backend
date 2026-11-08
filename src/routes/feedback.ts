@@ -2,7 +2,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
 
-import { hasAcceptedBond } from '../db/bonds';
+import { hasAcceptedBond, hasCoachReadAccess } from '../db/bonds';
 import type { Database } from '../db/types';
 import { fetchCoachFeedback, fetchOwnFeedback } from '../handlers/feedback-fetch';
 import { markFeedbackRead } from '../handlers/feedback-mark-read';
@@ -12,6 +12,7 @@ import {
   coachOwnsPublishedPlanExercise,
   createFeedback,
 } from '../handlers/feedback-post';
+import type { OssService } from '../services/oss';
 import { requireRole } from '../middleware/auth';
 import { isIsoCalendarDate, isoCalendarDateSchemaMessage } from '../utils/date';
 import { uuidEquals } from '../utils/uuid';
@@ -19,6 +20,7 @@ import { route, validationEnvelope } from './http';
 
 interface FeedbackRouterDeps {
   db: Kysely<Database>;
+  oss?: OssService | undefined;
 }
 
 const UuidSchema = z.string().uuid();
@@ -141,7 +143,7 @@ export function studentFeedbackRouter(deps: FeedbackRouterDeps): ExpressRouter {
       }
 
       if (uuidEquals(req.user.id, params.data.id)) {
-        const items = await fetchOwnFeedback(deps.db, req.user.id);
+        const items = await fetchOwnFeedback(deps.db, req.user.id, req.locale, deps.oss);
         res.status(200).json({ items });
         return;
       }
@@ -151,13 +153,19 @@ export function studentFeedbackRouter(deps: FeedbackRouterDeps): ExpressRouter {
       // reading it would leak more than the feedback text they wrote.
       if (
         req.user.role !== 'coach' ||
-        !(await hasAcceptedBond(deps.db, req.user.id, params.data.id))
+        !(await hasCoachReadAccess(deps.db, req.user.id, params.data.id))
       ) {
         res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
         return;
       }
 
-      const items = await fetchCoachFeedback(deps.db, req.user.id, params.data.id);
+      const items = await fetchCoachFeedback(
+        deps.db,
+        req.user.id,
+        params.data.id,
+        req.locale,
+        deps.oss,
+      );
       res.status(200).json({ items });
     }),
   );

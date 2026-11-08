@@ -156,6 +156,7 @@ async function makeContext(): Promise<TestContext> {
     );
   `);
   mem.public.none(fs.readFileSync('db/migrations/0068-plan-pending-revisions.sql', 'utf8'));
+  mem.public.none(fs.readFileSync('db/migrations/0003.6-init-bind-requests.sql', 'utf8'));
 
   const { Pool } = mem.adapters.createPg();
   const db = createDb(new Pool());
@@ -166,6 +167,11 @@ async function makeContext(): Promise<TestContext> {
       { id: OTHER_COACH, phone: '+8613800004402', password_hash: 'hash', role: 'coach' },
       { id: STUDENT, phone: '+8613800004403', password_hash: 'hash', role: 'coached_student' },
     ])
+    .execute();
+
+  await db
+    .insertInto('bind_requests')
+    .values({ coach_id: COACH, student_id: STUDENT, status: 'accepted', expired_at: new Date() })
     .execute();
 
   return {

@@ -1,0 +1,3321 @@
+{
+  "checked_at": "2026-10-22 Europe/London",
+  "selected_migration": "0077-exercise-adoption.sql",
+  "method": "Enumerated all refs/remotes (git branch -r equivalent), git ls-tree of db/migrations at each SHA; scanned all ~/Projects/apps/MeetPR-backend* paths plus every registered git worktree. GitHub REST branches pages 1–3 (100/page) returned 276 live branches; every SHA matched the scanned origin/name ref. No fetch or write to shared Git metadata.",
+  "local_remote_ref_count": 277,
+  "live_branch_count": 276,
+  "remote_live_sha_match": true,
+  "initial_scan": [
+    {
+      "remote": "origin",
+      "sha": "07a8ed3124834a1db6fec2345fc79ff4eabcd054",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/chore/0023-catalog-squat-rdl",
+      "sha": "f85a61aec5d952bea0897b010cfb7c769a387186",
+      "max": 25,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/0024-single-leg-rdl-muscle",
+      "sha": "357c4e6065e15df0fd8713ade510b4e52c978d51",
+      "max": 24,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/0025-catalog-plan-web-import",
+      "sha": "8f9e6d98f0fce60b8145be5d9b7be8345c403cb1",
+      "max": 25,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/0025-dedup-duplicate-nameEn",
+      "sha": "9b1bb9d0f6ce49db587cf34a014b4dbb00b09fa5",
+      "max": 26,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/0056-comp-bench-canonical",
+      "sha": "a4980fc4380c3db8024bd4bb8e3ac507cd366550",
+      "max": 56,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/0069-catalog-classification-audit",
+      "sha": "4b0053d4493ee9f7e58db106135c34ed3d20e70e",
+      "max": 69,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/029-fixtures-normalization",
+      "sha": "1cba757c35350e5d6a9fea5e18dc3b65ef6033ae",
+      "max": 51,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/029-fixtures-normalization-v2",
+      "sha": "1455ae4907e7ed6c8322a0135284740cbd3037db",
+      "max": 51,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/093-email-identity-preflight",
+      "sha": "7ea8596701e447f60f17f9252e332c298a29ee0d",
+      "max": 74,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/catalog-align-v2-missing",
+      "sha": "e51b4529a295c58ca48f2f33bbbda7b9aa2f7b6c",
+      "max": 28,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/exercises-catalog-align",
+      "sha": "3b0569dbb501292cd364c771ffe308093c1d1ec0",
+      "max": 6,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/format-spec-029",
+      "sha": "be79580105e0eac500d0366d01f33ba26c7da3cd",
+      "max": 49,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/global-qa-20260921",
+      "sha": "649a4d4f92c40215a3540ddad94ad7091f25e56f",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ledger-0038-applied",
+      "sha": "69dbd27c14fa2ee5c3fb436870428c13d003b1f6",
+      "max": 38,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ledger-0045",
+      "sha": "1b995c26e083792b5b05a0ac16459d31a4c092b9",
+      "max": 46,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ledger-b62de27",
+      "sha": "0c1af1b0f5c6ca242e282452899b64a43ffa8c42",
+      "max": 46,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ledger-r3a",
+      "sha": "a4be8977c445ee89b7426ae7911a6e13802e2d1d",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ledger-web-swap-0731",
+      "sha": "b34422aa6a7ef99db18e59b9bcaef757773d2883",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/no-auto-gc",
+      "sha": "7136ffbc5c042ada48b1869158a2c312a228dd77",
+      "max": 67,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/record-context-panel-deploy",
+      "sha": "a9a97cbd91bb25d439c5f774b4af373c86494c5d",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/record-web-swap-deploy",
+      "sha": "4adb12ea59104e6a559a08cb10e78e1c8efa9f62",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/seed-monsterxty-roster",
+      "sha": "4b3bb68c36db9d839a6ec2084224f62107e7f54b",
+      "max": 20,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ship-plan-web-004",
+      "sha": "186542ab5068e7ad25725493f14cd90ab3563abc",
+      "max": 37,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ship-plan-web-autosave-guard",
+      "sha": "c9a09165482676e8544082cbd68376e8890e184a",
+      "max": 42,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ship-plan-web-batch-save",
+      "sha": "a9364e27c7f93edfea3e467ce4c6286aca4a4120",
+      "max": 42,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ship-plan-web-day-drag-week-summary",
+      "sha": "31738ae645e07ce959ca122d3a079f66bd3bfa30",
+      "max": 42,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ship-plan-web-input-guard",
+      "sha": "09aa8939357ef37fd1315133918ee07210063dc9",
+      "max": 37,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ship-plan-web-jts-published-drag",
+      "sha": "e8e0d9aaccff92a4467dd36388335aa56bd79bc7",
+      "max": 42,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ship-plan-web-kg-tonnage",
+      "sha": "9487b4e821f1f997bbd5f7773f732ba8aa39c278",
+      "max": 42,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ship-plan-web-mirror-grip",
+      "sha": "0bc0d7c0a14e91d68a1e3e3cb37b3bbc4a9f89cf",
+      "max": 42,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ship-plan-web-plain-summary",
+      "sha": "5cb664ae01a691f1c12cd915c3bc204885d74705",
+      "max": 42,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/ship-web-011-hotfix",
+      "sha": "6dd53f40b21626cd56fad272635bf3e44a26c333",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/chore/ship-web-012",
+      "sha": "f87d41f7b3b69b2b5ac2eccf1fdff4b9f3b9f852",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/chore/ship-web-012-hotfix",
+      "sha": "bc1a7fb080e0c1ca3b5418fb90fdd95c4fdc848c",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/chore/ship-web-012-noautoedit",
+      "sha": "691c7949102179c10d1db29cb3456d3a69d2243c",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/chore/ship-web-012-plus",
+      "sha": "edc15b2f2cbfd8d6058868cac2de9072eacb4983",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/chore/ship-web-013",
+      "sha": "115e82528ac0b5480e33c33838e4700e65b7ebba",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/chore/ship-web-013-noquick",
+      "sha": "d2284428b23aa72375ca373f96422ff21c29a2f3",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/chore/spec-003-student-actions",
+      "sha": "afed4c0902978978cd685d6ba938562b7b2e2f32",
+      "max": 3,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/spec-004-video-upload",
+      "sha": "1c97960abe7ac36058a6dc78b6af75f1e19bd08c",
+      "max": 3,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/sync-plan-web-2026-07-09",
+      "sha": "fadc0e4b402c2782b7e777ea0bc555b33ef352e0",
+      "max": 33,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/v01-unfreeze",
+      "sha": "3450fd4a874914d6df57f855817c30861c76948b",
+      "max": 3,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/w3-global-preflight",
+      "sha": "84a4c3a5a10886dd48e5e80b35f496d4a6dc48f7",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-day-tier-sections",
+      "sha": "2d929d004176dde02abc066bdba522b203d026af",
+      "max": 42,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-034",
+      "sha": "f806c9ca77262ffcce36b7d71721e192c04b1328",
+      "max": 59,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-037",
+      "sha": "4fee5e099b608963f1a3005121c9c76f86fe6183",
+      "max": 61,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-037b",
+      "sha": "326351168e8ef61da037ca0f0c36ecb823192cf2",
+      "max": 61,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-037c",
+      "sha": "2868af07a5b8ed8cd5d54b0a44a254ffcfd400eb",
+      "max": 61,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-037d",
+      "sha": "166d8dabb643e44ad9ba0472ae3d7e14b3719545",
+      "max": 61,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-2026-07-31",
+      "sha": "93b0bb2ef7fd406bccc3138ff8da5e5fba9d14cc",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-action-rail",
+      "sha": "627226d310f1f35775d134cff7a474d798174458",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-annot-time",
+      "sha": "a374d4cd51db29f2105689a30ce4d77d75a9d8fc",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-auto-marker",
+      "sha": "68301736b653ea64fcb77d540e7999d4ca1cdc5e",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-chat-scroll-followup",
+      "sha": "6956f7fec8c501ddcae9565e83de6cf91c30046b",
+      "max": 49,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-chat-video",
+      "sha": "1ed72a736d65cbbb34bb4a1c63bb476e46ecbbe0",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-chat-w1",
+      "sha": "28d4462b60733f093b93c323322379f09c70e369",
+      "max": 49,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-coach-rpe",
+      "sha": "ab49515b4266c3354e33466f75da4663753a055c",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-context-panel",
+      "sha": "617e175bba94e96611bd4821cc1d56cda88388e9",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-day-selection",
+      "sha": "aba242ee72e0cb9d007b5104066078a0a3e691a1",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-e1rm",
+      "sha": "5aa9ee918531c619d1919d2098115d2ead1a8f8b",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-fine-discovery",
+      "sha": "f288d5f7628043d391d56e3f73f1bb0d016fe43e",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-hub-cards",
+      "sha": "279505919ceb9d1914a7f7d8000997cbe9566b29",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-hub-polish",
+      "sha": "7dd3c937f2275ed14faa791d9d387deccd06c251",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-live-annot",
+      "sha": "a523c13783b42872dd497688cb25bf5a0a884c24",
+      "max": 55,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-marker-annot",
+      "sha": "189388976828e79520f780c7173c5eefe96d91fc",
+      "max": 55,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-marker-delete",
+      "sha": "73f0d317627f6aa35dd18dd8353678539c9e783d",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-marker-single",
+      "sha": "5b3e8402fc753814239431c3eadf03ea0f2ee775",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-oss-put",
+      "sha": "fc3edd4b97f79e75990473ea12a8efbe07fcaaf2",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-pct-anchor",
+      "sha": "e5736dae87d21807d7cf91750403fa2ff50b99b8",
+      "max": 63,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-pct-label",
+      "sha": "d2e20f578f545c7d7f7e2d7407eefff43dc83c22",
+      "max": 63,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-player-fs",
+      "sha": "c90f70e37989e3109da70425c6729648b237e6b7",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-player-pro",
+      "sha": "79d30fd993542303fa609d3c5672850c1f3a589a",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-precision-scrub",
+      "sha": "6f938ccb0b9476c888ebbfa6b503e3dfa89fe457",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-r3c",
+      "sha": "17efe451dd83eaab11e42915654c970e7312a2a4",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-red-fix",
+      "sha": "012871ac97e1ca4194bf0683db4cf16a2796bf91",
+      "max": 46,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-setref-c3",
+      "sha": "31afdedba68cdbf47404d7d9cb01aef127d10aef",
+      "max": 51,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-setref-fit",
+      "sha": "165d23c49e84cac7873f063df98ca726aaea0847",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-student-hub",
+      "sha": "654fa434b8eb534c41a951107766194462124bd3",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-tracking",
+      "sha": "9e76854bd667a45961ce2d20f08984769ce37305",
+      "max": 58,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-transport-lock",
+      "sha": "4be725f3ee0c6c8f38d7aa473aca134739e4fa33",
+      "max": 55,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-update-visible",
+      "sha": "7ccb0a4682c63942749c96e53604013cd9c14716",
+      "max": 68,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-video-viewed",
+      "sha": "27ad7e411f17c7dc6e97c2012b6989568abdddf9",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/web-swap-video-viewed-fix",
+      "sha": "1bee35f0f4344127ece8182848af54421200ab44",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/webswap-009",
+      "sha": "41f9d552b3ade8b7b8a59b33ec929c132d4c62b9",
+      "max": 68,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/webswap-95",
+      "sha": "574ad5b425f95b2ed919d461cded9f6d8d7188c9",
+      "max": 68,
+      "recent": []
+    },
+    {
+      "remote": "origin/chore/webswap-96",
+      "sha": "65965720cf4ade2aaa08da48c72518ec25cc447b",
+      "max": 68,
+      "recent": []
+    },
+    {
+      "remote": "origin/claude/compassionate-murdock-66e878",
+      "sha": "bf6705ae0ddf50859c9b2d12f03c707a3f4692ec",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/codex/database-ssl-build-cleanup",
+      "sha": "e8bdbea5ee7467929a3bd8e00a2d5950e78a30f6",
+      "max": 6,
+      "recent": []
+    },
+    {
+      "remote": "origin/deploy/093-testflight-guide",
+      "sha": "294454ca1c3a38b9b1bbc70d53f5c9e0c66385bd",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/deploy/spec093-cn-download-links",
+      "sha": "1532e9832e463ea8dad72e4498971d824e11ee3c",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/deploy/web101-53",
+      "sha": "5006400b60476342f16d4cae1ded94293b4a44ca",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/deploy/web104-copy-last-week",
+      "sha": "162b3bc156b68616562b2f10db535f7064f33d80",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/deploy/web106-bodyweight-passthrough",
+      "sha": "2ab5655c827008e7865264ed383d753518c663f5",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/deploy/web107-save-failure-reasons",
+      "sha": "62c2d4c0b1cd24b633d89d30306e91f71b2afba1",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/deploy/web108-student-added-actuals",
+      "sha": "303e2a77d707ed28af69fee5aea0340e4db7cefc",
+      "max": 74,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/0075-ledger",
+      "sha": "433a3c589d2ae1d639ebddf19083a1e3935342dd",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/docs/029-d1-hero-entry",
+      "sha": "39559dd368a43fcf35e5ea8a46162bd979fc4ff9",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/045-coach-shift",
+      "sha": "049887e9abc248542e5f0200a9b4bd513d037242",
+      "max": 68,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/048-deploy-record",
+      "sha": "e9128f1b607d23d8b2b9b7a3d2323c72874b1023",
+      "max": 72,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/048-deploy-runbook",
+      "sha": "20080b6022adb33496a2de9801d363f8a301d365",
+      "max": 72,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/048-mail-live",
+      "sha": "3d081380a855db87b5b618eb194b99b42788d9b3",
+      "max": 72,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/050-web108-deploy-record",
+      "sha": "2e2fc0307cafd83009efc6bac25b76c6c812be7e",
+      "max": 74,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/audit-sync-2026-07-03",
+      "sha": "5c01b10d98ca808e474252119455916204c6c1c0",
+      "max": 24,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/backend-identity-card",
+      "sha": "db338d8d6f47ae538c6b605b5116249fb0ac1476",
+      "max": 24,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-0054",
+      "sha": "19024f03b812bff2505d03ada458aab6658dfeda",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-0056",
+      "sha": "e0e9fffa31708edac1be0742bb0de2da2e41762c",
+      "max": 56,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-0059",
+      "sha": "081a6b9653d8f91261a5d54364fc3ffb75e4ce08",
+      "max": 59,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-0062",
+      "sha": "17a6e74d2297456c2c7567b8ecebaa5da228be2d",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-0063",
+      "sha": "24c658f50dffbd4f3b4aa1336fb0299a26a71f48",
+      "max": 63,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-0065",
+      "sha": "44501772984c6031fe353097a1e88c1088e7d752",
+      "max": 67,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-0066-0067",
+      "sha": "4d60106656d1246eb465062c849b5f074fddd68a",
+      "max": 67,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-011-hotfix",
+      "sha": "5b11edc471e0d14d73ca0ac679a533a6972b1475",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/docs/ledger-012-deploy",
+      "sha": "b59a79b7e5bbc388ee28e2aadb7d44f0bbc6af2a",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/docs/ledger-012-hotfix",
+      "sha": "813bdee69832d57dd0269f6cfcc9753a5dd0a9d7",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/docs/ledger-012-noautoedit",
+      "sha": "a5ea305835484340f11c182719bf786d3a86251d",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/docs/ledger-012-plus",
+      "sha": "77fe8878fea497941edfcf083512ec2b14598458",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/docs/ledger-013",
+      "sha": "f66ed99b993863809825b95156c7e62f82bfad67",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/docs/ledger-037-header-swap",
+      "sha": "3208970d8ffac1549b89b7c7b2cd22ae494b6669",
+      "max": 61,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-038-axes-swap",
+      "sha": "d24c22520794a393f5663221508ba6db75b40b72",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-051-deploy",
+      "sha": "dd670f3d08ca838c1178f444d4ce87d35139f5c0",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/docs/ledger-217088d",
+      "sha": "d9f7f4062a617ae81722a375495a59c928b2038c",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-608656a",
+      "sha": "e8834b0de3c46a898ffc712350d9e51af293f611",
+      "max": 68,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-action-rail",
+      "sha": "1cce9a2d385888ea92a226064774e0c58d0c2b1c",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-annot-time",
+      "sha": "137df09c459a21fd63a398af081786f709fcbf3c",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-auto-marker",
+      "sha": "b7390b57a78c6ad71d2ae562342c6508bb2ed436",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-chat-video-swap",
+      "sha": "fd038a853b1916c152ea3fbe3baaa4793c586ba3",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-compression",
+      "sha": "b8544ed53dd97b8bc1bd3d86fb43df7971c5175d",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-e1rm-swap",
+      "sha": "359daf6a09aad426874f385310814564d4eb7e05",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-editor-restyle",
+      "sha": "42c9d6f5e47d2470735106adf71f4cdd72e3a644",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-hub-cards",
+      "sha": "b8b679e5fbccedf54569605877e477c6232e8f20",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-keyboard",
+      "sha": "f93c0b900266ee380591fc58ee7c5b8559b3f737",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-live-annot",
+      "sha": "63cf5f32c59db54b67916ba899a616b6217805c2",
+      "max": 55,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-marker-annot",
+      "sha": "e886abb589e4186857573e711aa23a56c0ac9c7e",
+      "max": 55,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-oss-put",
+      "sha": "7f12af9331235a0e2f526b067b15a163734aa609",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-plan-updated",
+      "sha": "44b4b50cf24e52c43331caa27432544e4ca7dea7",
+      "max": 68,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-player-fs",
+      "sha": "e8dc5cd9bba662186c1a223d42857a6bfb69e86c",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-player-pro",
+      "sha": "bc56c6ff6ac058ad96a03ad5e2d677f521d2cd48",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-polish-batch",
+      "sha": "90616804e7a90a9acac460ed690933cfed91ba41",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-precision-scrub",
+      "sha": "401a2645bd736935c969b7cd0f5fe7cb3544b276",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-setref-fit",
+      "sha": "b828b4cc6040c98c130b3a775ca82dcc4652ace2",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-student-hub",
+      "sha": "a16f2a2d2d26849d09b1c1dc15951da3b5266457",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-tracking-cn-fullrow",
+      "sha": "eb3344f9bb5eeee84c164ff0cc33e691609d5d12",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-tracking-deploys",
+      "sha": "84570841521d1c1bc0ccea13ea65220c310c2d55",
+      "max": 58,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-tracking-veil",
+      "sha": "0d6b52ef993b8bd03b226a99ccc7ccf698a65ec8",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-transport-lock",
+      "sha": "95e0722fc51ef34ad436444da6f5495f6d01321f",
+      "max": 55,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-web-marker-single",
+      "sha": "d4162374897c0b3a489f57ad4f98e94f6290f5df",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-web-swap-pct-anchor",
+      "sha": "f396aef983256c9f9569cfd15e6643b6068ea820",
+      "max": 63,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/ledger-web-swap-pct-label",
+      "sha": "8a65c0dc4bacfa51c5531e4d0d5801da2f154d5e",
+      "max": 63,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/record-0049-applied",
+      "sha": "d818f4a0632fc57cdbb860714e58387d9a6809c4",
+      "max": 49,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/record-0051-e2f32b2",
+      "sha": "9be7dd26b5674a06544b0efae82982e0c5591b70",
+      "max": 51,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/record-0052-60ba916",
+      "sha": "de9219f5b4a7fd8ac38636ef728a8b3f50825b3a",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/record-0057-applied",
+      "sha": "4c8b5dc403c55f589682bb6ea61f3255acd9ee1f",
+      "max": 57,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/record-46777db-web-deploy",
+      "sha": "0a4bf262b64063feb16f1d620d35238d19fbc67c",
+      "max": 51,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/record-4fb71c9-web-deploy",
+      "sha": "98516f32b2ea7a858d81dd70541ab4b033f160ce",
+      "max": 49,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/record-5bf9792-web-deploy",
+      "sha": "d8de6ec06e36400e2d126a4b8f97b52809ff6f5e",
+      "max": 49,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/web101-53-deployed",
+      "sha": "2ad15efd40ee62edd9a2892b9d4b20dca2f657db",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/web104-deployed",
+      "sha": "267c20f4cfc923e3cb958edf84e36b6d1a25d864",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/web104-live-confirmed",
+      "sha": "9a54cef76e41a1089500648fca31e304de998a72",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/web106-deployed",
+      "sha": "48d8ded83777e060ea2dfcd5acbefdc367728bbf",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/docs/web107-deployed",
+      "sha": "93fbdf44d77a6914255221c0edc4402e071717b7",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/004-attachment-upload",
+      "sha": "da48863ba0da5bc73db6d752f6619f03b5c4401c",
+      "max": 7,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/004-video-upload",
+      "sha": "f367e137ce7d6038702e2e7a6a45edceabc71c07",
+      "max": 7,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/005-bind-eval-profile",
+      "sha": "faabba7ba259d084ea1921897714e916447f0261",
+      "max": 13,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/006-readiness",
+      "sha": "b556b74852f636216cb7983bda2887523886fa14",
+      "max": 14,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/007-video-setlog-link",
+      "sha": "dc77ea39e5bb4cf685ffba346a2e55b2bcf5450f",
+      "max": 15,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/009-plan-days-batch",
+      "sha": "0df3f469f81b901eb20c2d7376ffd2781275e135",
+      "max": 42,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/010-adhoc-set-logging",
+      "sha": "ac664f5e2083dd17288967a99b9b7996bc25f241",
+      "max": 31,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/011-account-ledger",
+      "sha": "c55b3cf8962615a9aeec1e916d27b26924d9c835",
+      "max": 32,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/012-review-persistence",
+      "sha": "ce154f1d8e59f75a9b9878656bdd2a4e1931960d",
+      "max": 32,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/013-solo-onerm-exemption",
+      "sha": "9ee7b4410b10abd2c9559d8bcc35f9b22eb5ab68",
+      "max": 32,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/016-exercise-mutability",
+      "sha": "92e17db399dd9a2b8ff321f8300844c91d425f75",
+      "max": 37,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/029-r3a-planned-set-ref",
+      "sha": "c0858cde8212928f7c254bc9b0093f4c0a3b3a77",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/029-set-ref-card",
+      "sha": "fff81db83bb40571bc1cbba70467add585bf3191",
+      "max": 51,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/030-coach-rpe-calibration",
+      "sha": "dd18015a643694badd7117e0577150dc9acc1524",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/031-pr-actual-weight",
+      "sha": "dd92a6d2e13a6aa4e70539218a205a2cc63eb045",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/032-realtime-chat",
+      "sha": "9c52746230521571fe69a0c1727b7dc0951ddf51",
+      "max": 56,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/033-apns-event-push",
+      "sha": "53f990e690bfd96963bc00bfdcb1c06b090dc3af",
+      "max": 56,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/034-intensity-system",
+      "sha": "254b0716610a209f514b6b649e261b618f2928e9",
+      "max": 58,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/034-pct-anchor",
+      "sha": "7cbf4d1d5b4e6753d031027ed6f8bf9bbfc3c1b1",
+      "max": 63,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/034-sparse-intensity",
+      "sha": "8d609d756050ac4925b64455078ecd6fea5b4644",
+      "max": 58,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/035-manual-only-settlement",
+      "sha": "d2828c503182403477f9eee52ca1227ed7cc4a1f",
+      "max": 57,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/035-sequence-progression",
+      "sha": "77b052561e58b87cfd92bd2a5a5a299523148a4d",
+      "max": 57,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/036-tracking-aggregates",
+      "sha": "b4af52da3bfbde14bb60d6f84eaa1c9601b7aaa4",
+      "max": 57,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/037-anchor-on-create",
+      "sha": "80f74bb5d002fb553f3911c880372c9f19eac06c",
+      "max": 61,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/037-anchor-weekday",
+      "sha": "b500b7588189d5fa806d1c5dc789fb9c4973ede7",
+      "max": 60,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/037-target-column",
+      "sha": "9609220ceabd83c2c7eec60b1d52a23c9c18f06e",
+      "max": 61,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/038-video-viewed",
+      "sha": "efea3b7c53f2b0f330d0b3401c4e509df925bf9f",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/040-email-channel",
+      "sha": "78fb0e2d923fbdddf593c83076d63ecdcef57c28",
+      "max": 67,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/041-oss-accelerate",
+      "sha": "7055e18bdaa4814f1d05b5bcf5cd09419957aaea",
+      "max": 64,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/042-user-timezone",
+      "sha": "c9119ff3ffd3428c90b4f9b30f5f20ce3f82fcb2",
+      "max": 67,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/043-plan-import-backend",
+      "sha": "bdd3ebf22d73e32c4d61a489b347aece8f7f96ec",
+      "max": 29,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/043-s3-storage",
+      "sha": "5b2f65d3e4e727d367d230f85ce9200740e8d0b4",
+      "max": 67,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/044-pending-revision",
+      "sha": "0deae39fd45e61a30fd3165828835d691617607d",
+      "max": 68,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/045-coach-plan-shift",
+      "sha": "db36e1f1a6977c0bc3f6e8d84e9d919eff2ee6ad",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/046-body-weight-records",
+      "sha": "2c0050a7059fd914c2905dabf50b7b48ba72d09f",
+      "max": 71,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/047-user-avatar",
+      "sha": "b48cd3bb69daecd176a0f6e89502bcba9e3af1be",
+      "max": 71,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/048-email-signup-verification",
+      "sha": "69d967fad3be52dc3f64881054f11ebb422b57cb",
+      "max": 72,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/049-coach-pages-backend",
+      "sha": "bd04d1085f46b862361db8b2c986c725b977f607",
+      "max": 73,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/050-student-added-logs",
+      "sha": "01ab17aa2a448a732fdbde7b4dfebed7a4453259",
+      "max": 74,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/051-exercise-stats-filtered-history",
+      "sha": "39036e35409dc5470fa856a314490a072850e497",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/feat/052-plan-import-ai",
+      "sha": "492b256604c4a957878a44c8d1fe12216fbefa19",
+      "max": 76,
+      "recent": [
+        "db/migrations/0075-coach-applications.sql",
+        "db/migrations/0076-plan-import-runs.sql"
+      ]
+    },
+    {
+      "remote": "origin/feat/053-exercise-adoption",
+      "sha": "5619b93652dd7077d579e4ce1536ae3cb1d325ba",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/feat/064-global-identity",
+      "sha": "955154dffe22fb89fedda7b3d60ad55da9cf2ce5",
+      "max": 64,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/093-coach-onboarding",
+      "sha": "660f5242b959fcb6326c0142cc48682c73626e4f",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/feat/admin-readonly-api",
+      "sha": "e10837841427fba4eeb3313d26a27aaeb7db778d",
+      "max": 44,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/analytics-events",
+      "sha": "fa27a82603d5d36551207d4c57f0119640ee3b2c",
+      "max": 40,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/coach-student-rename",
+      "sha": "7330350c4efe692c45c5883556d83a8f6360f441",
+      "max": 33,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/data-guard-hardening",
+      "sha": "568556adbc9b41f71f503f9730cdb1c44dea201f",
+      "max": 49,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/e1rm-series-volume-api",
+      "sha": "d485bccebbad107169c1e402d78624ef59436d7f",
+      "max": 46,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/events-android-platform",
+      "sha": "63ed4a6a43291edec090ae4f06d4c9949ee0296b",
+      "max": 44,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/exercise-crud",
+      "sha": "9ff27b48423f0fd59de7f9c3e1beb44a2f45c9d2",
+      "max": 67,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/exercise-usage-stats",
+      "sha": "a8a14a5b0fc076669ca27afd546785a92a66bff2",
+      "max": 44,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/feedback-video-rpe",
+      "sha": "a5c9e9488d9ce7150db9b93c8126bb07c2e3ae16",
+      "max": 67,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/imported-history-support",
+      "sha": "cd4dcac7bfd3ce046e29dadaf0557a88c002958a",
+      "max": 34,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/marker-annotations",
+      "sha": "184d87b2db740996f32ee4b1db09f28dbdd728b5",
+      "max": 55,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/multi-device-sessions",
+      "sha": "da495422da4aef6381d22a7b8e7f7e2e6217cd4e",
+      "max": 42,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/overview-e1rm",
+      "sha": "010bfa958b5c4754b8fae917f4f184bf6e5e4db0",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/plan-updated-push",
+      "sha": "2ca67a2b9c76c515113784eecbf49c984cb620f6",
+      "max": 68,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/response-compression",
+      "sha": "5c83219059163ff18538d681fd7bc60adf5a9dc8",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/sae-deploy-workflow",
+      "sha": "1ba320c2fbf18d60dd1a5e47d79c745599890cb9",
+      "max": 40,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/shift-day-backend",
+      "sha": "617c6e468c5bf95700dc6723da2572c7d9694d73",
+      "max": 30,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/shift-day-restage",
+      "sha": "0fbb79f5a90adb17c6d1c435b828858edc3897fc",
+      "max": 37,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/shift-target-date",
+      "sha": "ce87680119977dbdd363a44698f7e00156cd39d2",
+      "max": 49,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/student-streak-endpoint",
+      "sha": "0fd39735ced1d3ac001ac68e317d681b710ea91b",
+      "max": 49,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/video-markers",
+      "sha": "e94b149a1dd9bab2db740ed19b663b88b05f8fc3",
+      "max": 54,
+      "recent": []
+    },
+    {
+      "remote": "origin/feat/wellness-scales-0047",
+      "sha": "d42da4b76c5fac93763a361892435ec68da169ba",
+      "max": 47,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/0048-chat-user-delete-cascade",
+      "sha": "f11fe50104d09691c587476c776d553345521aa9",
+      "max": 48,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/0059-backfill-sequence-completions",
+      "sha": "d4e95efca7aa19ff0c4f49815207c4306c7bbd0f",
+      "max": 59,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/093-coach-welcome-clarity",
+      "sha": "aba613c943134690412b7e12b9549246c781b126",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/fix/acr-provenance",
+      "sha": "b0c3e19fc6f105c47d17fda0a06d64d5acb04254",
+      "max": 63,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/apns-key-escaped-newlines",
+      "sha": "8c64070a6bb6a9f239d46957029c416588e6c12d",
+      "max": 56,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/catalog-sumo-main",
+      "sha": "5ce30a30b2eb3866538a0487ded0afdb7f54e8b9",
+      "max": 16,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/coach-students-evaluation-status",
+      "sha": "ad916251ff9de9b7dc3926d8aeaddd57a106ec31",
+      "max": 14,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/deploy-tag-check",
+      "sha": "ab06086f1bc3780568a8ea0541f864d62922bfca",
+      "max": 67,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/invite-landing-title",
+      "sha": "04c964328a2c9e8ce90ae33eaa792858c42cc09a",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/fix/ledger-prettier",
+      "sha": "8e0fcc15797721fd876ac3b95999204bfdbbf11d",
+      "max": 51,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/push-consumer-delivery-log",
+      "sha": "225f0737d9a4ae30134470b22f87964240bef58f",
+      "max": 56,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/readiness-post-full-body",
+      "sha": "3385d9dc92eeac1778a9290a5d756224f882c20b",
+      "max": 37,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/uploads-complete-atomic-claim-leak",
+      "sha": "b1b4edb28519ad252949cf1bc0d69ee9bc0ea8c9",
+      "max": 28,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/url-exchange-wall-predicate",
+      "sha": "d5a2fa28effc110f9a13cbb1ef9381f7848a4dba",
+      "max": 15,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/uuid-case-insensitive-authz",
+      "sha": "cab288935d4996aa0e0c88f648aaf9e7391b92a6",
+      "max": 16,
+      "recent": []
+    },
+    {
+      "remote": "origin/fix/w3-preview-kind",
+      "sha": "1b9c6f5b0fc79d9a148995d2e2b2e86ae7e9711c",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/011-anonymized-delete",
+      "sha": "5a481a20b394398e69a5962565a3867cdd14c427",
+      "max": 50,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/014-algo-foundation-schema",
+      "sha": "3b9f1a62d8559707b4c814c0881770cdfc4f9de6",
+      "max": 33,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/016-published-plan-exercise-mutability",
+      "sha": "9d65af01d01ea9651354be35db98174ad1009194",
+      "max": 37,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/018-student-activity-ledger",
+      "sha": "c1478bdc52dea8e5426254dc2119eeea07f44889",
+      "max": 41,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/019-push-pipeline",
+      "sha": "46d5c688e9cb5640e4b13483036eebc768d1f93c",
+      "max": 42,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/020-session-start-weight-failed",
+      "sha": "5002ded67e1c64a09eeddcc70edd3fe5f2a26bab",
+      "max": 43,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/021-cockpit-read-extras",
+      "sha": "52b846075b05f11e421f9e8f45b23352385498ac",
+      "max": 43,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/024-coach-student-chat",
+      "sha": "a78de518704522f7a74ae6204f70c7dda903f6b1",
+      "max": 46,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/025-video-feedback",
+      "sha": "4dbaa4a23ba85a3fae2a84124e991e456a1b1d5d",
+      "max": 46,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/026-catch-up-shift",
+      "sha": "96c73868355f0c54affe010230f1ec91ef1c70ba",
+      "max": 49,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/028-workout-settle",
+      "sha": "b980750b795ce4a78048209d71442e9da2987b0d",
+      "max": 49,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/029-set-ref-chat-card",
+      "sha": "1de21e6c17064d9c46311f2b22bff6adf41c85f2",
+      "max": 49,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/031-voice-messages",
+      "sha": "1035067343e94de39a107500c53583152799cdda",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/034-dual-intensity-anchor",
+      "sha": "80273b9f08d96f02afe236bf054bc3a111858581",
+      "max": 56,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/034-pct-anchor",
+      "sha": "6f76f60f89da67bb57caddf68fcfe303d308c49b",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/035-sequence-progression",
+      "sha": "bd8199f609b0fa81f292906e594d5cbd57bea812",
+      "max": 56,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/037-week-band-editor",
+      "sha": "a9a1284dfb382166b68b1447d1eb2cfbf0f272ab",
+      "max": 59,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/039-intl-auth",
+      "sha": "39e191a6384096bdd45040e549e8fdb61658d26f",
+      "max": 63,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/040-email-channel",
+      "sha": "5c615bf6e75ea245903fac55e4d731058479ca7c",
+      "max": 64,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/042-user-timezone",
+      "sha": "9b6ab11ceb8189791009b0368db345f3b0d06721",
+      "max": 64,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/048-email-signup-verification",
+      "sha": "2ec6f6524f247b12c152a744b7b0bda9e69c958c",
+      "max": 70,
+      "recent": []
+    },
+    {
+      "remote": "origin/spec/049-coach-pages",
+      "sha": "dc531c7959b60463a6f73c0b2cd057c6c2dcc35f",
+      "max": 72,
+      "recent": []
+    },
+    {
+      "remote": "origin/staging",
+      "sha": "07a8ed3124834a1db6fec2345fc79ff4eabcd054",
+      "max": 75,
+      "recent": ["db/migrations/0075-coach-applications.sql"]
+    },
+    {
+      "remote": "origin/test/004-consent-negative-coverage",
+      "sha": "31c6ae5b07352b5628edb0a1a5f20f60a8f16f0c",
+      "max": 7,
+      "recent": []
+    },
+    {
+      "remote": "origin/web/039-draft-save-unfreeze",
+      "sha": "5a8b5a6bffacd73c1c66ba5c38ef54fe51e66671",
+      "max": 68,
+      "recent": []
+    },
+    {
+      "remote": "origin/webswap-037-header-context",
+      "sha": "5fcb4689db207db40553803d1e400752f25f7ffa",
+      "max": 61,
+      "recent": []
+    },
+    {
+      "remote": "origin/webswap-038-axes-actuals",
+      "sha": "502c107db478eb0d1ef286e2b970d85a5578b787",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/webswap-editor-restyle",
+      "sha": "09a5f52152afba1fd02fd038e855f54da55103bf",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/webswap-ink-wave",
+      "sha": "7f140f6a2e88c4ac5f5edbef29b5e36e94994748",
+      "max": 51,
+      "recent": []
+    },
+    {
+      "remote": "origin/webswap-keyboard",
+      "sha": "cf9e233e49558a0d440544cc84eb0545c67b1e7a",
+      "max": 52,
+      "recent": []
+    },
+    {
+      "remote": "origin/webswap-tracking-cn-fullrow",
+      "sha": "157c5757c38d21babee7a68d6bcc007f510b3a1a",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/webswap-tracking-veil",
+      "sha": "3099c86816e24aa5d32593a1a79f61c0a5c30406",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/webswap-tracking-veil-fix",
+      "sha": "1a24c9fe85fbcab5081359e6cc433f4b2fdec401",
+      "max": 62,
+      "recent": []
+    },
+    {
+      "remote": "origin/wip/codex-hardening-2026-07-09",
+      "sha": "2f4f57d10aa28614510112b0e31218ec36f65bd2",
+      "max": 23,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend",
+      "exists": true,
+      "max": 56,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend/.claude/worktrees/competent-benz-90d93f",
+      "exists": true,
+      "max": 40,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend/.claude/worktrees/inspiring-gauss-aaca8e",
+      "exists": true,
+      "max": 62,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend/.claude/worktrees/intelligent-montalcini-7582b9",
+      "exists": true,
+      "max": 40,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend/.claude/worktrees/mystifying-gauss-06205c",
+      "exists": true,
+      "max": 62,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-0023",
+      "exists": true,
+      "max": 24,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-algo-w0",
+      "exists": true,
+      "max": 33,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-analytics",
+      "exists": true,
+      "max": 40,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-catalog",
+      "exists": true,
+      "max": 20,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-chat",
+      "exists": true,
+      "max": 46,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-dedup",
+      "exists": true,
+      "max": 26,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-docs",
+      "exists": true,
+      "max": 24,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-flaky",
+      "exists": true,
+      "max": 28,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-land043",
+      "exists": true,
+      "max": 29,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-perf",
+      "exists": true,
+      "max": 52,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-restage",
+      "exists": true,
+      "max": 37,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-selftrain",
+      "exists": true,
+      "max": 32,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-shift-day",
+      "exists": true,
+      "max": 30,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-web-autosave",
+      "exists": true,
+      "max": 42,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-web-input-guard",
+      "exists": true,
+      "max": 37,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-webswap",
+      "exists": true,
+      "max": 68,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-0056",
+      "exists": true,
+      "max": 56,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-0059",
+      "exists": true,
+      "max": 59,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-0069-catalog",
+      "exists": true,
+      "max": 69,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-016",
+      "exists": true,
+      "max": 37,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-019",
+      "exists": true,
+      "max": 43,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-026-spec",
+      "exists": true,
+      "max": 49,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-027-spec",
+      "exists": true,
+      "max": 49,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-030",
+      "exists": true,
+      "max": 52,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-031",
+      "exists": true,
+      "max": 52,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-032",
+      "exists": true,
+      "max": 56,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-033",
+      "exists": true,
+      "max": 56,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-034-dual-anchor",
+      "exists": true,
+      "max": 62,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-034-impl",
+      "exists": true,
+      "max": 61,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-034-pct-anchor",
+      "exists": true,
+      "max": 63,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-035",
+      "exists": true,
+      "max": 57,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-035-spec",
+      "exists": true,
+      "max": 56,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-036",
+      "exists": true,
+      "max": 58,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-038",
+      "exists": true,
+      "max": 62,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-040-impl",
+      "exists": true,
+      "max": 67,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-042-impl",
+      "exists": true,
+      "max": 67,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-042-spec",
+      "exists": true,
+      "max": 64,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-043-s3",
+      "exists": true,
+      "max": 67,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-045",
+      "exists": true,
+      "max": 70,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-045-shift",
+      "exists": true,
+      "max": 68,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-046",
+      "exists": true,
+      "max": 71,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-047",
+      "exists": true,
+      "max": 71,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-048",
+      "exists": true,
+      "max": 72,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-049",
+      "exists": true,
+      "max": 72,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-049a",
+      "exists": true,
+      "max": 73,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-050",
+      "exists": true,
+      "max": 74,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-051",
+      "exists": true,
+      "max": 75,
+      "recent": ["0075-coach-applications.sql"]
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-052",
+      "exists": true,
+      "max": 76,
+      "recent": ["0075-coach-applications.sql", "0076-plan-import-runs.sql"]
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-052-zh-hant",
+      "exists": true,
+      "max": 76,
+      "recent": ["0075-coach-applications.sql", "0076-users-preferred-locale.sql"]
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-053-adopt",
+      "exists": true,
+      "max": 75,
+      "recent": ["0075-coach-applications.sql"]
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-093-b",
+      "exists": true,
+      "max": 75,
+      "recent": ["0075-coach-applications.sql"]
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-093-b0",
+      "exists": true,
+      "max": 74,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-admin",
+      "exists": true,
+      "max": 44,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-anon",
+      "exists": true,
+      "max": 50,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-apnskey",
+      "exists": true,
+      "max": 56,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-auth",
+      "exists": true,
+      "max": 64,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-dataguard",
+      "exists": true,
+      "max": 49,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-e1rm",
+      "exists": true,
+      "max": 46,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-exercise-crud",
+      "exists": true,
+      "max": 67,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-global-qa-20260921",
+      "exists": true,
+      "max": 70,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-google-aud",
+      "exists": true,
+      "max": 68,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-invite-title",
+      "exists": true,
+      "max": 75,
+      "recent": ["0075-coach-applications.sql"]
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-ledger-0062",
+      "exists": true,
+      "max": 62,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-ledger-0075",
+      "exists": true,
+      "max": 75,
+      "recent": ["0075-coach-applications.sql"]
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-markers",
+      "exists": true,
+      "max": 55,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-oss-accel",
+      "exists": true,
+      "max": 64,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-plan-updated-push",
+      "exists": true,
+      "max": 68,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-pushlog",
+      "exists": true,
+      "max": 56,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-sessions",
+      "exists": true,
+      "max": 42,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-shift-date",
+      "exists": true,
+      "max": 49,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-ship-013",
+      "exists": true,
+      "max": 75,
+      "recent": ["0075-coach-applications.sql"]
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-ship101-53",
+      "exists": true,
+      "max": 70,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-streak",
+      "exists": true,
+      "max": 49,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-usage",
+      "exists": true,
+      "max": 44,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-voice",
+      "exists": true,
+      "max": 52,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-w3-preflight",
+      "exists": true,
+      "max": 70,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-w3-preview",
+      "exists": true,
+      "max": 70,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-web-delivery",
+      "exists": true,
+      "max": 68,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-web104",
+      "exists": true,
+      "max": 70,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-web106",
+      "exists": true,
+      "max": 70,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-webswap-fix",
+      "exists": true,
+      "max": 62,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-webswap-veil",
+      "exists": true,
+      "max": 62,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-webswap-viewed",
+      "exists": true,
+      "max": 62,
+      "recent": []
+    },
+    {
+      "local": "/Users/david/Projects/apps/MeetPR-backend-wt-wellness",
+      "exists": true,
+      "max": 47,
+      "recent": []
+    },
+    {
+      "local": "/private/tmp/claude-501/-Users-david-Projects/54eb64dd-c3b7-41b0-9f85-de81375b1d7c/scratchpad/backend-staging-audit",
+      "exists": false,
+      "max": 0,
+      "recent": []
+    }
+  ],
+  "live_branches": [
+    {
+      "name": "chore/catalog-align-v2-missing",
+      "sha": "e51b4529a295c58ca48f2f33bbbda7b9aa2f7b6c"
+    },
+    {
+      "name": "chore/exercises-catalog-align",
+      "sha": "3b0569dbb501292cd364c771ffe308093c1d1ec0"
+    },
+    {
+      "name": "chore/format-spec-029",
+      "sha": "be79580105e0eac500d0366d01f33ba26c7da3cd"
+    },
+    {
+      "name": "chore/global-qa-20260921",
+      "sha": "649a4d4f92c40215a3540ddad94ad7091f25e56f"
+    },
+    {
+      "name": "chore/ledger-0038-applied",
+      "sha": "69dbd27c14fa2ee5c3fb436870428c13d003b1f6"
+    },
+    {
+      "name": "chore/ledger-0045",
+      "sha": "1b995c26e083792b5b05a0ac16459d31a4c092b9"
+    },
+    {
+      "name": "chore/ledger-b62de27",
+      "sha": "0c1af1b0f5c6ca242e282452899b64a43ffa8c42"
+    },
+    {
+      "name": "chore/ledger-r3a",
+      "sha": "a4be8977c445ee89b7426ae7911a6e13802e2d1d"
+    },
+    {
+      "name": "chore/ledger-web-swap-0731",
+      "sha": "b34422aa6a7ef99db18e59b9bcaef757773d2883"
+    },
+    {
+      "name": "chore/no-auto-gc",
+      "sha": "7136ffbc5c042ada48b1869158a2c312a228dd77"
+    },
+    {
+      "name": "chore/record-context-panel-deploy",
+      "sha": "a9a97cbd91bb25d439c5f774b4af373c86494c5d"
+    },
+    {
+      "name": "chore/record-web-swap-deploy",
+      "sha": "4adb12ea59104e6a559a08cb10e78e1c8efa9f62"
+    },
+    {
+      "name": "chore/seed-monsterxty-roster",
+      "sha": "4b3bb68c36db9d839a6ec2084224f62107e7f54b"
+    },
+    {
+      "name": "chore/ship-plan-web-004",
+      "sha": "186542ab5068e7ad25725493f14cd90ab3563abc"
+    },
+    {
+      "name": "chore/ship-plan-web-autosave-guard",
+      "sha": "c9a09165482676e8544082cbd68376e8890e184a"
+    },
+    {
+      "name": "chore/ship-plan-web-batch-save",
+      "sha": "a9364e27c7f93edfea3e467ce4c6286aca4a4120"
+    },
+    {
+      "name": "chore/ship-plan-web-day-drag-week-summary",
+      "sha": "31738ae645e07ce959ca122d3a079f66bd3bfa30"
+    },
+    {
+      "name": "chore/ship-plan-web-input-guard",
+      "sha": "09aa8939357ef37fd1315133918ee07210063dc9"
+    },
+    {
+      "name": "chore/ship-plan-web-jts-published-drag",
+      "sha": "e8e0d9aaccff92a4467dd36388335aa56bd79bc7"
+    },
+    {
+      "name": "chore/ship-plan-web-kg-tonnage",
+      "sha": "9487b4e821f1f997bbd5f7773f732ba8aa39c278"
+    },
+    {
+      "name": "chore/ship-plan-web-mirror-grip",
+      "sha": "0bc0d7c0a14e91d68a1e3e3cb37b3bbc4a9f89cf"
+    },
+    {
+      "name": "chore/ship-plan-web-plain-summary",
+      "sha": "5cb664ae01a691f1c12cd915c3bc204885d74705"
+    },
+    {
+      "name": "chore/ship-web-011-hotfix",
+      "sha": "6dd53f40b21626cd56fad272635bf3e44a26c333"
+    },
+    {
+      "name": "chore/ship-web-012-hotfix",
+      "sha": "bc1a7fb080e0c1ca3b5418fb90fdd95c4fdc848c"
+    },
+    {
+      "name": "chore/ship-web-012-noautoedit",
+      "sha": "691c7949102179c10d1db29cb3456d3a69d2243c"
+    },
+    {
+      "name": "chore/ship-web-012-plus",
+      "sha": "edc15b2f2cbfd8d6058868cac2de9072eacb4983"
+    },
+    {
+      "name": "chore/ship-web-012",
+      "sha": "f87d41f7b3b69b2b5ac2eccf1fdff4b9f3b9f852"
+    },
+    {
+      "name": "chore/ship-web-013-noquick",
+      "sha": "d2284428b23aa72375ca373f96422ff21c29a2f3"
+    },
+    {
+      "name": "chore/ship-web-013",
+      "sha": "115e82528ac0b5480e33c33838e4700e65b7ebba"
+    },
+    {
+      "name": "chore/spec-003-student-actions",
+      "sha": "afed4c0902978978cd685d6ba938562b7b2e2f32"
+    },
+    {
+      "name": "chore/spec-004-video-upload",
+      "sha": "1c97960abe7ac36058a6dc78b6af75f1e19bd08c"
+    },
+    {
+      "name": "chore/sync-plan-web-2026-07-09",
+      "sha": "fadc0e4b402c2782b7e777ea0bc555b33ef352e0"
+    },
+    {
+      "name": "chore/v01-unfreeze",
+      "sha": "3450fd4a874914d6df57f855817c30861c76948b"
+    },
+    {
+      "name": "chore/w3-global-preflight",
+      "sha": "84a4c3a5a10886dd48e5e80b35f496d4a6dc48f7"
+    },
+    {
+      "name": "chore/web-day-tier-sections",
+      "sha": "2d929d004176dde02abc066bdba522b203d026af"
+    },
+    {
+      "name": "chore/web-swap-034",
+      "sha": "f806c9ca77262ffcce36b7d71721e192c04b1328"
+    },
+    {
+      "name": "chore/web-swap-037b",
+      "sha": "326351168e8ef61da037ca0f0c36ecb823192cf2"
+    },
+    {
+      "name": "chore/web-swap-037c",
+      "sha": "2868af07a5b8ed8cd5d54b0a44a254ffcfd400eb"
+    },
+    {
+      "name": "chore/web-swap-037d",
+      "sha": "166d8dabb643e44ad9ba0472ae3d7e14b3719545"
+    },
+    {
+      "name": "chore/web-swap-037",
+      "sha": "4fee5e099b608963f1a3005121c9c76f86fe6183"
+    },
+    {
+      "name": "chore/web-swap-2026-07-31",
+      "sha": "93b0bb2ef7fd406bccc3138ff8da5e5fba9d14cc"
+    },
+    {
+      "name": "chore/web-swap-action-rail",
+      "sha": "627226d310f1f35775d134cff7a474d798174458"
+    },
+    {
+      "name": "chore/web-swap-annot-time",
+      "sha": "a374d4cd51db29f2105689a30ce4d77d75a9d8fc"
+    },
+    {
+      "name": "chore/web-swap-auto-marker",
+      "sha": "68301736b653ea64fcb77d540e7999d4ca1cdc5e"
+    },
+    {
+      "name": "chore/web-swap-chat-scroll-followup",
+      "sha": "6956f7fec8c501ddcae9565e83de6cf91c30046b"
+    },
+    {
+      "name": "chore/web-swap-chat-video",
+      "sha": "1ed72a736d65cbbb34bb4a1c63bb476e46ecbbe0"
+    },
+    {
+      "name": "chore/web-swap-chat-w1",
+      "sha": "28d4462b60733f093b93c323322379f09c70e369"
+    },
+    {
+      "name": "chore/web-swap-coach-rpe",
+      "sha": "ab49515b4266c3354e33466f75da4663753a055c"
+    },
+    {
+      "name": "chore/web-swap-context-panel",
+      "sha": "617e175bba94e96611bd4821cc1d56cda88388e9"
+    },
+    {
+      "name": "chore/web-swap-day-selection",
+      "sha": "aba242ee72e0cb9d007b5104066078a0a3e691a1"
+    },
+    {
+      "name": "chore/web-swap-e1rm",
+      "sha": "5aa9ee918531c619d1919d2098115d2ead1a8f8b"
+    },
+    {
+      "name": "chore/web-swap-fine-discovery",
+      "sha": "f288d5f7628043d391d56e3f73f1bb0d016fe43e"
+    },
+    {
+      "name": "chore/web-swap-hub-cards",
+      "sha": "279505919ceb9d1914a7f7d8000997cbe9566b29"
+    },
+    {
+      "name": "chore/web-swap-hub-polish",
+      "sha": "7dd3c937f2275ed14faa791d9d387deccd06c251"
+    },
+    {
+      "name": "chore/web-swap-live-annot",
+      "sha": "a523c13783b42872dd497688cb25bf5a0a884c24"
+    },
+    {
+      "name": "chore/web-swap-marker-annot",
+      "sha": "189388976828e79520f780c7173c5eefe96d91fc"
+    },
+    {
+      "name": "chore/web-swap-marker-delete",
+      "sha": "73f0d317627f6aa35dd18dd8353678539c9e783d"
+    },
+    {
+      "name": "chore/web-swap-marker-single",
+      "sha": "5b3e8402fc753814239431c3eadf03ea0f2ee775"
+    },
+    {
+      "name": "chore/web-swap-oss-put",
+      "sha": "fc3edd4b97f79e75990473ea12a8efbe07fcaaf2"
+    },
+    {
+      "name": "chore/web-swap-pct-anchor",
+      "sha": "e5736dae87d21807d7cf91750403fa2ff50b99b8"
+    },
+    {
+      "name": "chore/web-swap-pct-label",
+      "sha": "d2e20f578f545c7d7f7e2d7407eefff43dc83c22"
+    },
+    {
+      "name": "chore/web-swap-player-fs",
+      "sha": "c90f70e37989e3109da70425c6729648b237e6b7"
+    },
+    {
+      "name": "chore/web-swap-player-pro",
+      "sha": "79d30fd993542303fa609d3c5672850c1f3a589a"
+    },
+    {
+      "name": "chore/web-swap-precision-scrub",
+      "sha": "6f938ccb0b9476c888ebbfa6b503e3dfa89fe457"
+    },
+    {
+      "name": "chore/web-swap-r3c",
+      "sha": "17efe451dd83eaab11e42915654c970e7312a2a4"
+    },
+    {
+      "name": "chore/web-swap-red-fix",
+      "sha": "012871ac97e1ca4194bf0683db4cf16a2796bf91"
+    },
+    {
+      "name": "chore/web-swap-setref-c3",
+      "sha": "31afdedba68cdbf47404d7d9cb01aef127d10aef"
+    },
+    {
+      "name": "chore/web-swap-setref-fit",
+      "sha": "165d23c49e84cac7873f063df98ca726aaea0847"
+    },
+    {
+      "name": "chore/web-swap-student-hub",
+      "sha": "654fa434b8eb534c41a951107766194462124bd3"
+    },
+    {
+      "name": "chore/web-swap-tracking",
+      "sha": "9e76854bd667a45961ce2d20f08984769ce37305"
+    },
+    {
+      "name": "chore/web-swap-transport-lock",
+      "sha": "4be725f3ee0c6c8f38d7aa473aca134739e4fa33"
+    },
+    {
+      "name": "chore/web-swap-update-visible",
+      "sha": "7ccb0a4682c63942749c96e53604013cd9c14716"
+    },
+    {
+      "name": "chore/web-swap-video-viewed",
+      "sha": "27ad7e411f17c7dc6e97c2012b6989568abdddf9"
+    },
+    {
+      "name": "chore/web-swap-video-viewed-fix",
+      "sha": "1bee35f0f4344127ece8182848af54421200ab44"
+    },
+    {
+      "name": "chore/webswap-009",
+      "sha": "41f9d552b3ade8b7b8a59b33ec929c132d4c62b9"
+    },
+    {
+      "name": "chore/webswap-95",
+      "sha": "574ad5b425f95b2ed919d461cded9f6d8d7188c9"
+    },
+    {
+      "name": "chore/webswap-96",
+      "sha": "65965720cf4ade2aaa08da48c72518ec25cc447b"
+    },
+    {
+      "name": "chore/0023-catalog-squat-rdl",
+      "sha": "f85a61aec5d952bea0897b010cfb7c769a387186"
+    },
+    {
+      "name": "chore/0024-single-leg-rdl-muscle",
+      "sha": "357c4e6065e15df0fd8713ade510b4e52c978d51"
+    },
+    {
+      "name": "chore/0025-catalog-plan-web-import",
+      "sha": "8f9e6d98f0fce60b8145be5d9b7be8345c403cb1"
+    },
+    {
+      "name": "chore/0025-dedup-duplicate-nameEn",
+      "sha": "9b1bb9d0f6ce49db587cf34a014b4dbb00b09fa5"
+    },
+    {
+      "name": "chore/029-fixtures-normalization",
+      "sha": "1cba757c35350e5d6a9fea5e18dc3b65ef6033ae"
+    },
+    {
+      "name": "chore/029-fixtures-normalization-v2",
+      "sha": "1455ae4907e7ed6c8322a0135284740cbd3037db"
+    },
+    {
+      "name": "chore/0056-comp-bench-canonical",
+      "sha": "a4980fc4380c3db8024bd4bb8e3ac507cd366550"
+    },
+    {
+      "name": "chore/0069-catalog-classification-audit",
+      "sha": "4b0053d4493ee9f7e58db106135c34ed3d20e70e"
+    },
+    {
+      "name": "chore/093-email-identity-preflight",
+      "sha": "7ea8596701e447f60f17f9252e332c298a29ee0d"
+    },
+    {
+      "name": "claude/compassionate-murdock-66e878",
+      "sha": "bf6705ae0ddf50859c9b2d12f03c707a3f4692ec"
+    },
+    {
+      "name": "codex/database-ssl-build-cleanup",
+      "sha": "e8bdbea5ee7467929a3bd8e00a2d5950e78a30f6"
+    },
+    {
+      "name": "deploy/spec093-cn-download-links",
+      "sha": "1532e9832e463ea8dad72e4498971d824e11ee3c"
+    },
+    {
+      "name": "deploy/web101-53",
+      "sha": "5006400b60476342f16d4cae1ded94293b4a44ca"
+    },
+    {
+      "name": "deploy/web104-copy-last-week",
+      "sha": "162b3bc156b68616562b2f10db535f7064f33d80"
+    },
+    {
+      "name": "deploy/web106-bodyweight-passthrough",
+      "sha": "2ab5655c827008e7865264ed383d753518c663f5"
+    },
+    {
+      "name": "deploy/web107-save-failure-reasons",
+      "sha": "62c2d4c0b1cd24b633d89d30306e91f71b2afba1"
+    },
+    {
+      "name": "deploy/web108-student-added-actuals",
+      "sha": "303e2a77d707ed28af69fee5aea0340e4db7cefc"
+    },
+    {
+      "name": "deploy/093-testflight-guide",
+      "sha": "294454ca1c3a38b9b1bbc70d53f5c9e0c66385bd"
+    },
+    {
+      "name": "docs/audit-sync-2026-07-03",
+      "sha": "5c01b10d98ca808e474252119455916204c6c1c0"
+    },
+    {
+      "name": "docs/backend-identity-card",
+      "sha": "db338d8d6f47ae538c6b605b5116249fb0ac1476"
+    },
+    {
+      "name": "docs/ledger-011-hotfix",
+      "sha": "5b11edc471e0d14d73ca0ac679a533a6972b1475"
+    },
+    {
+      "name": "docs/ledger-012-deploy",
+      "sha": "b59a79b7e5bbc388ee28e2aadb7d44f0bbc6af2a"
+    },
+    {
+      "name": "docs/ledger-012-hotfix",
+      "sha": "813bdee69832d57dd0269f6cfcc9753a5dd0a9d7"
+    },
+    {
+      "name": "docs/ledger-012-noautoedit",
+      "sha": "a5ea305835484340f11c182719bf786d3a86251d"
+    },
+    {
+      "name": "docs/ledger-012-plus",
+      "sha": "77fe8878fea497941edfcf083512ec2b14598458"
+    },
+    {
+      "name": "docs/ledger-013",
+      "sha": "f66ed99b993863809825b95156c7e62f82bfad67"
+    },
+    {
+      "name": "docs/ledger-037-header-swap",
+      "sha": "3208970d8ffac1549b89b7c7b2cd22ae494b6669"
+    },
+    {
+      "name": "docs/ledger-038-axes-swap",
+      "sha": "d24c22520794a393f5663221508ba6db75b40b72"
+    },
+    {
+      "name": "docs/ledger-051-deploy",
+      "sha": "dd670f3d08ca838c1178f444d4ce87d35139f5c0"
+    },
+    {
+      "name": "docs/ledger-0054",
+      "sha": "19024f03b812bff2505d03ada458aab6658dfeda"
+    },
+    {
+      "name": "docs/ledger-0056",
+      "sha": "e0e9fffa31708edac1be0742bb0de2da2e41762c"
+    },
+    {
+      "name": "docs/ledger-0059",
+      "sha": "081a6b9653d8f91261a5d54364fc3ffb75e4ce08"
+    },
+    {
+      "name": "docs/ledger-0062",
+      "sha": "17a6e74d2297456c2c7567b8ecebaa5da228be2d"
+    },
+    {
+      "name": "docs/ledger-0063",
+      "sha": "24c658f50dffbd4f3b4aa1336fb0299a26a71f48"
+    },
+    {
+      "name": "docs/ledger-0065",
+      "sha": "44501772984c6031fe353097a1e88c1088e7d752"
+    },
+    {
+      "name": "docs/ledger-0066-0067",
+      "sha": "4d60106656d1246eb465062c849b5f074fddd68a"
+    },
+    {
+      "name": "docs/ledger-217088d",
+      "sha": "d9f7f4062a617ae81722a375495a59c928b2038c"
+    },
+    {
+      "name": "docs/ledger-608656a",
+      "sha": "e8834b0de3c46a898ffc712350d9e51af293f611"
+    },
+    {
+      "name": "docs/ledger-action-rail",
+      "sha": "1cce9a2d385888ea92a226064774e0c58d0c2b1c"
+    },
+    {
+      "name": "docs/ledger-annot-time",
+      "sha": "137df09c459a21fd63a398af081786f709fcbf3c"
+    },
+    {
+      "name": "docs/ledger-auto-marker",
+      "sha": "b7390b57a78c6ad71d2ae562342c6508bb2ed436"
+    },
+    {
+      "name": "docs/ledger-chat-video-swap",
+      "sha": "fd038a853b1916c152ea3fbe3baaa4793c586ba3"
+    },
+    {
+      "name": "docs/ledger-compression",
+      "sha": "b8544ed53dd97b8bc1bd3d86fb43df7971c5175d"
+    },
+    {
+      "name": "docs/ledger-e1rm-swap",
+      "sha": "359daf6a09aad426874f385310814564d4eb7e05"
+    },
+    {
+      "name": "docs/ledger-editor-restyle",
+      "sha": "42c9d6f5e47d2470735106adf71f4cdd72e3a644"
+    },
+    {
+      "name": "docs/ledger-hub-cards",
+      "sha": "b8b679e5fbccedf54569605877e477c6232e8f20"
+    },
+    {
+      "name": "docs/ledger-keyboard",
+      "sha": "f93c0b900266ee380591fc58ee7c5b8559b3f737"
+    },
+    {
+      "name": "docs/ledger-live-annot",
+      "sha": "63cf5f32c59db54b67916ba899a616b6217805c2"
+    },
+    {
+      "name": "docs/ledger-marker-annot",
+      "sha": "e886abb589e4186857573e711aa23a56c0ac9c7e"
+    },
+    {
+      "name": "docs/ledger-oss-put",
+      "sha": "7f12af9331235a0e2f526b067b15a163734aa609"
+    },
+    {
+      "name": "docs/ledger-plan-updated",
+      "sha": "44b4b50cf24e52c43331caa27432544e4ca7dea7"
+    },
+    {
+      "name": "docs/ledger-player-fs",
+      "sha": "e8dc5cd9bba662186c1a223d42857a6bfb69e86c"
+    },
+    {
+      "name": "docs/ledger-player-pro",
+      "sha": "bc56c6ff6ac058ad96a03ad5e2d677f521d2cd48"
+    },
+    {
+      "name": "docs/ledger-polish-batch",
+      "sha": "90616804e7a90a9acac460ed690933cfed91ba41"
+    },
+    {
+      "name": "docs/ledger-precision-scrub",
+      "sha": "401a2645bd736935c969b7cd0f5fe7cb3544b276"
+    },
+    {
+      "name": "docs/ledger-setref-fit",
+      "sha": "b828b4cc6040c98c130b3a775ca82dcc4652ace2"
+    },
+    {
+      "name": "docs/ledger-student-hub",
+      "sha": "a16f2a2d2d26849d09b1c1dc15951da3b5266457"
+    },
+    {
+      "name": "docs/ledger-tracking-cn-fullrow",
+      "sha": "eb3344f9bb5eeee84c164ff0cc33e691609d5d12"
+    },
+    {
+      "name": "docs/ledger-tracking-deploys",
+      "sha": "84570841521d1c1bc0ccea13ea65220c310c2d55"
+    },
+    {
+      "name": "docs/ledger-tracking-veil",
+      "sha": "0d6b52ef993b8bd03b226a99ccc7ccf698a65ec8"
+    },
+    {
+      "name": "docs/ledger-transport-lock",
+      "sha": "95e0722fc51ef34ad436444da6f5495f6d01321f"
+    },
+    {
+      "name": "docs/ledger-web-marker-single",
+      "sha": "d4162374897c0b3a489f57ad4f98e94f6290f5df"
+    },
+    {
+      "name": "docs/ledger-web-swap-pct-anchor",
+      "sha": "f396aef983256c9f9569cfd15e6643b6068ea820"
+    },
+    {
+      "name": "docs/ledger-web-swap-pct-label",
+      "sha": "8a65c0dc4bacfa51c5531e4d0d5801da2f154d5e"
+    },
+    {
+      "name": "docs/record-4fb71c9-web-deploy",
+      "sha": "98516f32b2ea7a858d81dd70541ab4b033f160ce"
+    },
+    {
+      "name": "docs/record-5bf9792-web-deploy",
+      "sha": "d8de6ec06e36400e2d126a4b8f97b52809ff6f5e"
+    },
+    {
+      "name": "docs/record-0049-applied",
+      "sha": "d818f4a0632fc57cdbb860714e58387d9a6809c4"
+    },
+    {
+      "name": "docs/record-0051-e2f32b2",
+      "sha": "9be7dd26b5674a06544b0efae82982e0c5591b70"
+    },
+    {
+      "name": "docs/record-0052-60ba916",
+      "sha": "de9219f5b4a7fd8ac38636ef728a8b3f50825b3a"
+    },
+    {
+      "name": "docs/record-0057-applied",
+      "sha": "4c8b5dc403c55f589682bb6ea61f3255acd9ee1f"
+    },
+    {
+      "name": "docs/record-46777db-web-deploy",
+      "sha": "0a4bf262b64063feb16f1d620d35238d19fbc67c"
+    },
+    {
+      "name": "docs/web101-53-deployed",
+      "sha": "2ad15efd40ee62edd9a2892b9d4b20dca2f657db"
+    },
+    {
+      "name": "docs/web104-deployed",
+      "sha": "267c20f4cfc923e3cb958edf84e36b6d1a25d864"
+    },
+    {
+      "name": "docs/web104-live-confirmed",
+      "sha": "9a54cef76e41a1089500648fca31e304de998a72"
+    },
+    {
+      "name": "docs/web106-deployed",
+      "sha": "48d8ded83777e060ea2dfcd5acbefdc367728bbf"
+    },
+    {
+      "name": "docs/web107-deployed",
+      "sha": "93fbdf44d77a6914255221c0edc4402e071717b7"
+    },
+    {
+      "name": "docs/029-d1-hero-entry",
+      "sha": "39559dd368a43fcf35e5ea8a46162bd979fc4ff9"
+    },
+    {
+      "name": "docs/045-coach-shift",
+      "sha": "049887e9abc248542e5f0200a9b4bd513d037242"
+    },
+    {
+      "name": "docs/048-deploy-record",
+      "sha": "e9128f1b607d23d8b2b9b7a3d2323c72874b1023"
+    },
+    {
+      "name": "docs/048-deploy-runbook",
+      "sha": "20080b6022adb33496a2de9801d363f8a301d365"
+    },
+    {
+      "name": "docs/048-mail-live",
+      "sha": "3d081380a855db87b5b618eb194b99b42788d9b3"
+    },
+    {
+      "name": "docs/050-web108-deploy-record",
+      "sha": "2e2fc0307cafd83009efc6bac25b76c6c812be7e"
+    },
+    {
+      "name": "docs/0075-ledger",
+      "sha": "433a3c589d2ae1d639ebddf19083a1e3935342dd"
+    },
+    {
+      "name": "feat/admin-readonly-api",
+      "sha": "e10837841427fba4eeb3313d26a27aaeb7db778d"
+    },
+    {
+      "name": "feat/analytics-events",
+      "sha": "fa27a82603d5d36551207d4c57f0119640ee3b2c"
+    },
+    {
+      "name": "feat/coach-student-rename",
+      "sha": "7330350c4efe692c45c5883556d83a8f6360f441"
+    },
+    {
+      "name": "feat/data-guard-hardening",
+      "sha": "568556adbc9b41f71f503f9730cdb1c44dea201f"
+    },
+    {
+      "name": "feat/e1rm-series-volume-api",
+      "sha": "d485bccebbad107169c1e402d78624ef59436d7f"
+    },
+    {
+      "name": "feat/events-android-platform",
+      "sha": "63ed4a6a43291edec090ae4f06d4c9949ee0296b"
+    },
+    {
+      "name": "feat/exercise-crud",
+      "sha": "9ff27b48423f0fd59de7f9c3e1beb44a2f45c9d2"
+    },
+    {
+      "name": "feat/exercise-usage-stats",
+      "sha": "a8a14a5b0fc076669ca27afd546785a92a66bff2"
+    },
+    {
+      "name": "feat/feedback-video-rpe",
+      "sha": "a5c9e9488d9ce7150db9b93c8126bb07c2e3ae16"
+    },
+    {
+      "name": "feat/imported-history-support",
+      "sha": "cd4dcac7bfd3ce046e29dadaf0557a88c002958a"
+    },
+    {
+      "name": "feat/marker-annotations",
+      "sha": "184d87b2db740996f32ee4b1db09f28dbdd728b5"
+    },
+    {
+      "name": "feat/multi-device-sessions",
+      "sha": "da495422da4aef6381d22a7b8e7f7e2e6217cd4e"
+    },
+    {
+      "name": "feat/overview-e1rm",
+      "sha": "010bfa958b5c4754b8fae917f4f184bf6e5e4db0"
+    },
+    {
+      "name": "feat/plan-updated-push",
+      "sha": "2ca67a2b9c76c515113784eecbf49c984cb620f6"
+    },
+    {
+      "name": "feat/response-compression",
+      "sha": "5c83219059163ff18538d681fd7bc60adf5a9dc8"
+    },
+    {
+      "name": "feat/sae-deploy-workflow",
+      "sha": "1ba320c2fbf18d60dd1a5e47d79c745599890cb9"
+    },
+    {
+      "name": "feat/shift-day-backend",
+      "sha": "617c6e468c5bf95700dc6723da2572c7d9694d73"
+    },
+    {
+      "name": "feat/shift-day-restage",
+      "sha": "0fbb79f5a90adb17c6d1c435b828858edc3897fc"
+    },
+    {
+      "name": "feat/shift-target-date",
+      "sha": "ce87680119977dbdd363a44698f7e00156cd39d2"
+    },
+    {
+      "name": "feat/student-streak-endpoint",
+      "sha": "0fd39735ced1d3ac001ac68e317d681b710ea91b"
+    },
+    {
+      "name": "feat/video-markers",
+      "sha": "e94b149a1dd9bab2db740ed19b663b88b05f8fc3"
+    },
+    {
+      "name": "feat/wellness-scales-0047",
+      "sha": "d42da4b76c5fac93763a361892435ec68da169ba"
+    },
+    {
+      "name": "feat/004-attachment-upload",
+      "sha": "da48863ba0da5bc73db6d752f6619f03b5c4401c"
+    },
+    {
+      "name": "feat/004-video-upload",
+      "sha": "f367e137ce7d6038702e2e7a6a45edceabc71c07"
+    },
+    {
+      "name": "feat/005-bind-eval-profile",
+      "sha": "faabba7ba259d084ea1921897714e916447f0261"
+    },
+    {
+      "name": "feat/006-readiness",
+      "sha": "b556b74852f636216cb7983bda2887523886fa14"
+    },
+    {
+      "name": "feat/007-video-setlog-link",
+      "sha": "dc77ea39e5bb4cf685ffba346a2e55b2bcf5450f"
+    },
+    {
+      "name": "feat/009-plan-days-batch",
+      "sha": "0df3f469f81b901eb20c2d7376ffd2781275e135"
+    },
+    {
+      "name": "feat/010-adhoc-set-logging",
+      "sha": "ac664f5e2083dd17288967a99b9b7996bc25f241"
+    },
+    {
+      "name": "feat/011-account-ledger",
+      "sha": "c55b3cf8962615a9aeec1e916d27b26924d9c835"
+    },
+    {
+      "name": "feat/012-review-persistence",
+      "sha": "ce154f1d8e59f75a9b9878656bdd2a4e1931960d"
+    },
+    {
+      "name": "feat/013-solo-onerm-exemption",
+      "sha": "9ee7b4410b10abd2c9559d8bcc35f9b22eb5ab68"
+    },
+    {
+      "name": "feat/016-exercise-mutability",
+      "sha": "92e17db399dd9a2b8ff321f8300844c91d425f75"
+    },
+    {
+      "name": "feat/029-r3a-planned-set-ref",
+      "sha": "c0858cde8212928f7c254bc9b0093f4c0a3b3a77"
+    },
+    {
+      "name": "feat/029-set-ref-card",
+      "sha": "fff81db83bb40571bc1cbba70467add585bf3191"
+    },
+    {
+      "name": "feat/030-coach-rpe-calibration",
+      "sha": "dd18015a643694badd7117e0577150dc9acc1524"
+    },
+    {
+      "name": "feat/031-pr-actual-weight",
+      "sha": "dd92a6d2e13a6aa4e70539218a205a2cc63eb045"
+    },
+    {
+      "name": "feat/032-realtime-chat",
+      "sha": "9c52746230521571fe69a0c1727b7dc0951ddf51"
+    },
+    {
+      "name": "feat/033-apns-event-push",
+      "sha": "53f990e690bfd96963bc00bfdcb1c06b090dc3af"
+    },
+    {
+      "name": "feat/034-intensity-system",
+      "sha": "254b0716610a209f514b6b649e261b618f2928e9"
+    },
+    {
+      "name": "feat/034-pct-anchor",
+      "sha": "7cbf4d1d5b4e6753d031027ed6f8bf9bbfc3c1b1"
+    },
+    {
+      "name": "feat/034-sparse-intensity",
+      "sha": "8d609d756050ac4925b64455078ecd6fea5b4644"
+    },
+    {
+      "name": "feat/035-manual-only-settlement",
+      "sha": "d2828c503182403477f9eee52ca1227ed7cc4a1f"
+    },
+    {
+      "name": "feat/035-sequence-progression",
+      "sha": "77b052561e58b87cfd92bd2a5a5a299523148a4d"
+    },
+    {
+      "name": "feat/036-tracking-aggregates",
+      "sha": "b4af52da3bfbde14bb60d6f84eaa1c9601b7aaa4"
+    },
+    {
+      "name": "feat/037-anchor-on-create",
+      "sha": "80f74bb5d002fb553f3911c880372c9f19eac06c"
+    },
+    {
+      "name": "feat/037-anchor-weekday",
+      "sha": "b500b7588189d5fa806d1c5dc789fb9c4973ede7"
+    },
+    {
+      "name": "feat/037-target-column",
+      "sha": "9609220ceabd83c2c7eec60b1d52a23c9c18f06e"
+    },
+    {
+      "name": "feat/038-video-viewed",
+      "sha": "efea3b7c53f2b0f330d0b3401c4e509df925bf9f"
+    },
+    {
+      "name": "feat/040-email-channel",
+      "sha": "78fb0e2d923fbdddf593c83076d63ecdcef57c28"
+    },
+    {
+      "name": "feat/041-oss-accelerate",
+      "sha": "7055e18bdaa4814f1d05b5bcf5cd09419957aaea"
+    },
+    {
+      "name": "feat/042-user-timezone",
+      "sha": "c9119ff3ffd3428c90b4f9b30f5f20ce3f82fcb2"
+    },
+    {
+      "name": "feat/043-plan-import-backend",
+      "sha": "bdd3ebf22d73e32c4d61a489b347aece8f7f96ec"
+    },
+    {
+      "name": "feat/043-s3-storage",
+      "sha": "5b2f65d3e4e727d367d230f85ce9200740e8d0b4"
+    },
+    {
+      "name": "feat/044-pending-revision",
+      "sha": "0deae39fd45e61a30fd3165828835d691617607d"
+    },
+    {
+      "name": "feat/045-coach-plan-shift",
+      "sha": "db36e1f1a6977c0bc3f6e8d84e9d919eff2ee6ad"
+    },
+    {
+      "name": "feat/046-body-weight-records",
+      "sha": "2c0050a7059fd914c2905dabf50b7b48ba72d09f"
+    },
+    {
+      "name": "feat/047-user-avatar",
+      "sha": "b48cd3bb69daecd176a0f6e89502bcba9e3af1be"
+    },
+    {
+      "name": "feat/048-email-signup-verification",
+      "sha": "69d967fad3be52dc3f64881054f11ebb422b57cb"
+    },
+    {
+      "name": "feat/049-coach-pages-backend",
+      "sha": "bd04d1085f46b862361db8b2c986c725b977f607"
+    },
+    {
+      "name": "feat/050-student-added-logs",
+      "sha": "01ab17aa2a448a732fdbde7b4dfebed7a4453259"
+    },
+    {
+      "name": "feat/051-exercise-stats-filtered-history",
+      "sha": "39036e35409dc5470fa856a314490a072850e497"
+    },
+    {
+      "name": "feat/052-plan-import-ai",
+      "sha": "492b256604c4a957878a44c8d1fe12216fbefa19"
+    },
+    {
+      "name": "feat/053-exercise-adoption",
+      "sha": "5619b93652dd7077d579e4ce1536ae3cb1d325ba"
+    },
+    {
+      "name": "feat/064-global-identity",
+      "sha": "955154dffe22fb89fedda7b3d60ad55da9cf2ce5"
+    },
+    {
+      "name": "feat/093-coach-onboarding",
+      "sha": "660f5242b959fcb6326c0142cc48682c73626e4f"
+    },
+    {
+      "name": "fix/acr-provenance",
+      "sha": "b0c3e19fc6f105c47d17fda0a06d64d5acb04254"
+    },
+    {
+      "name": "fix/apns-key-escaped-newlines",
+      "sha": "8c64070a6bb6a9f239d46957029c416588e6c12d"
+    },
+    {
+      "name": "fix/catalog-sumo-main",
+      "sha": "5ce30a30b2eb3866538a0487ded0afdb7f54e8b9"
+    },
+    {
+      "name": "fix/coach-students-evaluation-status",
+      "sha": "ad916251ff9de9b7dc3926d8aeaddd57a106ec31"
+    },
+    {
+      "name": "fix/deploy-tag-check",
+      "sha": "ab06086f1bc3780568a8ea0541f864d62922bfca"
+    },
+    {
+      "name": "fix/invite-landing-title",
+      "sha": "04c964328a2c9e8ce90ae33eaa792858c42cc09a"
+    },
+    {
+      "name": "fix/ledger-prettier",
+      "sha": "8e0fcc15797721fd876ac3b95999204bfdbbf11d"
+    },
+    {
+      "name": "fix/push-consumer-delivery-log",
+      "sha": "225f0737d9a4ae30134470b22f87964240bef58f"
+    },
+    {
+      "name": "fix/readiness-post-full-body",
+      "sha": "3385d9dc92eeac1778a9290a5d756224f882c20b"
+    },
+    {
+      "name": "fix/uploads-complete-atomic-claim-leak",
+      "sha": "b1b4edb28519ad252949cf1bc0d69ee9bc0ea8c9"
+    },
+    {
+      "name": "fix/url-exchange-wall-predicate",
+      "sha": "d5a2fa28effc110f9a13cbb1ef9381f7848a4dba"
+    },
+    {
+      "name": "fix/uuid-case-insensitive-authz",
+      "sha": "cab288935d4996aa0e0c88f648aaf9e7391b92a6"
+    },
+    {
+      "name": "fix/w3-preview-kind",
+      "sha": "1b9c6f5b0fc79d9a148995d2e2b2e86ae7e9711c"
+    },
+    {
+      "name": "fix/0048-chat-user-delete-cascade",
+      "sha": "f11fe50104d09691c587476c776d553345521aa9"
+    },
+    {
+      "name": "fix/0059-backfill-sequence-completions",
+      "sha": "d4e95efca7aa19ff0c4f49815207c4306c7bbd0f"
+    },
+    {
+      "name": "fix/093-coach-welcome-clarity",
+      "sha": "aba613c943134690412b7e12b9549246c781b126"
+    },
+    {
+      "name": "spec/011-anonymized-delete",
+      "sha": "5a481a20b394398e69a5962565a3867cdd14c427"
+    },
+    {
+      "name": "spec/014-algo-foundation-schema",
+      "sha": "3b9f1a62d8559707b4c814c0881770cdfc4f9de6"
+    },
+    {
+      "name": "spec/016-published-plan-exercise-mutability",
+      "sha": "9d65af01d01ea9651354be35db98174ad1009194"
+    },
+    {
+      "name": "spec/018-student-activity-ledger",
+      "sha": "c1478bdc52dea8e5426254dc2119eeea07f44889"
+    },
+    {
+      "name": "spec/019-push-pipeline",
+      "sha": "46d5c688e9cb5640e4b13483036eebc768d1f93c"
+    },
+    {
+      "name": "spec/020-session-start-weight-failed",
+      "sha": "5002ded67e1c64a09eeddcc70edd3fe5f2a26bab"
+    },
+    {
+      "name": "spec/021-cockpit-read-extras",
+      "sha": "52b846075b05f11e421f9e8f45b23352385498ac"
+    },
+    {
+      "name": "spec/024-coach-student-chat",
+      "sha": "a78de518704522f7a74ae6204f70c7dda903f6b1"
+    },
+    {
+      "name": "spec/025-video-feedback",
+      "sha": "4dbaa4a23ba85a3fae2a84124e991e456a1b1d5d"
+    },
+    {
+      "name": "spec/026-catch-up-shift",
+      "sha": "96c73868355f0c54affe010230f1ec91ef1c70ba"
+    },
+    {
+      "name": "spec/028-workout-settle",
+      "sha": "b980750b795ce4a78048209d71442e9da2987b0d"
+    },
+    {
+      "name": "spec/029-set-ref-chat-card",
+      "sha": "1de21e6c17064d9c46311f2b22bff6adf41c85f2"
+    },
+    {
+      "name": "spec/031-voice-messages",
+      "sha": "1035067343e94de39a107500c53583152799cdda"
+    },
+    {
+      "name": "spec/034-dual-intensity-anchor",
+      "sha": "80273b9f08d96f02afe236bf054bc3a111858581"
+    },
+    {
+      "name": "spec/034-pct-anchor",
+      "sha": "6f76f60f89da67bb57caddf68fcfe303d308c49b"
+    },
+    {
+      "name": "spec/035-sequence-progression",
+      "sha": "bd8199f609b0fa81f292906e594d5cbd57bea812"
+    },
+    {
+      "name": "spec/037-week-band-editor",
+      "sha": "a9a1284dfb382166b68b1447d1eb2cfbf0f272ab"
+    },
+    {
+      "name": "spec/039-intl-auth",
+      "sha": "39e191a6384096bdd45040e549e8fdb61658d26f"
+    },
+    {
+      "name": "spec/040-email-channel",
+      "sha": "5c615bf6e75ea245903fac55e4d731058479ca7c"
+    },
+    {
+      "name": "spec/042-user-timezone",
+      "sha": "9b6ab11ceb8189791009b0368db345f3b0d06721"
+    },
+    {
+      "name": "spec/048-email-signup-verification",
+      "sha": "2ec6f6524f247b12c152a744b7b0bda9e69c958c"
+    },
+    {
+      "name": "spec/049-coach-pages",
+      "sha": "dc531c7959b60463a6f73c0b2cd057c6c2dcc35f"
+    },
+    {
+      "name": "staging",
+      "sha": "07a8ed3124834a1db6fec2345fc79ff4eabcd054"
+    },
+    {
+      "name": "test/004-consent-negative-coverage",
+      "sha": "31c6ae5b07352b5628edb0a1a5f20f60a8f16f0c"
+    },
+    {
+      "name": "web/039-draft-save-unfreeze",
+      "sha": "5a8b5a6bffacd73c1c66ba5c38ef54fe51e66671"
+    },
+    {
+      "name": "webswap-037-header-context",
+      "sha": "5fcb4689db207db40553803d1e400752f25f7ffa"
+    },
+    {
+      "name": "webswap-038-axes-actuals",
+      "sha": "502c107db478eb0d1ef286e2b970d85a5578b787"
+    },
+    {
+      "name": "webswap-editor-restyle",
+      "sha": "09a5f52152afba1fd02fd038e855f54da55103bf"
+    },
+    {
+      "name": "webswap-ink-wave",
+      "sha": "7f140f6a2e88c4ac5f5edbef29b5e36e94994748"
+    },
+    {
+      "name": "webswap-keyboard",
+      "sha": "cf9e233e49558a0d440544cc84eb0545c67b1e7a"
+    },
+    {
+      "name": "webswap-tracking-cn-fullrow",
+      "sha": "157c5757c38d21babee7a68d6bcc007f510b3a1a"
+    },
+    {
+      "name": "webswap-tracking-veil",
+      "sha": "3099c86816e24aa5d32593a1a79f61c0a5c30406"
+    },
+    {
+      "name": "webswap-tracking-veil-fix",
+      "sha": "1a24c9fe85fbcab5081359e6cc433f4b2fdec401"
+    },
+    {
+      "name": "wip/codex-hardening-2026-07-09",
+      "sha": "2f4f57d10aa28614510112b0e31218ec36f65bd2"
+    }
+  ]
+}

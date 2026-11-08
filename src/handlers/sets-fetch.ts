@@ -9,11 +9,13 @@ type SerializableSetLogRow = Pick<
   | 'id'
   | 'student_id'
   | 'plan_exercise_id'
+  | 'plan_day_id'
   | 'exercise_id'
   | 'set_index'
   | 'weight_kg'
   | 'reps'
   | 'rpe'
+  | 'actual_rir'
   | 'coach_rpe'
   | 'completed'
   | 'failed'
@@ -27,11 +29,13 @@ export interface SetLogResponse {
   id: string;
   student_id: string;
   plan_exercise_id: string | null;
+  plan_day_id: string | null;
   exercise_id: string;
   set_index: number;
   weight_kg: string;
   reps: number;
   rpe: string | null;
+  actual_rir: number | null;
   coach_rpe: string | null;
   completed: boolean;
   failed: boolean;
@@ -46,11 +50,13 @@ export function toSetLog(row: SerializableSetLogRow): SetLogResponse {
     id: row.id,
     student_id: row.student_id,
     plan_exercise_id: row.plan_exercise_id,
+    plan_day_id: row.plan_day_id,
     exercise_id: row.exercise_id,
     set_index: row.set_index,
     weight_kg: Number(row.weight_kg).toFixed(2),
     reps: row.reps,
     rpe: row.rpe == null ? null : Number(row.rpe).toFixed(1),
+    actual_rir: row.actual_rir ?? null,
     coach_rpe: row.coach_rpe == null ? null : Number(row.coach_rpe).toFixed(1),
     completed: row.completed,
     failed: row.failed,
@@ -102,6 +108,7 @@ export async function fetchCoachSetLogs(
   studentId: string,
   from: string,
   to: string,
+  scope: SetLogScope = 'plan',
 ): Promise<SetLogResponse[]> {
   const rows = await db
     .selectFrom('set_logs as sl')
@@ -112,11 +119,13 @@ export async function fetchCoachSetLogs(
       'sl.id as id',
       'sl.student_id as student_id',
       'sl.plan_exercise_id as plan_exercise_id',
+      'sl.plan_day_id as plan_day_id',
       'sl.exercise_id as exercise_id',
       'sl.set_index as set_index',
       'sl.weight_kg as weight_kg',
       'sl.reps as reps',
       'sl.rpe as rpe',
+      'sl.actual_rir as actual_rir',
       'sl.coach_rpe as coach_rpe',
       'sl.completed as completed',
       'sl.failed as failed',
@@ -134,5 +143,22 @@ export async function fetchCoachSetLogs(
     .orderBy('sl.logged_at', 'desc')
     .execute();
 
-  return rows.map(toSetLog);
+  if (scope === 'plan') return rows.map(toSetLog);
+
+  const added = await db
+    .selectFrom('set_logs as sl')
+    .innerJoin('plan_days as pd', 'pd.id', 'sl.plan_day_id')
+    .innerJoin('plans as p', 'p.id', 'pd.plan_id')
+    .selectAll('sl')
+    .where('sl.student_id', '=', studentId)
+    .where('sl.adhoc', '=', true)
+    .where('p.coach_id', '=', coachId)
+    .where('p.trainee_id', '=', studentId)
+    .where('p.status', '=', 'published')
+    .where('sl.logged_date', '>=', from)
+    .where('sl.logged_date', '<', to)
+    .execute();
+  return [...rows, ...added]
+    .sort((left, right) => right.logged_at.getTime() - left.logged_at.getTime())
+    .map(toSetLog);
 }

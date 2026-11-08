@@ -103,10 +103,44 @@ describe('sequence progression settlement', () => {
     await upsertSetLog(ctx.db, ids.trainee, coachedInput(plan, 0, true, false));
 
     const progress = await sessionProgress(ctx.db, [
-      { plan_exercise_id: plan.planExerciseId, completed: true, failed: false },
+      { plan_exercise_id: plan.planExerciseId, set_index: 0, completed: true, failed: false },
     ]);
 
     expect(progress.plannedComplete).toBe(true);
     expect(progress.prescribedSetCount).toBe(0);
+  });
+});
+
+describe('student-added extra sets and prescription progress', () => {
+  it('does not let an extra set replace a missing prescribed set', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    for (const setNumber of [2, 3]) {
+      await ctx.db
+        .insertInto('plan_sets')
+        .values({
+          plan_exercise_id: plan.planExerciseId,
+          set_number: setNumber,
+          target_reps: 5,
+          intensity_mode: 'weight',
+          target_value: '100.00',
+          set_type: 'working',
+        })
+        .execute();
+    }
+    const logs = [0, 1, 3].map((set_index) => ({
+      plan_exercise_id: plan.planExerciseId,
+      set_index,
+      completed: true,
+      failed: false,
+    }));
+    expect((await sessionProgress(ctx.db, logs)).plannedComplete).toBe(false);
+    const completeLogs = [0, 1, 2, 3, 4].map((set_index) => ({
+      plan_exercise_id: plan.planExerciseId,
+      set_index,
+      completed: true,
+      failed: false,
+    }));
+    expect((await sessionProgress(ctx.db, completeLogs)).plannedComplete).toBe(true);
   });
 });

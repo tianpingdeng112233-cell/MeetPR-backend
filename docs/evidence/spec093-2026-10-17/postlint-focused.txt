@@ -1,0 +1,17 @@
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+
+ ✓ tests/coach-applications.test.ts (16 tests | 1 skipped) 1845ms
+   ✓ coach applications > sets the password from the welcome link, verifies email, logs in, and rejects replay 379ms
+   ✓ coach applications > keeps setup links usable when a legacy six-digit attempt is wrong 574ms
+ ✓ tests/auth/email-recovery.test.ts (8 tests) 2801ms
+   ✓ email password recovery > resets the password, consumes the code, and revokes every old session 819ms
+   ✓ email password recovery > persists every attempt first and invalidates a code after five wrong tries 693ms
+   ✓ email password recovery > enforces the reset per-email limit after ten attempts 626ms
+
+ Test Files  2 passed (2)
+      Tests  23 passed | 1 skipped (24)
+   Start at  00:22:54
+   Duration  4.13s (transform 503ms, setup 24ms, collect 1.83s, tests 4.65s, environment 0ms, prepare 221ms)
+

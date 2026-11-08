@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  COMPETITION_STANCES,
   EQUIPMENT,
   EXERCISE_TYPES,
   LIFT_FAMILIES,
@@ -87,6 +88,12 @@ export const PatchExerciseBodySchema = ExerciseBodySchema.partial().refine(
   (data) => Object.keys(data).length > 0,
   { message: 'At least one field is required' },
 );
+
+export const PatchAdoptedExerciseBodySchema = ExerciseBodySchema.partial()
+  .extend({
+    competition_stance: z.enum(COMPETITION_STANCES).nullable().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, { message: 'At least one field is required' });
 
 export const ExerciseIdParamSchema = z.object({ id: z.string().uuid() });
 

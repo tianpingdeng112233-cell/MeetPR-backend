@@ -1,0 +1,62 @@
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+
+ ❯ tests/admin.test.ts (25 tests | 1 failed) 1957ms
+   ✓ admin read-only API > queries every admin read model from the seeded fixtures without N+1 lookups 432ms
+   × admin email visibility > returns email for client-side search and preserves a null phone 139ms
+     → expected { …(6) } to match object { …(2) }
+(6 matching properties omitted from actual)
+ ❯ tests/events.test.ts (20 tests | 1 failed) 2274ms
+   ✓ POST /events > partial-accepts: keeps valid events, skips invalid ones, returns 204 497ms
+   × POST /events > accepts the web onboarding funnel and drops free-text props 112ms
+     → expected 400 to be 204 // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/admin.test.ts > admin email visibility > returns email for client-side search and preserves a null phone
+AssertionError: expected { …(6) } to match object { …(2) }
+(6 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  Object {
+-   "email": "searchable@example.com",
+    "phone": null,
+  }
+
+ ❯ tests/admin.test.ts:673:77
+    671|     const list = await request(ctx.app).get('/admin/users').set(auth(c…
+    672|     expect(list.status).toBe(200);
+    673|     expect(list.body.users.find((u: { id: string }) => u.id === ids.co…
+       |                                                                             ^
+    674|     const detail = await request(ctx.app).get(`/admin/users/${ids.coac…
+    675|     expect(detail.body.user.email).toBe('searchable@example.com');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/events.test.ts > POST /events > accepts the web onboarding funnel and drops free-text props
+AssertionError: expected 400 to be 204 // Object.is equality
+
+- Expected
++ Received
+
+- 204
++ 400
+
+ ❯ tests/events.test.ts:76:24
+     74|       evt({ name: 'install_clicked', props: { device: 'android', email…
+     75|     ], { platform: 'web' }));
+     76|     expect(res.status).toBe(204);
+       |                        ^
+     77|     expect(await countEvents(ctx.db)).toBe(5);
+     78|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  2 failed (2)
+      Tests  2 failed | 43 passed (45)
+   Start at  00:15:48
+   Duration  5.37s (transform 833ms, setup 39ms, collect 3.89s, tests 4.23s, environment 0ms, prepare 497ms)
+

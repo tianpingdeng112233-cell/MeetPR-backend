@@ -1,6 +1,10 @@
+import { catalogName } from '../i18n/copy';
+import type { PreferredLocale } from '../i18n/locale';
 import type { Selectable } from 'kysely';
 
 import type { FeedbackTable } from '../db/types';
+import type { OssService } from '../services/oss';
+import { videoPreview, type VideoPreview } from './set-video-access';
 import { timestamp } from './serialization';
 
 type FeedbackRow = Selectable<FeedbackTable>;
@@ -22,7 +26,7 @@ export interface FeedbackResponse {
   read_at: string | null;
 }
 
-export interface FeedbackVideoResponse {
+export interface FeedbackVideoResponse extends VideoPreview {
   id: string;
   exercise_name: string | null;
   exercise_name_en: string | null;
@@ -40,7 +44,9 @@ export interface FeedbackWithVideoResponse extends FeedbackResponse {
 
 export interface FeedbackVideoMetadataRow {
   video_attachment_id: string | null;
+  video_oss_key: string | null;
   video_exercise_name: string | null;
+  video_exercise_owner: string | null;
   video_exercise_name_en: string | null;
   video_set_index: number | null;
   video_weight_kg: string | null;
@@ -63,9 +69,11 @@ export function toFeedback(row: FeedbackRow): FeedbackResponse {
   };
 }
 
-export function toFeedbackWithVideo(
+export async function toFeedbackWithVideo(
   row: FeedbackRow & FeedbackVideoMetadataRow,
-): FeedbackWithVideoResponse {
+  locale?: PreferredLocale,
+  oss?: OssService,
+): Promise<FeedbackWithVideoResponse> {
   return {
     ...toFeedback(row),
     video:
@@ -73,7 +81,11 @@ export function toFeedbackWithVideo(
         ? null
         : {
             id: row.video_attachment_id,
-            exercise_name: row.video_exercise_name,
+            ...(await videoPreview(row.video_oss_key, oss)),
+            exercise_name:
+              row.video_exercise_name === null
+                ? null
+                : catalogName(row.video_exercise_name, row.video_exercise_owner, locale),
             exercise_name_en: row.video_exercise_name_en,
             set_index: row.video_set_index,
             weight_kg: row.video_weight_kg === null ? null : Number(row.video_weight_kg).toFixed(2),

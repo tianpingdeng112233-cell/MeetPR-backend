@@ -1,11 +1,11 @@
 import type { Request, Response } from 'express';
 import pino from 'pino';
-import request from 'supertest';
+import { request } from './helpers/inMemoryRequest';
 import { describe, expect, it } from 'vitest';
 
 import { formatSetRefFirstLine, type SetRefV1 } from '../src/domain/set-ref';
 import { conversationsRouter } from '../src/routes/conversations';
-import type { OssService } from '../src/services/oss';
+import { VIDEO_POSTER_PROCESS, type OssService } from '../src/services/oss';
 import type { TestContext } from './helpers/studentActions';
 import { auth, createPublishedPlan, ids, makeContext } from './helpers/studentActions';
 import { makeFakeOss, makeUploadsContext } from './helpers/uploads';
@@ -491,8 +491,13 @@ describe('POST /conversations/:id/messages set_ref', () => {
         set_ref: snapshot,
         video_url: expect.stringContaining('https://fake-oss.invalid/'),
         video_expires_in: 900,
+        poster_url: expect.any(String),
+        duration_seconds: null,
       },
     });
+    const poster = new URL(sent.body.message.poster_url as string);
+    expect(poster.searchParams.get('x-oss-process')).toBe(VIDEO_POSTER_PROCESS);
+    expect(poster.searchParams.get('expires')).toBe('900');
     expect(sent.body.message).not.toHaveProperty('video_id');
 
     const invalidVideos = [
@@ -528,7 +533,15 @@ describe('POST /conversations/:id/messages set_ref', () => {
       .get(`/conversations/${conversation.id}/messages`)
       .set(auth(ctx.coachToken));
     expect(afterDeletion.body).toMatchObject({
-      messages: [{ set_ref: snapshot, video_url: null, video_expires_in: null }],
+      messages: [
+        {
+          set_ref: snapshot,
+          video_url: null,
+          video_expires_in: null,
+          poster_url: null,
+          duration_seconds: null,
+        },
+      ],
     });
   });
 
@@ -574,7 +587,45 @@ describe('POST /conversations/:id/messages set_ref', () => {
       expect.stringContaining('https://fake-oss.invalid/'),
       expect.stringContaining('https://fake-oss.invalid/'),
     ]);
+    expect(
+      (response.body as { messages: { poster_url: string; duration_seconds: null }[] }).messages,
+    ).toEqual([
+      expect.objectContaining({
+        poster_url: expect.stringContaining(`x-oss-process=${VIDEO_POSTER_PROCESS}`),
+        duration_seconds: null,
+      }),
+      expect.objectContaining({
+        poster_url: expect.stringContaining(`x-oss-process=${VIDEO_POSTER_PROCESS}`),
+        duration_seconds: null,
+      }),
+    ]);
     expect(ctx.oss.calls.signGet).toHaveLength(1);
+  });
+
+  it('keeps R2-style playback working with null poster and duration', async () => {
+    const ctx = await makeUploadsContext();
+    delete ctx.oss.service.signVideoPosterUrl;
+    await chooseCanonicalCoach(ctx);
+    const conversation = await createConversation(ctx);
+    const log = await createSetLog(ctx);
+    const snapshot = setRef(log.id);
+    const video = await createVideo(ctx, log.id);
+    const sent = await request(ctx.app)
+      .post(`/conversations/${conversation.id}/messages`)
+      .set(auth(ctx.traineeToken))
+      .send({
+        kind: 'text',
+        body: formatSetRefFirstLine(snapshot),
+        set_ref: snapshot,
+        video_id: video.id,
+        client_id: 'video-r2',
+      });
+    expect(sent.status).toBe(201);
+    expect(sent.body.message).toMatchObject({
+      video_url: expect.any(String),
+      poster_url: null,
+      duration_seconds: null,
+    });
   });
 
   it('returns both video wire fields null without OSS and keeps the card after video deletion', async () => {
@@ -604,7 +655,13 @@ describe('POST /conversations/:id/messages set_ref', () => {
       },
     });
     expect(sent.body).toMatchObject({
-      message: { set_ref: snapshot, video_url: null, video_expires_in: null },
+      message: {
+        set_ref: snapshot,
+        video_url: null,
+        video_expires_in: null,
+        poster_url: null,
+        duration_seconds: null,
+      },
     });
 
     // Pin the no-OSS short-circuit while the video row still exists: with a live video_id the
@@ -618,7 +675,15 @@ describe('POST /conversations/:id/messages set_ref', () => {
       user: { id: ids.trainee, role: 'coached_student' },
     });
     expect(listedWithVideo.body).toMatchObject({
-      messages: [{ set_ref: snapshot, video_url: null, video_expires_in: null }],
+      messages: [
+        {
+          set_ref: snapshot,
+          video_url: null,
+          video_expires_in: null,
+          poster_url: null,
+          duration_seconds: null,
+        },
+      ],
     });
     expect(statements.filter((sql) => sql.includes('oss_key'))).toHaveLength(0);
 
@@ -630,7 +695,15 @@ describe('POST /conversations/:id/messages set_ref', () => {
       user: { id: ids.trainee, role: 'coached_student' },
     });
     expect(listed.body).toMatchObject({
-      messages: [{ set_ref: snapshot, video_url: null, video_expires_in: null }],
+      messages: [
+        {
+          set_ref: snapshot,
+          video_url: null,
+          video_expires_in: null,
+          poster_url: null,
+          duration_seconds: null,
+        },
+      ],
     });
     expect(
       await ctx.db

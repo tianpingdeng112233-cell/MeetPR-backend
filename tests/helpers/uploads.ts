@@ -1,6 +1,6 @@
-import request from 'supertest';
+import { request } from './inMemoryRequest';
 
-import type { CompletedPart, OssService } from '../../src/services/oss';
+import { VIDEO_POSTER_PROCESS, type CompletedPart, type OssService } from '../../src/services/oss';
 import { auth, makeContext, type TestContext } from './studentActions';
 
 export interface FakeOssCalls {
@@ -9,6 +9,7 @@ export interface FakeOssCalls {
   complete: { key: string; uploadId: string; parts: CompletedPart[]; expectedSizeBytes: number }[];
   abort: { key: string; uploadId: string }[];
   signGet: { key: string; expiresSeconds: number }[];
+  signPoster: { key: string; expiresSeconds: number }[];
   head: { key: string }[];
   delete: { key: string }[];
 }
@@ -37,6 +38,7 @@ export function makeFakeOss(options: FakeOssOptions = {}): FakeOss {
     complete: [],
     abort: [],
     signGet: [],
+    signPoster: [],
     head: [],
     delete: [],
   };
@@ -83,6 +85,12 @@ export function makeFakeOss(options: FakeOssOptions = {}): FakeOss {
           ? new URL(options.accelerateEndpoint).host
           : 'fake-oss.invalid';
       return Promise.resolve(`https://${host}/${key}?expires=${String(expiresSeconds)}&sig=get`);
+    },
+    signVideoPosterUrl(key, expiresSeconds) {
+      calls.signPoster.push({ key, expiresSeconds });
+      return Promise.resolve(
+        `https://fake-oss.invalid/${key}?expires=${String(expiresSeconds)}&sig=poster&x-oss-process=${VIDEO_POSTER_PROCESS}`,
+      );
     },
     headObject(key) {
       calls.head.push({ key });

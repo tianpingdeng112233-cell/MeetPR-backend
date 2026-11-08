@@ -1,5 +1,7 @@
-import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { request } from './helpers/inMemoryRequest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { normalizeDateOnly } from '../src/utils/date';
 
 import { auth, ids, makeContext, type TestContext } from './helpers/bindEval';
 
@@ -290,4 +292,105 @@ describe('coach bind request queue', () => {
       .set(auth(ctx.freeStudentToken));
     expect(queue.status).toBe(403);
   });
+});
+
+it('reports the latest previously ended date only for the requesting coach', async () => {
+  const ctx = await makeContext();
+  const requestId = await createPendingRequest(ctx);
+  const endedAt = new Date('2026-10-31T12:00:00Z');
+  await ctx.db
+    .insertInto('bind_requests')
+    .values([
+      {
+        coach_id: ids.coach,
+        student_id: ids.freeStudent,
+        status: 'ended',
+        ended_at: new Date('2026-10-01T00:00:00Z'),
+        expired_at: new Date(),
+      },
+      {
+        coach_id: ids.coach,
+        student_id: ids.freeStudent,
+        status: 'ended',
+        ended_at: endedAt,
+        expired_at: new Date(),
+      },
+      {
+        coach_id: ids.otherCoach,
+        student_id: ids.freeStudent,
+        status: 'ended',
+        ended_at: new Date('2026-11-02T00:00:00Z'),
+        expired_at: new Date(),
+      },
+    ])
+    .execute();
+  const queue = await request(ctx.app).get('/coach/bind-requests').set(auth(ctx.coachToken));
+  expect(queue.status).toBe(200);
+  expect(queue.body.bind_requests).toHaveLength(1);
+  expect(queue.body.bind_requests[0]).toMatchObject({
+    id: requestId,
+    previously_ended_at: endedAt.toISOString(),
+  });
+  const accepted = await request(ctx.app)
+    .post(`/coach/bind-requests/${requestId}/accept`)
+    .set(auth(ctx.coachToken))
+    .send({ skip_evaluation: true });
+  expect(accepted.status).toBe(200);
+  expect(accepted.body.bind_request).toMatchObject({ status: 'accepted', ended_at: null });
+});
+
+afterEach(() => vi.useRealTimers());
+
+describe('accept service term', () => {
+  it.each([undefined, null, '2027-02-28'])(
+    'accepts service_until=%s and persists it without changing the response contract',
+    async (serviceUntil) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-11-04T12:00:00Z'));
+      const ctx = await makeContext();
+      const requestId = await createPendingRequest(ctx);
+      const response = await request(ctx.app)
+        .post(`/coach/bind-requests/${requestId}/accept`)
+        .set(auth(ctx.coachToken))
+        .send({
+          skip_evaluation: true,
+          ...(serviceUntil === undefined ? {} : { service_until: serviceUntil }),
+        });
+      expect(response.status).toBe(200);
+      expect(response.body.evaluation_period).toBeNull();
+      expect(response.body.bind_request).not.toHaveProperty('service_until');
+      const bond = await ctx.db
+        .selectFrom('bind_requests')
+        .selectAll()
+        .where('id', '=', requestId)
+        .executeTakeFirstOrThrow();
+      expect(
+        bond.service_until == null ? bond.service_until : normalizeDateOnly(bond.service_until),
+      ).toBe(serviceUntil ?? null);
+      const mine = await request(ctx.app)
+        .get('/bind-requests/mine')
+        .set(auth(ctx.freeStudentToken));
+      expect(mine.body.bind_request).not.toHaveProperty('service_until');
+    },
+  );
+
+  it.each(['2027-02-29', '2026-04-31', '2026-13-01', '2026-1-01', 'not-a-date'])(
+    'rejects invalid service_until=%s without accepting the request',
+    async (service_until) => {
+      const ctx = await makeContext();
+      const requestId = await createPendingRequest(ctx);
+      const response = await request(ctx.app)
+        .post(`/coach/bind-requests/${requestId}/accept`)
+        .set(auth(ctx.coachToken))
+        .send({ skip_evaluation: true, service_until });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+      const bond = await ctx.db
+        .selectFrom('bind_requests')
+        .select('status')
+        .where('id', '=', requestId)
+        .executeTakeFirstOrThrow();
+      expect(bond.status).toBe('pending');
+    },
+  );
 });

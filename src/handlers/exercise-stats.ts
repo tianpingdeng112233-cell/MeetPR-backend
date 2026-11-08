@@ -1,4 +1,7 @@
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
+
+import { catalogName } from '../i18n/copy';
+import type { PreferredLocale } from '../i18n/locale';
 
 import { E1RM_POLICY, calculateEligibleE1RM, resolveCompetitionFamily } from '../domain/e1rm';
 import {
@@ -133,17 +136,31 @@ async function fetchScopedLogs(
     .innerJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
     .innerJoin('plans as p', 'p.id', 'pd.plan_id')
     .innerJoin('exercises as e', 'e.id', 'sl.exercise_id')
+    .leftJoin('exercises as canonical', 'canonical.id', 'e.canonical_exercise_id')
     .select([
       'sl.id as id',
-      'sl.exercise_id as exercise_id',
-      'e.name as exercise_name',
-      'e.main_lift_family as main_lift_family',
-      'e.is_competition_lift as is_competition_lift',
-      'e.competition_stance as competition_stance',
+      'pe.id as plan_exercise_id',
+      sql<string>`coalesce(e.canonical_exercise_id, e.id)`.as('exercise_id'),
+      sql<string>`coalesce(canonical.name, e.name)`.as('exercise_name'),
+      sql<
+        string | null
+      >`case when canonical.id is not null then canonical.created_by_coach_id else e.created_by_coach_id end`.as(
+        'exercise_owner',
+      ),
+      sql<LiftFamily | null>`case when canonical.id is not null then canonical.main_lift_family else e.main_lift_family end`.as(
+        'main_lift_family',
+      ),
+      sql<boolean>`case when canonical.id is not null then canonical.is_competition_lift else e.is_competition_lift end`.as(
+        'is_competition_lift',
+      ),
+      sql<CompetitionStance | null>`case when canonical.id is not null then canonical.competition_stance else e.competition_stance end`.as(
+        'competition_stance',
+      ),
       'sl.set_index as set_index',
       'sl.weight_kg as weight_kg',
       'sl.reps as reps',
       'sl.rpe as rpe',
+      'sl.actual_rir as actual_rir',
       'sl.coach_rpe as coach_rpe',
       'sl.completed as completed',
       'sl.failed as failed',
@@ -156,7 +173,18 @@ async function fetchScopedLogs(
     .where('p.coach_id', '=', coachId)
     .where('p.trainee_id', '=', studentId)
     .where('p.status', 'in', ['published', 'paused', 'completed']);
-  if (exerciseId !== undefined) query = query.where('sl.exercise_id', '=', exerciseId);
+  if (exerciseId !== undefined) {
+    const exercise = await db
+      .selectFrom('exercises')
+      .select('canonical_exercise_id')
+      .where('id', '=', exerciseId)
+      .executeTakeFirst();
+    query = query.where(
+      sql<string>`coalesce(e.canonical_exercise_id, e.id)`,
+      '=',
+      exercise?.canonical_exercise_id ?? exerciseId,
+    );
+  }
   return query.orderBy('sl.logged_at', 'desc').execute();
 }
 
@@ -477,6 +505,7 @@ export async function fetchExerciseStatsOverview(
   db: Kysely<Database>,
   coachId: string,
   studentId: string,
+  locale?: PreferredLocale,
 ): Promise<ExerciseStatsOverviewResponse> {
   const [logs, onboarding, planDates, timezone] = await Promise.all([
     fetchScopedLogs(db, coachId, studentId),
@@ -495,7 +524,7 @@ export async function fetchExerciseStatsOverview(
       current.dates.add(dateOnly(log.logged_date));
     } else {
       byExercise.set(log.exercise_id, {
-        name: log.exercise_name,
+        name: catalogName(log.exercise_name, log.exercise_owner, locale),
         dates: new Set([dateOnly(log.logged_date)]),
         lastLoggedAt: log.logged_at,
       });
@@ -620,19 +649,105 @@ function currentE1rm(logs: ScopedLog[], family: LiftFamily | null) {
   return { value: winner.value.toFixed(2), computed_at: timestamp(winner.computedAt) };
 }
 
+interface ExerciseHistoryFilter {
+  sets: number;
+  reps: number | undefined;
+}
+
+function sessionSets(logs: ScopedLog[], videoIds: Map<string, string>) {
+  return [...logs]
+    .sort((left, right) => left.set_index - right.set_index)
+    .map((log) => {
+      const videoId = videoIds.get(log.id) ?? null;
+      return {
+        set_index: log.set_index,
+        weight_kg: Number(log.weight_kg).toFixed(2),
+        reps: log.reps,
+        rpe: log.rpe === null ? null : Number(log.rpe).toFixed(1),
+        actual_rir: log.actual_rir ?? null,
+        completed: log.completed,
+        failed: log.failed,
+        assumed: log.assumed,
+        has_video: videoId !== null,
+        video_id: videoId,
+      };
+    });
+}
+
+async function filteredSessions(
+  db: Kysely<Database>,
+  logs: ScopedLog[],
+  filter: ExerciseHistoryFilter,
+  videoIds: Map<string, string>,
+) {
+  if (logs.length === 0) return [];
+  const byPlanExercise = new Map<string, ScopedLog[]>();
+  for (const log of logs) {
+    const rows = byPlanExercise.get(log.plan_exercise_id) ?? [];
+    rows.push(log);
+    byPlanExercise.set(log.plan_exercise_id, rows);
+  }
+  const planSets = await db
+    .selectFrom('plan_sets')
+    .select(['plan_exercise_id', 'target_reps'])
+    .where('plan_exercise_id', 'in', [...byPlanExercise.keys()])
+    .execute();
+  const prescriptions = new Map<string, { sets: number; reps: number | null }>();
+  for (const set of planSets) {
+    const prescribed = prescriptions.get(set.plan_exercise_id);
+    if (prescribed) {
+      prescribed.sets += 1;
+      if (prescribed.reps !== set.target_reps) prescribed.reps = null;
+    } else {
+      prescriptions.set(set.plan_exercise_id, { sets: 1, reps: set.target_reps });
+    }
+  }
+
+  return [...byPlanExercise.entries()]
+    .flatMap(([planExerciseId, rows]) => {
+      const prescribed = prescriptions.get(planExerciseId);
+      if (
+        prescribed?.sets !== filter.sets ||
+        (filter.reps !== undefined && prescribed.reps !== filter.reps)
+      ) {
+        return [];
+      }
+      return groupedSessions(rows).map((session) => ({
+        date: session.date,
+        plan_exercise_id: planExerciseId,
+        prescribed,
+        sets: sessionSets(session.rows, videoIds),
+      }));
+    })
+    .sort((left, right) => right.date.localeCompare(left.date))
+    .slice(0, EXERCISE_STATS_LIMITS.recentSessions);
+}
+
 export async function fetchExerciseStatsDetail(
   db: Kysely<Database>,
   coachId: string,
   studentId: string,
   exerciseId: string,
+  filter?: ExerciseHistoryFilter,
 ) {
   const [logs, onboarding, exercise] = await Promise.all([
     fetchScopedLogs(db, coachId, studentId, exerciseId),
     onboardingSnapshot(db, studentId),
     db
-      .selectFrom('exercises')
-      .select(['main_lift_family', 'is_competition_lift', 'competition_stance'])
-      .where('id', '=', exerciseId)
+      .selectFrom('exercises as e')
+      .leftJoin('exercises as canonical', 'canonical.id', 'e.canonical_exercise_id')
+      .select([
+        sql<LiftFamily | null>`case when canonical.id is not null then canonical.main_lift_family else e.main_lift_family end`.as(
+          'main_lift_family',
+        ),
+        sql<boolean>`case when canonical.id is not null then canonical.is_competition_lift else e.is_competition_lift end`.as(
+          'is_competition_lift',
+        ),
+        sql<CompetitionStance | null>`case when canonical.id is not null then canonical.competition_stance else e.competition_stance end`.as(
+          'competition_stance',
+        ),
+      ])
+      .where('e.id', '=', exerciseId)
       .executeTakeFirst(),
   ]);
   const logIds = logs.map((log) => log.id);
@@ -641,28 +756,24 @@ export async function fetchExerciseStatsDetail(
       ? []
       : await db
           .selectFrom('attachments')
-          .select('set_log_id')
+          .select(['id', 'set_log_id'])
           .where('owner_id', '=', studentId)
           .where('kind', '=', 'set_video')
           .where('status', '=', 'ready')
           .where('set_log_id', 'in', logIds)
+          .orderBy('created_at', 'desc')
+          .orderBy('id', 'desc')
           .execute();
-  const videoLogIds = new Set(videoRows.flatMap((row) => (row.set_log_id ? [row.set_log_id] : [])));
+  const videoIds = new Map<string, string>();
+  for (const row of videoRows) {
+    if (row.set_log_id !== null && !videoIds.has(row.set_log_id)) {
+      videoIds.set(row.set_log_id, row.id);
+    }
+  }
   const sessions = groupedSessions(logs);
   const recentSessions = sessions.slice(0, EXERCISE_STATS_LIMITS.recentSessions).map((session) => ({
     date: session.date,
-    sets: [...session.rows]
-      .sort((left, right) => left.set_index - right.set_index)
-      .map((log) => ({
-        set_index: log.set_index,
-        weight_kg: Number(log.weight_kg).toFixed(2),
-        reps: log.reps,
-        rpe: log.rpe === null ? null : Number(log.rpe).toFixed(1),
-        completed: log.completed,
-        failed: log.failed,
-        assumed: log.assumed,
-        has_video: videoLogIds.has(log.id),
-      })),
+    sets: sessionSets(session.rows, videoIds),
   }));
 
   const bySetCount: Record<
@@ -705,5 +816,8 @@ export async function fetchExerciseStatsDetail(
     by_set_count: bySetCount,
     e1rm: currentE1rm(logs, family),
     one_rm_reference: family === null ? null : onboarding.oneRm[family],
+    ...(filter === undefined
+      ? {}
+      : { filtered_sessions: await filteredSessions(db, logs, filter, videoIds) }),
   };
 }

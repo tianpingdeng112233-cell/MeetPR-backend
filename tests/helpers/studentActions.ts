@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import type { Kysely } from 'kysely';
@@ -127,6 +129,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       apple_user_id TEXT,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL,
+      preferred_locale TEXT NULL,
       timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
       refresh_token_jti UUID,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -293,6 +296,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       status TEXT NOT NULL DEFAULT 'pending',
       submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       responded_at TIMESTAMPTZ,
+      ended_at TIMESTAMPTZ,
       expired_at TIMESTAMPTZ NOT NULL,
       skip_evaluation BOOLEAN NOT NULL DEFAULT FALSE,
       rejection_silent BOOLEAN NOT NULL DEFAULT TRUE
@@ -309,11 +313,13 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       plan_exercise_id UUID REFERENCES plan_exercises(id) ON DELETE RESTRICT,
+      plan_day_id UUID REFERENCES plan_days(id) ON DELETE SET NULL,
       exercise_id UUID NOT NULL REFERENCES exercises(id),
       set_index INT NOT NULL,
       weight_kg NUMERIC(6,2) NOT NULL,
       reps INT NOT NULL,
       rpe NUMERIC(3,1),
+      actual_rir SMALLINT,
       coach_rpe NUMERIC(3,1) CHECK (coach_rpe >= 0 AND coach_rpe <= 10),
       completed BOOLEAN NOT NULL DEFAULT FALSE,
       failed BOOLEAN NOT NULL DEFAULT FALSE,
@@ -323,6 +329,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       logged_date DATE NOT NULL,
       logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE (student_id, plan_exercise_id, set_index),
+      CONSTRAINT set_logs_plan_day_adhoc_check CHECK (plan_day_id IS NULL OR adhoc),
       CONSTRAINT set_logs_adhoc_no_plan_check CHECK (NOT adhoc OR plan_exercise_id IS NULL)
     );
 
@@ -573,13 +580,21 @@ export async function makeContext(
   extras: {
     oss?: OssService;
     hub?: RealtimeHub;
-    afterQuery?: (sql: string) => Promise<void>;
+    afterQuery?: (sql: string, rowCount: number) => Promise<void>;
     config?: Partial<Config>;
   } = {},
 ): Promise<TestContext> {
   const mem = newDb();
   registerPgMemFunctions(mem);
   createSchema(mem);
+  // Fixtures use text status; exercise the remaining production 0082 schema verbatim.
+  mem.public.none(
+    fs
+      .readFileSync('db/migrations/0082-coach-unbind-alias.sql', 'utf8')
+      .replace("ALTER TYPE bind_request_status ADD VALUE IF NOT EXISTS 'ended';", ''),
+  );
+
+  mem.public.none(fs.readFileSync('db/migrations/0083-service-term.sql', 'utf8'));
 
   const { Pool } = mem.adapters.createPg();
   const pool = new Pool();
@@ -589,6 +604,16 @@ export async function makeContext(
     // multi-instance semantics while tests still exercise the same code path;
     // the lock shape itself is pinned by a compile assertion in
     // tests/jobs/push-consumer.test.ts.
+    // pg-mem also cannot parse IS DISTINCT FROM. Locale parameters are non-null;
+    // preserve its NULL-safe semantics here only. The route test asserts the
+    // original PostgreSQL SQL and affected rows before this adapter rewrite.
+    const pgMemSql = (text: string) =>
+      text
+        .replace(/\s+skip\s+locked/gi, '')
+        .replace(
+          /"preferred_locale" is distinct from (\$\d+)/gi,
+          '("preferred_locale" is null or "preferred_locale" != $1)',
+        );
     const connect = pool.connect.bind(pool) as () => Promise<PoolClient>;
     const rewritten = new WeakSet();
     (pool as { connect: () => Promise<PoolClient> }).connect = async () => {
@@ -600,16 +625,13 @@ export async function makeContext(
           apply: (target, thisArg, args: unknown[]) => {
             const first = args[0];
             if (typeof first === 'string') {
-              args[0] = first.replace(/\s+skip\s+locked/gi, '');
+              args[0] = pgMemSql(first);
             } else if (
               typeof first === 'object' &&
               first !== null &&
               typeof (first as { text?: unknown }).text === 'string'
             ) {
-              (first as { text: string }).text = (first as { text: string }).text.replace(
-                /\s+skip\s+locked/gi,
-                '',
-              );
+              (first as { text: string }).text = pgMemSql((first as { text: string }).text);
             }
             return Reflect.apply(target, thisArg, args) as unknown;
           },
@@ -634,7 +656,7 @@ export async function makeContext(
             const result = (await Reflect.apply(target, thisArg, args)) as unknown;
             const query = args[0] as string | { text?: string } | undefined;
             const text = typeof query === 'string' ? query : query?.text;
-            if (text) await afterQuery(text);
+            if (text) await afterQuery(text, (result as { rows?: unknown[] }).rows?.length ?? 0);
             return result;
           },
         });
@@ -642,6 +664,7 @@ export async function makeContext(
       return client;
     };
   }
+  mem.public.none(fs.readFileSync('db/migrations/0078-exercise-adoption.sql', 'utf8'));
   const db = createDb(pool);
 
   await db

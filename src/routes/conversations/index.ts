@@ -9,13 +9,14 @@ import { resolveCanonicalAcceptedBond, resolveCanonicalAcceptedBonds } from '../
 import type { ConversationsTable, Database, MessagesTable } from '../../db/types';
 import { bodyMatchesSetRef, SetRefV1Schema, type SetRefV1 } from '../../domain/set-ref';
 import { requesterOssSignOptions } from '../../handlers/oss-sign-options';
+import { videoPreview, type VideoPreview } from '../../handlers/set-video-access';
 import { timestamp } from '../../handlers/serialization';
 import type { Logger } from '../../logger';
 import { requireRole } from '../../middleware/auth';
 import { chatMessageEvent, chatReadEvent } from '../../realtime/events';
 import type { RealtimeHub } from '../../realtime/hub';
 import type { OssService, OssSignOptions } from '../../services/oss';
-import { pushDisplayName, tryEnqueuePushOutbox } from '../../services/push-outbox';
+import { pushDisplayNameFields, tryEnqueuePushOutbox } from '../../services/push-outbox';
 import { uuidEquals } from '../../utils/uuid';
 import { route, validationEnvelope } from '../http';
 import {
@@ -68,7 +69,7 @@ interface VisibilityContext {
   showSetRefs: boolean;
 }
 
-interface MessageWire {
+interface MessageWire extends VideoPreview {
   id: string;
   conversation_id: string;
   seq: number;
@@ -281,6 +282,7 @@ async function serializeMessage(
     image_expires_in: isImage ? IMAGE_URL_TTL_SECONDS : null,
     set_ref: row.set_ref,
     video_url: videoUrl,
+    ...(await videoPreview(row.video_id === null ? null : row.video_oss_key, oss, signOptions)),
     video_expires_in: videoUrl === null ? null : IMAGE_URL_TTL_SECONDS,
     client_id: row.client_id,
     created_at: timestamp(row.created_at),
@@ -804,6 +806,8 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
                   .select('id')
                   .where('id', '=', setRef.set_log_id)
                   .where('student_id', '=', user.id)
+                  // Serialize JSON references against student-added set deletion.
+                  .forKeyShare()
                   .executeTakeFirst();
                 if (!sourceSet) {
                   return {
@@ -1072,8 +1076,11 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
             aggregateId: result.message.id,
             recipientId: otherParticipantId(conversation, user.id),
             payload: {
-              sender_name: await pushDisplayName(db, user.id),
+              ...(await pushDisplayNameFields(db, user.id, 'sender_name')),
               preview: pushMessagePreview(result.message),
+              ...(result.message.kind === 'image' || result.message.set_ref !== null
+                ? { preview_is_system: true }
+                : {}),
               conversation_id: conversation.id,
               seq: result.message.seq,
             },

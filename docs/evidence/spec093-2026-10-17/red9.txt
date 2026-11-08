@@ -1,0 +1,34 @@
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v2.1.9 /Users/david/Projects/apps/MeetPR-backend-wt-093-b
+
+ ❯ tests/coach-applications.test.ts (15 tests | 1 failed | 14 skipped) 95ms
+   × coach applications > does not create a second application after rejection 94ms
+     → expected 201 to be 409 // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/coach-applications.test.ts > coach applications > does not create a second application after rejection
+AssertionError: expected 201 to be 409 // Object.is equality
+
+- Expected
++ Received
+
+- 409
++ 201
+
+ ❯ tests/coach-applications.test.ts:272:30
+    270|     await request(app).post(`/admin/coach-applications/${submitted.bod…
+    271|     const duplicate = await request(app).post('/coach-applications').s…
+    272|     expect(duplicate.status).toBe(409);
+       |                              ^
+    273|     expect(duplicate.body.error).toBe('COACH_APPLICATION_EXISTS');
+    274|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 skipped (15)
+   Start at  00:20:12
+   Duration  1.08s (transform 330ms, setup 7ms, collect 670ms, tests 95ms, environment 0ms, prepare 58ms)
+

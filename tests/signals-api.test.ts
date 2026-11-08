@@ -180,6 +180,15 @@ describe('GET /coach/signals', () => {
         role: 'coached_student',
       })
       .execute();
+    await ctx.db
+      .insertInto('bind_requests')
+      .values({
+        student_id: profileless,
+        coach_id: ids.coach,
+        status: 'accepted',
+        expired_at: new Date('2099-01-01T00:00:00Z'),
+      })
+      .execute();
     const signalId = '81000000-0000-4000-8000-000000000007';
     await insertSignal(ctx, { id: signalId, studentId: profileless });
 
@@ -264,6 +273,15 @@ describe('POST /coach/signals/:id/ack', () => {
       signalType: 'pr_congrats',
       severity: 'green',
     });
+    await ctx.db
+      .insertInto('bind_requests')
+      .values({
+        student_id: ids.otherStudent,
+        coach_id: ids.coach,
+        status: 'accepted',
+        expired_at: new Date('2099-01-01T00:00:00Z'),
+      })
+      .execute();
     await insertSignal(ctx, {
       id: signalIds.acked,
       studentId: ids.otherStudent,
