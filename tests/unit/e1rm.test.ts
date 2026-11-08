@@ -67,18 +67,52 @@ describe('resolveCompetitionFamily', () => {
 });
 
 describe('e1RM policy', () => {
-  it('uses Epley without RPE and the canonical RTS table from RPE 6', () => {
+  it('uses Epley without RPE and the extended RPE table from RPE 6', () => {
     expect(calculateEligibleE1RM(base)).toBeCloseTo(116.6667, 4);
-    expect(calculateEligibleE1RM({ ...base, rpe: 8 })).toBeCloseTo(128.2051, 4);
-    expect(calculateEligibleE1RM({ ...base, weightKg: 140, reps: 5, rpe: 6 })).toBeCloseTo(200, 4);
+    expect(calculateEligibleE1RM({ ...base, rpe: 8 })).toBeCloseTo(123.3, 2);
+    expect(calculateEligibleE1RM({ ...base, reps: 3, rpe: 9 })).toBeCloseTo(112.11, 2);
+    expect(calculateEligibleE1RM({ ...base, reps: 1, rpe: 10 })).toBe(100);
+    expect(calculateEligibleE1RM({ ...base, rpe: 7.75 })).toBeCloseTo(124.22, 2);
+    expect(calculateEligibleE1RM({ ...base, weightKg: 140, reps: 5, rpe: 6 })).toBeCloseTo(
+      183.727,
+      4,
+    );
+  });
+
+  // Spec 062, rows = reps 1–10, columns = RPE 6–10 in half steps.
+  const extendedTable = [
+    [0.863, 0.878, 0.892, 0.907, 0.922, 0.939, 0.955, 0.978, 1],
+    [0.837, 0.85, 0.863, 0.878, 0.892, 0.907, 0.922, 0.939, 0.955],
+    [0.811, 0.824, 0.837, 0.85, 0.863, 0.878, 0.892, 0.907, 0.922],
+    [0.786, 0.799, 0.811, 0.824, 0.837, 0.85, 0.863, 0.878, 0.892],
+    [0.762, 0.774, 0.786, 0.799, 0.811, 0.824, 0.837, 0.85, 0.863],
+    [0.739, 0.751, 0.762, 0.774, 0.786, 0.799, 0.811, 0.824, 0.837],
+    [0.707, 0.723, 0.739, 0.751, 0.762, 0.774, 0.786, 0.799, 0.811],
+    [0.68, 0.694, 0.707, 0.723, 0.739, 0.751, 0.762, 0.774, 0.786],
+    [0.653, 0.667, 0.68, 0.694, 0.707, 0.723, 0.739, 0.751, 0.762],
+    [0.626, 0.64, 0.653, 0.667, 0.68, 0.694, 0.707, 0.723, 0.739],
+  ];
+
+  it.each(
+    extendedTable.flatMap((row, rowIndex) =>
+      row.map((intensity, columnIndex) => ({
+        reps: rowIndex + 1,
+        rpe: 6 + columnIndex * 0.5,
+        intensity,
+      })),
+    ),
+  )('matches spec 062 at $reps reps @ $rpe', ({ reps, rpe, intensity }) => {
+    expect(calculateEligibleE1RM({ ...base, reps, rpe })).toBe(100 / intensity);
   });
 
   it('falls back to Epley below RPE 6 and rejects RPE above 10', () => {
+    expect(calculateEligibleE1RM({ ...base, rpe: 5.5 })).toBeCloseTo(116.67, 2);
     expect(calculateEligibleE1RM({ ...base, weightKg: 140, reps: 5, rpe: 5 })).toBeCloseTo(
       163.3333,
       4,
     );
     expect(calculateEligibleE1RM({ ...base, rpe: 10.1 })).toBeNull();
+    expect(calculateEligibleE1RM({ ...base, rpe: 10.5 })).toBeNull();
   });
 
   it.each([

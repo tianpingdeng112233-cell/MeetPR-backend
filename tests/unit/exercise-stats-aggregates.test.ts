@@ -65,7 +65,7 @@ describe('exercise stats overview aggregates', () => {
       '2026-06-30',
     );
 
-    expect(series.squat.points).toEqual([{ date: '2026-06-29', value: '290.70' }]);
+    expect(series.squat.points).toEqual([{ date: '2026-06-29', value: '284.74' }]);
     expect(series.bench.points).toEqual([]);
     expect(series.deadlift.points).toEqual([]);
   });
@@ -223,7 +223,7 @@ describe('exercise stats overview aggregates', () => {
       '2026-06-30',
     );
 
-    expect(e1rmSeries.squat.points).toEqual([{ date: '2026-06-29', value: '119.05' }]);
+    expect(e1rmSeries.squat.points).toEqual([{ date: '2026-06-29', value: '115.87' }]);
     expect(aggregates.weekly_family_metrics.squat[0]?.avg_rpe).toBe('7.00');
   });
 

@@ -584,9 +584,9 @@ describe('GET /coach/students/:id/exercise-stats', () => {
     expect(deadliftDetail.status).toBe(200);
     expect(mismatchedDetail.status).toBe(200);
     expect(overview.body.e1rm).toMatchObject({
-      squat: { value: '128.21' },
+      squat: { value: '123.30' },
       bench: null,
-      deadlift: { value: '214.29' },
+      deadlift: { value: '208.57' },
     });
     expect(overview.body.e1rm.deadlift.value).toBe(deadliftDetail.body.e1rm.value);
     expect(mismatchedDetail.body.e1rm).toBeNull();
@@ -656,7 +656,7 @@ describe('GET /coach/students/:id/exercise-stats', () => {
     });
     // …while the stale exercise's own detail still anchors on its own last log.
     expect(staleDetail.body.e1rm).toEqual({
-      value: '229.17',
+      value: '230.37',
       computed_at: atTenUtc(daysFromToday(-40)).toISOString(),
     });
     expect(overview.body.e1rm.deadlift.value).not.toBe(staleDetail.body.e1rm.value);
@@ -787,8 +787,8 @@ describe('GET /coach/students/:id/exercise-stats', () => {
       },
     ]);
     expect(response.body.e1rm).toEqual({
-      value: '125.00',
-      computed_at: atTenUtc(daysFromToday(-7), 5).toISOString(),
+      value: '117.14',
+      computed_at: atTenUtc(daysFromToday(-7)).toISOString(),
     });
     expect(response.body.one_rm_reference).toBe('180.00');
   });
@@ -883,7 +883,7 @@ describe('GET /coach/students/:id/exercise-stats', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.e1rm).toEqual({
-      value: '179.49',
+      value: '172.63',
       computed_at: atTenUtc(daysFromToday(-1)).toISOString(),
     });
     expect(response.body.recent_sessions[0].sets[0].rpe).toBe('6.0');
