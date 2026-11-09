@@ -115,6 +115,12 @@ a { color: inherit; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; }
 .filters select, .filters button { height: 42px; padding: 0 16px; background: #161616; color: #dcdcdc; border: 1px solid #333; font: inherit; font-size: 14px; }
 .filters button.on { background: var(--btn); color: #111; border-color: var(--btn); font-weight: 700; }
+.sorts { display: flex; gap: 0; margin-top: 36px; border-bottom: 1px solid var(--line); }
+.sorts button { height: 48px; padding: 0 22px; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--grey); font: inherit; font-size: 16px; font-weight: 700; letter-spacing: .04em; cursor: pointer; }
+.sorts button.on { color: var(--white); border-bottom-color: var(--red); }
+.sorts button:hover { color: var(--white); }
+.sorts__note { margin-top: 12px; font-family: var(--mono); font-size: 12px; letter-spacing: .08em; color: var(--dim); }
+@media (max-width: 720px) { .sorts button { flex: 1; padding: 0 6px; font-size: 15px; } }
 .group { margin-top: 48px; display: flex; align-items: center; gap: 14px; }
 .group::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .row { display: grid; grid-template-columns: 1.1fr 1.1fr 1fr 1.1fr 1.3fr; gap: 16px; align-items: center; padding: 22px 0; border-bottom: 1px solid #1d1d1d; text-decoration: none; transition: background .15s ease, padding .15s ease; }
@@ -263,7 +269,7 @@ footer nav a.hot { color: var(--red); }
   <div class="roster__head">
     <div>
       <span class="tag">COACH ROSTER // 02</span>
-      <h2 id="roster-h">力量举教练<span>按点评数排</span></h2>
+      <h2 id="roster-h">力量举教练</h2>
     </div>
     <div class="filters">
       <select aria-label="按省份筛选"><option>全部省份</option></select>
@@ -271,15 +277,18 @@ footer nav a.hot { color: var(--red); }
     </div>
   </div>
 
-  <div class="group"><span class="tag">MOST REVIEWED // 点评最多</span></div>
+  <div class="sorts" role="tablist" aria-label="排序">
+    <button type="button" role="tab" aria-selected="true" class="on">点评最多</button>
+    <button type="button" role="tab" aria-selected="false">评分最高</button>
+    <button type="button" role="tab" aria-selected="false">最新点评</button>
+  </div>
+  <p class="sorts__note">评分最高只算满 3 条点评的教练</p>
   <a class="row" href="#"><span class="row__name">王磊</span><span class="row__alias">举铁老王</span><span class="row__mode">线上+线下</span><span class="row__city">广东 深圳</span><span class="row__score"><b>4.7</b><small>36 REVIEWS</small></span></a>
   <a class="row" href="#"><span class="row__name">陈静</span><span class="row__alias">静姐力量举</span><span class="row__mode">线上</span><span class="row__city">上海</span><span class="row__score"><b>4.5</b><small>24 REVIEWS</small></span></a>
   <a class="row" href="#"><span class="row__name">刘洋</span><span class="row__alias">洋哥硬拉</span><span class="row__mode">线下</span><span class="row__city">浙江 杭州</span><span class="row__score"><b>4.2</b><small>17 REVIEWS</small></span></a>
+  <a class="row" href="#"><span class="row__name">周敏</span><span class="row__alias">周教练</span><span class="row__mode">线上</span><span class="row__city">广东 广州</span><span class="row__score"><b>4.4</b><small>14 REVIEWS</small></span></a>
   <a class="row" href="#"><span class="row__name">张伟</span><span class="row__alias">大伟 SBD</span><span class="row__mode">线上+线下</span><span class="row__city">北京</span><span class="row__score"><b>4.8</b><small>12 REVIEWS</small></span></a>
-
-  <div class="group"><span class="tag">NEW // 新加入</span></div>
-  <a class="row" href="#"><span class="row__name">孙浩</span><span class="row__alias">浩子卧推</span><span class="row__mode">线下</span><span class="row__city">湖北 武汉</span><span class="row__few">点评较少 · 2 条</span></a>
-  <a class="row" href="#"><span class="row__name">梁宇</span><span class="row__alias">宇哥练力量</span><span class="row__mode">线上</span><span class="row__city">广东 深圳</span><span class="row__few">点评较少 · 1 条</span></a>
+  <a class="row" href="#"><span class="row__name">黄志远</span><span class="row__alias">志远举铁</span><span class="row__mode">线下</span><span class="row__city">广东 深圳</span><span class="row__score"><b>4.6</b><small>11 REVIEWS</small></span></a>
 
   <a class="more" href="#">VIEW ALL 128 COACHES →</a>
 </section>

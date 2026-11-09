@@ -9,7 +9,13 @@
 <style>
 .list-head { display: flex; flex-direction: column; gap: 28px; }
 .list-tools { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-top: 8px; }
-.list-meta { margin-top: 48px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.sorts { display: flex; gap: 0; margin-top: 40px; border-bottom: 1px solid var(--line); }
+.sorts button { height: 48px; padding: 0 22px; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--grey); font: inherit; font-size: 16px; font-weight: 700; letter-spacing: .04em; cursor: pointer; }
+.sorts button.on { color: var(--white); border-bottom-color: var(--red); }
+.sorts button:hover { color: var(--white); }
+.sorts__note { margin-top: 12px; font-family: var(--mono); font-size: 12px; letter-spacing: .08em; color: var(--dim); }
+@media (max-width: 720px) { .sorts button { flex: 1; padding: 0 6px; font-size: 15px; } }
+.list-meta { margin-top: 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .roster { padding: 0 40px 112px; }
 .more { display: inline-block; margin-top: 36px; font-family: var(--mono); font-size: 13px; letter-spacing: .14em; text-decoration: none; border-bottom: 1px solid var(--red); padding-bottom: 4px; }
 .submit-row { margin-top: 64px; padding: 28px 32px; border: 1px solid var(--line); border-left: 3px solid var(--red); display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; background: var(--panel); }
@@ -64,8 +70,12 @@
         <button type="button" class="on">全部</button><button type="button">线下</button><button type="button">线上</button><button type="button">线上+线下</button>
       </div>
     </div>
-    <div class="list-meta"><span class="tag tag--grey">128 COACHES</span><span class="tag tag--grey">按点评数排</span></div>
-    <div class="group"><span class="tag">MOST REVIEWED // 点评最多</span></div>
+        <div class="sorts" role="tablist" aria-label="排序">
+    <button type="button" role="tab" aria-selected="true" class="on">点评最多</button>
+    <button type="button" role="tab" aria-selected="false">评分最高</button>
+    <button type="button" role="tab" aria-selected="false">最新点评</button>
+  </div>
+    <div class="list-meta"><span class="tag tag--grey">128 COACHES</span><span class="tag tag--grey">评分最高只算满 3 条点评的教练</span></div>
     <a class="row" href="coach.html"><span class="row__name">王磊</span><span class="row__alias">举铁老王</span><span class="row__mode">线上+线下</span><span class="row__city">广东 深圳</span><span class="row__score"><b>4.7</b><small>36 REVIEWS</small></span></a>
     <a class="row" href="coach.html"><span class="row__name">陈静</span><span class="row__alias">静姐力量举</span><span class="row__mode">线上</span><span class="row__city">上海</span><span class="row__score"><b>4.5</b><small>24 REVIEWS</small></span></a>
     <a class="row" href="coach.html"><span class="row__name">刘洋</span><span class="row__alias">洋哥硬拉</span><span class="row__mode">线下</span><span class="row__city">浙江 杭州</span><span class="row__score"><b>4.2</b><small>17 REVIEWS</small></span></a>
