@@ -32,7 +32,7 @@ export function listedCoachQuery(db: Kysely<Database>) {
     .select('listed_coach_id')
     .select((eb) => [
       eb.fn.countAll<number>().as('review_count'),
-      eb.fn.max('updated_at').as('latest_review_at'),
+      eb.fn.max('created_at').as('latest_review_at'),
       ...(['overall', 'professionalism', 'communication', 'results', 'value'] as const).map((key) =>
         eb.fn.avg<number>(key).as(key),
       ),

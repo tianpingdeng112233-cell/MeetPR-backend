@@ -3,7 +3,7 @@ import supertest from 'supertest';
 import * as sms from '../src/services/sms';
 import pino from 'pino';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Kysely } from 'kysely';
+import type { Insertable, Kysely } from 'kysely';
 import { DataType } from 'pg-mem';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
@@ -130,7 +130,204 @@ async function importCoach(
   return coach.id;
 }
 
+async function seedRankedCoach(
+  db: Kysely<Database>,
+  index: number,
+  ratings: number[],
+  fields: Partial<Insertable<Database['listed_coaches']>> = {},
+) {
+  const id = `33333333-3333-4333-8333-${String(index).padStart(12, '0')}`;
+  await db
+    .insertInto('listed_coaches')
+    .values({
+      ...coachInput,
+      teaching_mode: '线下',
+      id,
+      name: `Coach ${String(index)}`,
+      douyin_handle: `coach_${String(index)}`,
+      status: 'published',
+      ...fields,
+    })
+    .execute();
+  for (const [position, overall] of ratings.entries()) {
+    const accountId = `44444444-4444-4444-8444-${String(position).padStart(12, '0')}`;
+    await db
+      .insertInto('coach_review_accounts')
+      .values({ id: accountId, phone: `139${String(position).padStart(8, '0')}`, nickname: '学员' })
+      .onConflict((oc) => oc.column('id').doNothing())
+      .execute();
+    await db
+      .insertInto('coach_reviews')
+      .values({ ...review, overall, listed_coach_id: id, account_id: accountId })
+      .execute();
+  }
+  return id;
+}
+
 describe('coach reviews HTTP', () => {
+  it('B12 most breaks publication ties by name then id and leaves unreviewed coaches last', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
+    const { app, db } = await context();
+    const z = await seedRankedCoach(db, 1, [5], { name: 'Z reviewed' });
+    const aLast = await seedRankedCoach(db, 3, [5], { name: 'A reviewed' });
+    const aFirst = await seedRankedCoach(db, 2, [5], { name: 'A reviewed' });
+    const emptyZ = await seedRankedCoach(db, 4, [], { name: 'Z unreviewed' });
+    const emptyA = await seedRankedCoach(db, 5, [], { name: 'A unreviewed' });
+    for (const suffix of ['', '?sort=most']) {
+      const response = await request(app).get(`/public/coach-reviews/coaches${suffix}`);
+      expect(response.status).toBe(200);
+      expect(response.body.coaches.map((coach: { id: string }) => coach.id)).toEqual([
+        aFirst,
+        aLast,
+        z,
+        emptyA,
+        emptyZ,
+      ]);
+    }
+  });
+  it('rejects an unsupported sort without changing the validation envelope', async () => {
+    const { app } = await context();
+    const response = await request(app).get('/public/coach-reviews/coaches?sort=unknown');
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: 'VALIDATION_ERROR',
+      issues: [{ path: ['sort'] }],
+    });
+  });
+  it.each(['most', 'top', 'latest'])(
+    'returns the filtered total before pagination for %s',
+    async (sort) => {
+      const { app, db } = await context();
+      const a = await seedRankedCoach(db, 1, [5, 5, 5], { name: 'Match Alpha' });
+      const b = await seedRankedCoach(db, 2, [4, 4, 4, 4], { nickname: 'Match Beta' });
+      const c = await seedRankedCoach(db, 3, [5, 5], { name: 'Match Gamma' });
+      await seedRankedCoach(db, 4, [5, 5, 5], { name: 'Match', province: '浙江' });
+      await seedRankedCoach(db, 5, [5, 5, 5], { name: 'Match', city: '绵阳' });
+      await seedRankedCoach(db, 6, [5, 5, 5], { name: 'Match', teaching_mode: '线上' });
+      await seedRankedCoach(db, 7, [5, 5, 5]);
+      await seedRankedCoach(db, 8, [5, 5, 5], { name: 'Match', status: 'hidden' });
+      await seedRankedCoach(db, 9, [5, 5, 5], { name: 'Match', status: 'pending' });
+      await seedRankedCoach(db, 10, [5, 5, 5], { name: 'Match', status: 'rejected' });
+      const query = new URLSearchParams({
+        sort,
+        province: '四川',
+        city: '成都',
+        teaching_mode: '线下',
+        q: 'Match',
+      });
+      const list = async () => {
+        const response = await request(app).get(
+          `/public/coach-reviews/coaches?${query.toString()}`,
+        );
+        expect(response.status).toBe(200);
+        return response.body as { coaches: { id: string }[]; total: number; contact: string };
+      };
+      const expectedTotal = sort === 'top' ? 2 : 3;
+      const all = await list();
+      expect(all.total).toBe(expectedTotal);
+      expect(all.coaches).toHaveLength(expectedTotal);
+      expect(all.coaches.map((coach: { id: string }) => coach.id).sort()).toEqual(
+        sort === 'top' ? [a, b] : [a, b, c],
+      );
+      query.set('limit', '1');
+      query.set('offset', '1');
+      expect(await list()).toEqual({
+        coaches: [all.coaches[1]],
+        total: expectedTotal,
+        contact: '管理员联系渠道',
+      });
+      query.set('offset', '100');
+      expect(await list()).toEqual({
+        coaches: [],
+        total: expectedTotal,
+        contact: '管理员联系渠道',
+      });
+      query.set('q', 'No match');
+      expect(await list()).toEqual({ coaches: [], total: 0, contact: '管理员联系渠道' });
+    },
+  );
+  it('B12 latest uses first publication, ignores edits, falls back after deletion and puts unreviewed coaches last by listing date', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
+    const { app, admin } = await context();
+    const emptyOld = await importCoach(app, admin, 'A unreviewed', 'empty_old');
+    vi.setSystemTime(Date.now() + 1000);
+    const emptyNew = await importCoach(app, admin, 'Z unreviewed', 'empty_new');
+    vi.setSystemTime(Date.now() + 1000);
+    const a = await importCoach(app, admin, 'A reviewed', 'a');
+    const b = await importCoach(app, admin, 'B reviewed', 'b');
+    const first = await login(app, '13900000001');
+    const second = await login(app, '13900000002');
+    const publish = async (id: string, auth: { Authorization: string }) => {
+      vi.setSystemTime(Date.now() + 1000);
+      const response = await request(app)
+        .post(`/public/coach-reviews/coaches/${id}/reviews`)
+        .set(auth)
+        .send(review);
+      expect(response.status).toBe(201);
+      return response.body.id as string;
+    };
+    const oldest = await publish(a, first);
+    const middle = await publish(b, first);
+    const newest = await publish(a, second);
+    const ids = async () => {
+      const response = await request(app).get('/public/coach-reviews/coaches?sort=latest');
+      expect(response.status).toBe(200);
+      return response.body.coaches.map((coach: { id: string }) => coach.id) as string[];
+    };
+    expect(await ids()).toEqual([a, b, emptyNew, emptyOld]);
+    vi.setSystemTime(Date.now() + 1000);
+    expect(
+      (await request(app).patch(`/public/coach-reviews/reviews/${middle}`).set(first).send(review))
+        .status,
+    ).toBe(200);
+    expect(await ids()).toEqual([a, b, emptyNew, emptyOld]);
+    expect(
+      (await request(app).delete(`/public/coach-reviews/reviews/${newest}`).set(second)).status,
+    ).toBe(204);
+    expect(await ids()).toEqual([b, a, emptyNew, emptyOld]);
+    expect(
+      (
+        await request(app)
+          .post(`/admin/coach-reviews/coaches/${b}/status`)
+          .set(admin)
+          .send({ status: 'hidden' })
+      ).status,
+    ).toBe(200);
+    expect(await ids()).toEqual([a, emptyNew, emptyOld]);
+    expect(
+      (await request(app).delete(`/public/coach-reviews/reviews/${oldest}`).set(first)).status,
+    ).toBe(204);
+    expect(await ids()).toEqual([a, emptyNew, emptyOld]);
+  });
+  it('B12 top ranks by overall average, then count and id, excluding fewer than three public reviews', async () => {
+    const { app, db } = await context();
+    const low = await seedRankedCoach(db, 1, [3, 3, 3, 3, 3]);
+    const tiedFirst = await seedRankedCoach(db, 2, [4, 4, 4], { name: 'Z coach' });
+    const tiedLast = await seedRankedCoach(db, 3, [4, 4, 4], { name: 'A coach' });
+    const more = await seedRankedCoach(db, 4, [4, 4, 4, 4]);
+    const highest = await seedRankedCoach(db, 5, [5, 5, 4]);
+    await seedRankedCoach(db, 6, [5, 5]);
+    await seedRankedCoach(db, 7, []);
+    await seedRankedCoach(db, 8, [5, 5, 5], { status: 'hidden' });
+    const deleted = await seedRankedCoach(db, 9, [5, 5, 5]);
+    await db
+      .updateTable('coach_reviews')
+      .set({ deleted_at: new Date() })
+      .where('listed_coach_id', '=', deleted)
+      .where('account_id', '=', '44444444-4444-4444-8444-000000000000')
+      .execute();
+    const response = await request(app).get('/public/coach-reviews/coaches?sort=top');
+    expect(response.status).toBe(200);
+    expect(response.body.coaches.map((coach: { id: string }) => coach.id)).toEqual([
+      highest,
+      more,
+      tiedFirst,
+      tiedLast,
+      low,
+    ]);
+  });
   it('returns the configured public contact verbatim, defaults to empty, and gates the new routes', async () => {
     const contact = '  投诉与下架：请联系管理员\n邮箱：admin@example.test  ';
     const { app } = await context({ COACH_REVIEWS_CONTACT: contact });
@@ -655,7 +852,7 @@ describe('coach reviews HTTP', () => {
     ).toHaveLength(0);
   });
 
-  it('B2 filters province/city/mode, searches name/nickname and sorts by count then latest update', async () => {
+  it('B2/B12 filters province/city/mode, searches name/nickname and defaults to most by first publication', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const { app, admin } = await context();
     const a = await importCoach(app, admin, 'A教练', 'a'),
@@ -685,7 +882,10 @@ describe('coach reviews HTTP', () => {
           .send(review)
       ).status,
     ).toBe(200);
-    expect(await ids()).toEqual([c, a, b]);
+    expect(await ids()).toEqual([c, b, a]);
+    const most = await request(app).get('/public/coach-reviews/coaches?sort=most');
+    expect(most.status).toBe(200);
+    expect(most.body.coaches.map((coach: { id: string }) => coach.id)).toEqual([c, b, a]);
     expect(
       (await request(app).get('/public/coach-reviews/coaches?q=B%E6%95%99%E7%BB%83')).body.coaches,
     ).toHaveLength(1);

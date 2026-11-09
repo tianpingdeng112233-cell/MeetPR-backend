@@ -43,6 +43,7 @@ export function coachReviewsRouter(deps: CoachReviewDeps) {
           city: z.string().max(200).optional(),
           teaching_mode: z.enum(['线下', '线上', '线上+线下']).optional(),
           q: z.string().max(200).optional(),
+          sort: z.enum(['most', 'top', 'latest']).default('most'),
           limit: z.coerce.number().int().min(1).max(100).default(50),
           offset: z.coerce.number().int().nonnegative().default(0),
         })
@@ -51,7 +52,7 @@ export function coachReviewsRouter(deps: CoachReviewDeps) {
         res.status(400).json(validationEnvelope(input.error));
         return;
       }
-      const { province, city, teaching_mode, q, limit, offset } = input.data;
+      const { province, city, teaching_mode, q, sort, limit, offset } = input.data;
       let query = listedCoachQuery(deps.db);
       if (province) query = query.where('province', '=', province);
       if (city) query = query.where('city', '=', city);
@@ -60,16 +61,34 @@ export function coachReviewsRouter(deps: CoachReviewDeps) {
         query = query.where((eb) =>
           eb.or([eb('name', 'ilike', `%${q}%`), eb('nickname', 'ilike', `%${q}%`)]),
         );
+      if (sort === 'top') {
+        query = query
+          .where('stats.review_count', '>=', 3)
+          .orderBy('stats.overall', 'desc')
+          .orderBy('stats.review_count', 'desc');
+      } else if (sort === 'latest') {
+        query = query
+          .orderBy(sql`stats.latest_review_at desc nulls last`)
+          .orderBy('listed_coaches.created_at', 'desc');
+      } else {
+        query = query
+          .orderBy(sql`coalesce(stats.review_count,0)`, 'desc')
+          .orderBy(sql`stats.latest_review_at desc nulls last`)
+          .orderBy('name');
+      }
+      const count = await query
+        .clearSelect()
+        .clearOrderBy()
+        .select((eb) => eb.fn.countAll<number | string>().as('total'))
+        .executeTakeFirstOrThrow();
       const coaches = await query
-        .orderBy(sql`coalesce(stats.review_count,0)`, 'desc')
-        .orderBy(sql`stats.latest_review_at desc nulls last`)
-        .orderBy('name')
         .orderBy('listed_coaches.id')
         .limit(limit)
         .offset(offset)
         .execute();
       res.json({
         coaches: coaches.map(publicCoach),
+        total: Number(count.total),
         contact: deps.config.COACH_REVIEWS_CONTACT ?? '',
       });
     }),
