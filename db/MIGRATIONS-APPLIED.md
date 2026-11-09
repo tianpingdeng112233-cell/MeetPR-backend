@@ -337,6 +337,11 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- 2026-11-09 — `sha-ea86770`(=staging HEAD,#393 spec 063 力量举教练点评后端)经 deploy-staging.yml
+  (run 42630170395)部署 `meetpr-backend-staging`;env 未动。**迁移 0084-coach-reviews 尚未应用**:
+  整套功能挂在 `COACH_REVIEWS_ENABLED` 后、默认关闭、路由不挂载,本镜像在开关关闭时不访问任何新表。
+  **打开开关前必须先应用 0084**(纯加法 7 张表)。curl 验证:/health 200;`/public/coach-reviews/config`
+  404(开关关);`POST /auth/login` 空体 400(现有登录正常)。
 - 2026-09-02 — `sha-d604c8c`(=staging HEAD,#273 已发布计划 batch 更新入 outbox 推 plan_updated + 注册 plan_published builder + 纯树改动 bump updated_at,#274 纯 web/ 换装 plan-web #99:横幅在场直接更新 + 逐组字段透传,入口 index-DVyPjsWT.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署 `meetpr-backend-staging`(deploy run 33622747305 绿);env 未动。curl 验证:/health 200、GET / 回新入口。配套 iOS #339 已落 release/1.0 进 1.0(22)。
 - 2026-08-22 — `sha-7b8e931`(=staging HEAD,#262 反馈视频摘要带 `rpe`:feedback-fetch 多 select
   `sl.rpe`,学员/教练共用投影 toFixed(1)/null,无新迁移)经 deploy-staging.yml(migrations_applied=true)
