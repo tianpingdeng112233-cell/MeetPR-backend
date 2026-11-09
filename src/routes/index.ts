@@ -1,3 +1,4 @@
+import { coachReviewsRouter } from './coach-reviews';
 import { createPreferredLocale } from '../middleware/preferred-locale';
 import type { Express, RequestHandler } from 'express';
 import type { Kysely } from 'kysely';
@@ -64,6 +65,16 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
     app.use('/public/invites', publicInvitesRouter(deps.db));
   }
   app.use('/auth', authRouter({ config: deps.config, db: deps.db, logger: deps.logger }));
+  if (deps.config.COACH_REVIEWS_ENABLED === true) {
+    app.use('/public/coach-reviews', coachReviewsRouter(deps));
+    app.use('/admin/coach-reviews', createOptionalAuth(deps.config), (req, res, next) => {
+      if (req.user?.role !== 'admin') {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
+      next();
+    });
+  }
   app.use('/admin', deps.requireAuth, adminRouter({ db: deps.db, onboarding: deps }));
   app.use(
     '/plans',

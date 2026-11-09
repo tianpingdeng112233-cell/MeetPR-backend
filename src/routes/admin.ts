@@ -1,3 +1,4 @@
+import { adminCoachReviewsRouter } from './admin-coach-reviews';
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
@@ -51,6 +52,9 @@ export function adminRouter(deps: AdminRouterDeps): ExpressRouter {
     })().catch(next);
   });
 
+  if (deps.onboarding?.config.COACH_REVIEWS_ENABLED === true) {
+    router.use('/coach-reviews', adminCoachReviewsRouter(deps.db));
+  }
   router.use('/custom-exercises', adminCustomExercisesRouter(deps.db));
 
   if (deps.onboarding?.config.COACH_ONBOARDING_ENABLED === true) {
