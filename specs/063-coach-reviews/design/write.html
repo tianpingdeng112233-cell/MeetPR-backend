@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>点评孙浩 · 力量举教练点评</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+.page { position: relative; isolation: isolate; overflow: hidden; }
+.page > .dots { right: 0; top: 0; width: 46%; height: 520px; -webkit-mask-image: linear-gradient(240deg, #000 0%, transparent 70%); mask-image: linear-gradient(240deg, #000 0%, transparent 70%); opacity: .3; }
+.top { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid var(--line2); }
+.form { width: min(640px, 100% - 32px); margin: 0 auto; padding: 48px 0 80px; display: flex; flex-direction: column; gap: 32px; }
+.form h1 { margin: 10px 0 0; font-size: 56px; font-weight: 900; letter-spacing: .02em; line-height: 1.04; }
+.form h1 span { display: block; color: #bdbdbd; font-size: .5em; margin-top: 8px; }
+.total { display: flex; gap: 6px; }
+.total button { width: 60px; height: 60px; background: #141414; border: 1px solid #333; color: #3a3a3a; font-size: 30px; cursor: pointer; }
+.total button.on { color: var(--star); border-color: rgba(255,209,0,.4); background: rgba(255,209,0,.08); }
+.subrow { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line2); font-size: 16px; }
+.subrow .pick { display: flex; }
+.subrow .pick button { width: 44px; height: 44px; background: none; border: 0; color: #3a3a3a; font-size: 22px; cursor: pointer; }
+.subrow .pick button.on { color: var(--star); }
+.count { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; letter-spacing: .1em; color: var(--grey); }
+.fine { font-size: 13px; color: var(--grey); line-height: 1.7; margin: -12px 0 0; }
+@media (max-width: 720px) { .form { padding-top: 32px; gap: 28px; } .form h1 { font-size: 44px; } .total button { width: 54px; height: 54px; font-size: 26px; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="dots" aria-hidden="true"></div>
+  <div class="top"><a class="back" href="coach.html">← BACK</a><span class="tag tag--grey">力量举教练点评</span></div>
+  <form class="form" aria-labelledby="w-h">
+    <div><span class="tag">WRITE A REVIEW // 湖北 武汉</span><h1 id="w-h">点评 孙浩<span>浩子卧推 · 线下</span></h1></div>
+
+    <label class="field"><span>你的昵称</span><input class="input" type="text" value="举铁小王"><small>第一次写点评时设置，以后都用这个名字。2–16 个字。</small></label>
+
+    <fieldset class="field" style="border:0;margin:0;padding:0;">
+      <legend class="tag" style="margin-bottom:12px;">TOTAL // 总分</legend>
+      <div class="total" role="radiogroup" aria-label="总分">
+        <button type="button" class="on" aria-label="1 星">★</button><button type="button" class="on" aria-label="2 星">★</button><button type="button" class="on" aria-label="3 星">★</button><button type="button" class="on" aria-label="4 星">★</button><button type="button" aria-label="5 星">★</button>
+      </div>
+    </fieldset>
+
+    <fieldset class="field" style="border:0;margin:0;padding:0;">
+      <legend class="tag" style="margin-bottom:6px;">SCORES // 四项</legend>
+      <div class="subrow"><span>专业度</span><span class="pick"><button class="on">★</button><button class="on">★</button><button class="on">★</button><button class="on">★</button><button class="on">★</button></span></div>
+      <div class="subrow"><span>沟通反馈</span><span class="pick"><button class="on">★</button><button class="on">★</button><button class="on">★</button><button class="on">★</button><button>★</button></span></div>
+      <div class="subrow"><span>训练效果</span><span class="pick"><button class="on">★</button><button class="on">★</button><button class="on">★</button><button class="on">★</button><button>★</button></span></div>
+      <div class="subrow"><span>性价比</span><span class="pick"><button class="on">★</button><button class="on">★</button><button class="on">★</button><button class="on">★</button><button>★</button></span></div>
+    </fieldset>
+
+    <label class="field"><span>说说你的体验</span>
+      <textarea class="input" rows="6" placeholder="跟了他多久？计划和反馈怎么样？成绩有没有变化？">线下上了 12 节私教课，卧推握距和起桥调得很细。想继续练可以加我微信 abc123</textarea>
+      <span class="count"><span>至少 10 个字</span><span>39 / 1000</span></span>
+    </label>
+
+    <div class="alert" role="alert">内容里有微信号，删掉后再发布。点评里不能留手机号、微信、QQ 或链接。</div>
+
+    <button class="btn btn--solid btn--block" type="submit">发布点评</button>
+    <p class="fine">一位教练你只能写一条点评，发布后可以随时修改或删除。</p>
+  </form>
+</div>
+</body>
+</html>

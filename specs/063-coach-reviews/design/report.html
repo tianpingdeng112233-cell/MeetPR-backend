@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>举报点评 · 力量举教练点评</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+.under { position: relative; min-height: 860px; overflow: hidden; }
+.under__ghost { padding: 96px 24px; opacity: .35; filter: grayscale(1); }
+.under__ghost b { display: block; font-size: 64px; font-weight: 900; }
+.under__ghost p { max-width: 520px; font-size: 16px; line-height: 1.8; color: #cfcfcf; }
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.6); }
+.sheet { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); width: min(560px, 100%); background: #121212; border: 1px solid var(--line); border-top: 3px solid var(--red); padding: 24px 24px 32px; display: flex; flex-direction: column; gap: 18px; }
+.sheet__head { display: flex; justify-content: space-between; align-items: flex-start; }
+.sheet h1 { margin: 8px 0 0; font-size: 30px; font-weight: 900; }
+.close { width: 44px; height: 44px; display: grid; place-items: center; color: var(--white); text-decoration: none; font-size: 22px; }
+.quote { border-left: 2px solid #333; padding-left: 14px; font-size: 14px; line-height: 1.7; color: var(--grey); }
+.reasons label { display: flex; align-items: center; gap: 14px; min-height: 52px; border-bottom: 1px solid var(--line2); font-size: 16px; cursor: pointer; }
+.reasons input { width: 20px; height: 20px; accent-color: var(--red); }
+.fine { margin: 0; font-size: 13px; color: var(--grey); line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="under">
+  <div class="under__ghost" aria-hidden="true"><b>王磊</b><p>线上跟了 8 个月。每周计划按上周的 RPE 调，视频基本当天回……</p></div>
+  <div class="scrim" aria-hidden="true"></div>
+  <form class="sheet" aria-labelledby="r-h">
+    <div class="sheet__head">
+      <div><span class="tag">REPORT // 举报</span><h1 id="r-h">举报这条点评</h1></div>
+      <a class="close" href="coach.html" aria-label="关闭">✕</a>
+    </div>
+    <p class="quote">「收钱不办事，就是个骗子，大家别上当。」—— 路人甲</p>
+    <fieldset class="reasons" style="border:0;margin:0;padding:0;">
+      <legend class="tag tag--grey" style="margin-bottom:6px;">选一个理由</legend>
+      <label><input type="radio" name="r" checked>辱骂、人身攻击</label>
+      <label><input type="radio" name="r">泄露隐私</label>
+      <label><input type="radio" name="r">虚假内容或广告</label>
+      <label><input type="radio" name="r">其他</label>
+    </fieldset>
+    <label class="field"><span>补充说明（选填）</span><textarea class="input" rows="3"></textarea></label>
+    <p class="fine">举报后这条点评会照常显示，管理员 3 天内处理。</p>
+    <button class="btn btn--solid btn--block" type="submit">提交举报</button>
+  </form>
+</div>
+</body>
+</html>

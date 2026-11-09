@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>全部力量举教练 · 力量举教练点评</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+.list-head { display: flex; flex-direction: column; gap: 28px; }
+.list-tools { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-top: 8px; }
+.sorts { display: flex; gap: 0; margin-top: 40px; border-bottom: 1px solid var(--line); }
+.sorts button { height: 48px; padding: 0 22px; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--grey); font: inherit; font-size: 16px; font-weight: 700; letter-spacing: .04em; cursor: pointer; }
+.sorts button.on { color: var(--white); border-bottom-color: var(--red); }
+.sorts button:hover { color: var(--white); }
+.sorts__note { margin-top: 12px; font-family: var(--mono); font-size: 12px; letter-spacing: .08em; color: var(--dim); }
+@media (max-width: 720px) { .sorts button { flex: 1; padding: 0 6px; font-size: 15px; } }
+.list-meta { margin-top: 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.roster { padding: 0 40px 112px; }
+.more { display: inline-block; margin-top: 36px; font-family: var(--mono); font-size: 13px; letter-spacing: .14em; text-decoration: none; border-bottom: 1px solid var(--red); padding-bottom: 4px; }
+.submit-row { margin-top: 64px; padding: 28px 32px; border: 1px solid var(--line); border-left: 3px solid var(--red); display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; background: var(--panel); }
+.submit-row b { font-size: 20px; font-weight: 900; }
+.submit-row p { margin: 6px 0 0; font-size: 15px; color: var(--grey); }
+@media (max-width: 720px) {
+  .roster { padding: 0 16px 72px; }
+  .list-meta { margin-top: 32px; }
+  .submit-row { padding: 22px 18px; }
+  .submit-row .btn { width: 100%; }
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <button class="back bar__lead" type="button" aria-label="搜索教练" style="background:none;border:0;color:#fff;width:44px;justify-content:center;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+  </button>
+  <a class="bar__logo" href="home.html"><b>力量举教练点评</b><small>POWERLIFTING COACH REVIEWS</small></a>
+  <nav aria-label="主导航"><a href="home.html">首页</a><a class="on" href="list.html">全部教练</a><a href="home.html#map">教练分布</a><a href="home.html">点评规则</a></nav>
+  <div class="bar__actions"><a class="btn btn--dark" href="login.html">登录</a><a class="btn btn--solid" href="write.html">写点评</a></div>
+</header>
+
+<section class="band" aria-labelledby="list-h">
+  <img class="band__photo" src="img/hall.jpg" alt="" aria-hidden="true" style="object-position: 40% 40%">
+  <div class="dots" aria-hidden="true"></div>
+  <div class="wrap list-head">
+    <div>
+      <span class="tag">COACH ROSTER // ALL</span>
+      <h1 id="list-h" class="huge">全部力量举教练</h1>
+    </div>
+    <form class="search" role="search">
+      <div class="search__tabs" role="tablist" aria-label="查询方式">
+        <button type="button" role="tab" aria-selected="false">按城市</button>
+        <button type="button" role="tab" aria-selected="true" class="on">按名字 / 网名</button>
+      </div>
+      <div class="search__bar">
+        <label><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9b9b9b" stroke-width="2.2" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+        <input type="search" placeholder="输入教练名字或网名" aria-label="输入教练名字或网名"></label>
+        <button type="submit">找教练</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="roster" aria-label="教练名单">
+  <div class="wrap">
+    <div class="list-tools">
+      <div class="filters">
+        <select aria-label="省份"><option>全部省份</option><option>广东</option></select>
+        <select aria-label="城市"><option>全部城市</option></select>
+        <button type="button" class="on">全部</button><button type="button">线下</button><button type="button">线上</button><button type="button">线上+线下</button>
+      </div>
+    </div>
+        <div class="sorts" role="tablist" aria-label="排序">
+    <button type="button" role="tab" aria-selected="true" class="on">点评最多</button>
+    <button type="button" role="tab" aria-selected="false">评分最高</button>
+    <button type="button" role="tab" aria-selected="false">最新点评</button>
+  </div>
+    <div class="list-meta"><span class="tag tag--grey">128 COACHES</span><span class="tag tag--grey">评分最高只算满 3 条点评的教练</span></div>
+    <a class="row" href="coach.html"><span class="row__name">王磊</span><span class="row__alias">举铁老王</span><span class="row__mode">线上+线下</span><span class="row__city">广东 深圳</span><span class="row__score"><b>4.7</b><small>36 REVIEWS</small></span></a>
+    <a class="row" href="coach.html"><span class="row__name">陈静</span><span class="row__alias">静姐力量举</span><span class="row__mode">线上</span><span class="row__city">上海</span><span class="row__score"><b>4.5</b><small>24 REVIEWS</small></span></a>
+    <a class="row" href="coach.html"><span class="row__name">刘洋</span><span class="row__alias">洋哥硬拉</span><span class="row__mode">线下</span><span class="row__city">浙江 杭州</span><span class="row__score"><b>4.2</b><small>17 REVIEWS</small></span></a>
+    <a class="row" href="coach.html"><span class="row__name">周敏</span><span class="row__alias">周教练</span><span class="row__mode">线上</span><span class="row__city">广东 广州</span><span class="row__score"><b>4.4</b><small>14 REVIEWS</small></span></a>
+    <a class="row" href="coach.html"><span class="row__name">张伟</span><span class="row__alias">大伟 SBD</span><span class="row__mode">线上+线下</span><span class="row__city">北京</span><span class="row__score"><b>4.8</b><small>12 REVIEWS</small></span></a>
+    <a class="row" href="coach.html"><span class="row__name">黄志远</span><span class="row__alias">志远举铁</span><span class="row__mode">线下</span><span class="row__city">广东 深圳</span><span class="row__score"><b>4.6</b><small>11 REVIEWS</small></span></a>
+    <a class="row" href="coach.html"><span class="row__name">李娜</span><span class="row__alias">娜娜练力量</span><span class="row__mode">线上</span><span class="row__city">四川 成都</span><span class="row__score"><b>3.9</b><small>8 REVIEWS</small></span></a>
+    <a class="row" href="coach.html"><span class="row__name">孙浩</span><span class="row__alias">浩子卧推</span><span class="row__mode">线下</span><span class="row__city">湖北 武汉</span><span class="row__few">点评较少 · 2 条</span></a>
+    <a class="row" href="coach.html"><span class="row__name">梁宇</span><span class="row__alias">宇哥练力量</span><span class="row__mode">线上</span><span class="row__city">广东 深圳</span><span class="row__few">点评较少 · 1 条</span></a>
+    <a class="more" href="list.html">LOAD MORE →</a>
+
+    <div class="submit-row">
+      <div><b>列表里没有你想找的教练？</b><p>提交他的名字、抖音号和城市，管理员审核后上线。</p></div>
+      <a class="btn btn--dark" href="submit.html">提交一位教练</a>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div><b>力量举教练点评</b><small>© 2026 POWERLIFTING COACH REVIEWS</small></div>
+  <nav aria-label="页脚"><a href="submit.html">提交教练</a><a href="home.html">点评规则</a><a href="home.html">隐私</a><a class="hot" href="home.html">教练申请下架</a></nav>
+</footer>
+</body>
+</html>
