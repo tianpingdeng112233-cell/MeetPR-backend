@@ -1,3 +1,12 @@
+import type {
+  ListedCoachesTable,
+  CoachReviewAccountsTable,
+  CoachReviewOtpsTable,
+  CoachReviewTokensTable,
+  CoachReviewsTable,
+  CoachReviewWordsTable,
+  CoachReviewReportsTable,
+} from '../services/coach-reviews/types';
 import type { PreferredLocale } from '../i18n/locale';
 import type { ColumnType, Generated } from 'kysely';
 
@@ -875,6 +884,13 @@ export interface CoachStudentPlanViewsTable {
 }
 
 export interface Database {
+  listed_coaches: ListedCoachesTable;
+  coach_review_accounts: CoachReviewAccountsTable;
+  coach_review_otps: CoachReviewOtpsTable;
+  coach_review_tokens: CoachReviewTokensTable;
+  coach_reviews: CoachReviewsTable;
+  coach_review_words: CoachReviewWordsTable;
+  coach_review_reports: CoachReviewReportsTable;
   plan_import_runs: PlanImportRunsTable;
   users: UsersTable;
   user_identities: UserIdentitiesTable;

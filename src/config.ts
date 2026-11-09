@@ -94,6 +94,8 @@ export const ConfigSchema = z
     APPLE_CLIENT_ID: z.string().min(1).optional(),
     GOOGLE_CLIENT_ID: z.string().optional(),
     EMAIL_SIGNUP_VERIFICATION: z.enum(['off', 'required']).default('off'),
+    COACH_REVIEWS_ENABLED: BooleanEnvSchema,
+    COACH_REVIEWS_CONTACT: z.string().max(1000).default(''),
     COACH_ONBOARDING_ENABLED: BooleanEnvSchema,
     COACH_ONBOARDING_URL: z.string().url().optional(),
     MAIL_LOCALE: z.enum(['en', 'zh']).default('en'),
@@ -270,7 +272,9 @@ export type Config = Omit<
   | 'MAIL_LOCALE'
   | 'MIN_IOS_BUILD'
   | 'MIN_ANDROID_VERSION_CODE'
+  | 'COACH_REVIEWS_CONTACT'
 > & {
+  COACH_REVIEWS_CONTACT?: ParsedConfig['COACH_REVIEWS_CONTACT'];
   MIN_IOS_BUILD?: ParsedConfig['MIN_IOS_BUILD'];
   MIN_ANDROID_VERSION_CODE?: ParsedConfig['MIN_ANDROID_VERSION_CODE'];
   EMAIL_SIGNUP_VERIFICATION?: ParsedConfig['EMAIL_SIGNUP_VERIFICATION'];
