@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>提交一位教练 · 力量举教练点评</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+.page { position: relative; isolation: isolate; overflow: hidden; }
+.page > .dots { right: 0; top: 0; width: 46%; height: 520px; -webkit-mask-image: linear-gradient(240deg, #000 0%, transparent 70%); mask-image: linear-gradient(240deg, #000 0%, transparent 70%); opacity: .3; }
+.top { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid var(--line2); }
+.form { width: min(640px, 100% - 32px); margin: 0 auto; padding: 48px 0 80px; display: flex; flex-direction: column; gap: 24px; }
+.form h1 { margin: 10px 0 0; font-size: 56px; font-weight: 900; letter-spacing: .02em; line-height: 1.04; }
+.form h1 span { display: block; color: #bdbdbd; font-size: .45em; margin-top: 10px; letter-spacing: .04em; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.more { display: flex; justify-content: space-between; align-items: center; height: 56px; padding: 0 18px; background: #121212; border: 1px dashed #3a3a3a; color: #cfcfcf; font-size: 15px; }
+.more em { font-style: normal; font-family: var(--mono); font-size: 12px; letter-spacing: .1em; color: var(--grey); }
+.fine { margin: 0; font-size: 13px; color: var(--grey); line-height: 1.7; }
+@media (max-width: 720px) { .form { padding-top: 32px; } .form h1 { font-size: 44px; } .more em { display: none; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="dots" aria-hidden="true"></div>
+  <div class="top"><a class="back" href="list.html">← BACK</a><span class="tag tag--grey">力量举教练点评</span></div>
+  <form class="form" aria-labelledby="s-h">
+    <div><span class="tag">SUBMIT A COACH // 提交教练</span><h1 id="s-h">提交一位教练<span>只填公开过的信息，审核后上线</span></h1></div>
+    <label class="field"><span>姓名 / 称呼</span><input class="input" placeholder="真名或圈内常用称呼"></label>
+    <label class="field"><span>网名</span><input class="input" placeholder="抖音昵称等"></label>
+    <div class="two">
+      <label class="field"><span>抖音号</span><input class="input" placeholder="主页里的抖音号"></label>
+      <label class="field"><span>抖音主页链接</span><input class="input" placeholder="https://"></label>
+    </div>
+    <div class="field"><span>性别</span><div class="seg"><button type="button" class="on">男</button><button type="button">女</button></div></div>
+    <div class="two">
+      <label class="field"><span>省份</span><select class="input"><option>请选择</option></select></label>
+      <label class="field"><span>城市</span><input class="input" placeholder="如：深圳"></label>
+    </div>
+    <label class="field"><span>所属场馆 / 工作室</span><input class="input" placeholder="可填多个，用逗号隔开；没有就填「无」"></label>
+    <div class="field"><span>授课方式</span><div class="seg"><button type="button">线下</button><button type="button">线上</button><button type="button" class="on">线上+线下</button></div></div>
+    <div class="more"><span>＋ 补充选填信息</span><em>成绩 · 认证 · 执教年限</em></div>
+    <button class="btn btn--solid btn--block" type="submit">提交，等待审核</button>
+    <p class="fine">抖音号已经在列表里的教练，会直接带你去他的页面。</p>
+  </form>
+</div>
+</body>
+</html>

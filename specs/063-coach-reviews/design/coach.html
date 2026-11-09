@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>王磊 · 力量举教练点评</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<style>
+.profile { display: grid; grid-template-columns: 1fr auto; gap: 48px; align-items: end; }
+.profile__meta { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 16px; color: #d4d4d4; }
+.profile__meta span::before { content: "/"; color: var(--red); margin-right: 10px; font-family: var(--mono); }
+.profile__meta span:first-child::before { content: none; }
+.profile__cta { margin-top: 28px; display: flex; gap: 12px; flex-wrap: wrap; }
+.score { text-align: right; }
+.score b { display: block; font-family: var(--num); font-weight: 900; font-size: 140px; line-height: .9; letter-spacing: -.04em; }
+.score .stars { font-size: 22px; letter-spacing: 4px; }
+.score small { display: block; margin-top: 8px; font-family: var(--mono); font-size: 13px; letter-spacing: .14em; color: var(--grey); }
+
+.body { padding: 56px 40px 112px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.panel { background: var(--panel); border: 1px solid var(--line); padding: 28px; }
+.subs { display: grid; gap: 18px; margin-top: 18px; }
+.sub { display: grid; grid-template-columns: 84px 1fr 44px; gap: 16px; align-items: center; font-size: 15px; }
+.sub i { height: 6px; background: #262626; position: relative; }
+.sub i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--v); background: var(--red); }
+.sub b { font-family: var(--num); font-weight: 900; font-size: 20px; text-align: right; }
+.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 24px; margin-top: 18px; }
+.facts dt { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; color: var(--grey); }
+.facts dd { margin: 6px 0 0; font-size: 16px; font-weight: 700; }
+.facts dd em { font-style: normal; font-family: var(--num); font-size: 26px; font-weight: 900; }
+
+.reviews-head { margin-top: 64px; display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.reviews-head h2 { margin: 10px 0 0; font-size: 44px; font-weight: 900; letter-spacing: .02em; }
+.review { margin-top: 16px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid #2c2c2c; padding: 24px 28px; transition: border-color .15s ease; }
+.review:hover { border-left-color: var(--red); }
+.review__top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.review__top b { font-size: 18px; font-weight: 900; }
+.review__top .stars { font-size: 16px; }
+.review__top time, .review__edited { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; color: var(--grey); }
+.review__edited { border: 1px solid #333; padding: 2px 8px; }
+.review__report { margin-left: auto; font-family: var(--mono); font-size: 12px; letter-spacing: .12em; color: var(--dim); text-decoration: none; }
+.review__report:hover { color: var(--red); }
+.review__subs { margin-top: 10px; font-family: var(--mono); font-size: 12px; letter-spacing: .08em; color: var(--grey); }
+.review p { margin: 14px 0 0; font-size: 16px; line-height: 1.85; color: #e6e6e6; }
+.takedown { margin-top: 48px; font-size: 14px; color: var(--grey); }
+
+@media (max-width: 720px) {
+  .profile { grid-template-columns: 1fr; gap: 28px; }
+  .score { text-align: left; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .score b { font-size: 84px; }
+  .score small { margin-top: 0; }
+  .profile__cta .btn { flex: 1; }
+  .body { padding: 32px 16px 72px; }
+  .grid2 { grid-template-columns: 1fr; }
+  .panel { padding: 22px 18px; }
+  .reviews-head h2 { font-size: 34px; }
+  .review { padding: 20px 18px; }
+  .review__subs { font-size: 11px; letter-spacing: .02em; }
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <a class="back bar__lead" href="list.html">← BACK</a>
+  <a class="bar__logo" href="home.html"><b>力量举教练点评</b><small>POWERLIFTING COACH REVIEWS</small></a>
+  <nav aria-label="主导航"><a href="home.html">首页</a><a class="on" href="list.html">全部教练</a><a href="home.html#map">教练分布</a><a href="home.html">点评规则</a></nav>
+  <div class="bar__actions"><a class="btn btn--dark" href="login.html">登录</a><a class="btn btn--solid" href="write.html">写点评</a></div>
+</header>
+
+<section class="band" aria-labelledby="coach-h" style="padding-top: 88px;">
+  <img class="band__photo" src="img/squat.jpg" alt="" aria-hidden="true" style="object-position: 60% 30%">
+  <div class="dots" aria-hidden="true"></div>
+  <div class="wrap profile">
+    <div>
+      <span class="tag">COACH // 广东 深圳</span>
+      <h1 id="coach-h" class="huge">王磊<span>举铁老王</span></h1>
+      <div class="profile__meta"><span>男</span><span>线上+线下</span><span>执教 6 年</span></div>
+      <div class="profile__cta">
+        <a class="btn btn--solid" href="write.html">写点评</a>
+        <a class="btn btn--dark" href="https://www.douyin.com/">抖音主页 ↗</a>
+      </div>
+    </div>
+    <div class="score" aria-label="总分 4.7，共 36 条点评">
+      <b>4.7</b>
+      <span class="stars" aria-hidden="true">★★★★<s>★</s></span>
+      <small>36 REVIEWS</small>
+    </div>
+  </div>
+</section>
+
+<section class="body">
+  <div class="wrap">
+    <div class="grid2">
+      <div class="panel">
+        <span class="tag">SCORES // 四项平均</span>
+        <div class="subs">
+          <div class="sub"><span>专业度</span><i style="--v: 96%"></i><b>4.8</b></div>
+          <div class="sub"><span>沟通反馈</span><i style="--v: 92%"></i><b>4.6</b></div>
+          <div class="sub"><span>训练效果</span><i style="--v: 94%"></i><b>4.7</b></div>
+          <div class="sub"><span>性价比</span><i style="--v: 86%"></i><b>4.3</b></div>
+        </div>
+      </div>
+      <div class="panel">
+        <span class="tag">PROFILE // 资料</span>
+        <dl class="facts">
+          <div><dt>BEST TOTAL</dt><dd><em>650</em> KG · 男93 · 无装备</dd></div>
+          <div><dt>CERTIFICATION</dt><dd>NSCA-CSCS</dd></div>
+          <div><dt>GYM</dt><dd>铁馆力量举工作室、南山某健身房</dd></div>
+          <div><dt>COACHING</dt><dd><em>6</em> 年</dd></div>
+        </dl>
+      </div>
+    </div>
+
+    <div class="reviews-head">
+      <div><span class="tag">REVIEWS // 36</span><h2>学员点评</h2></div>
+      <div class="filters"><button type="button" class="on">最新</button><button type="button">分数从高到低</button></div>
+    </div>
+
+    <article class="review">
+      <div class="review__top"><b>深蹲一百八</b><span class="stars" aria-label="5 星">★★★★★</span><time>2026.11.02</time><span class="review__edited">已修改</span><a class="review__report" href="report.html">举报</a></div>
+      <div class="review__subs">专业度 5 · 沟通反馈 5 · 训练效果 5 · 性价比 4</div>
+      <p>线上跟了 8 个月。每周计划按上周的 RPE 调，视频基本当天回。备赛最后四周减量排得很细，比赛三项都开满了，总成绩涨了 35 kg。</p>
+    </article>
+    <article class="review">
+      <div class="review__top"><b>Lily</b><span class="stars" aria-label="4 星">★★★★<s>★</s></span><time>2026.10.21</time><a class="review__report" href="report.html">举报</a></div>
+      <div class="review__subs">专业度 5 · 沟通反馈 4 · 训练效果 4 · 性价比 3</div>
+      <p>卧推起桥两个月改过来了。价格偏高，忙的时候回复会慢一两天。</p>
+    </article>
+    <article class="review">
+      <div class="review__top"><b>硬拉不累</b><span class="stars" aria-label="5 星">★★★★★</span><time>2026.10.09</time><a class="review__report" href="report.html">举报</a></div>
+      <div class="review__subs">专业度 5 · 沟通反馈 5 · 训练效果 5 · 性价比 5</div>
+      <p>新手入门找的他，从动作模式教起，不急着上重量。半年三项都稳定了，也没受过伤。</p>
+    </article>
+
+    <p class="takedown">我是这位教练，申请下架：<a class="link-red" href="home.html">联系管理员</a></p>
+  </div>
+</section>
+
+<footer class="foot">
+  <div><b>力量举教练点评</b><small>© 2026 POWERLIFTING COACH REVIEWS</small></div>
+  <nav aria-label="页脚"><a href="submit.html">提交教练</a><a href="home.html">点评规则</a><a href="home.html">隐私</a><a class="hot" href="home.html">教练申请下架</a></nav>
+</footer>
+</body>
+</html>
