@@ -93,6 +93,8 @@
 
 **0083 已应用（2026-11-04，spec 059 学员服务期）**：`db/migrations/0083-service-term.sql`（随 #373 `845fc22` 入库）：`bind_requests.service_until DATE NULL`，纯新增、不回填（存量行全为 null = 不显示服务期）。David 经 DMS SQLConsole 在 `meetpr-rds-v01-staging` 单条执行 `ALTER TABLE bind_requests ADD COLUMN IF NOT EXISTS service_until DATE;`，返回执行成功（1 条语句）。**迁移前备份：未做**（纯新增；回滚见文件头 Down 注释）。执行顺序：先迁移，后部署 `845fc22`。执行人：David。
 
+**0071 已应用（2026-11-10）**：真实 RDS `meetpr-rds-v01-staging`，库 `public@meetpr`，spec 046 每日体重记录（新表 `body_weight_records` + 从 `student_onboarding_profiles.weight_kg` 回填）。迁移前由 David 在控制台做 RDS 全量快照（完成时间未登记），随后 David 经 DMS SQLConsole 整段直接执行（加 `SET search_path TO public;`）。核对：`body_weight_records` 51 行 = 有体重的档案 51 行。
+
 ## 变更历史
 
 - **2026-11-08（spec 062 e1RM 改用扩展版 RPE 表）** — `sha-f59b13c683306a3609158eb15684ecabfb04b2a9`（=staging HEAD，#386：`src/domain/e1rm.ts` 换扩展版表，e1RM 由 set_logs 现算、部署即全量生效；同批含 #361 CI 装机链接门禁，仅 workflow），无新迁移、无 web/ 换装。[ACR build run 42479263472](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/42479263472)、[部署 run 42479635378](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/42479635378)（`migrations_applied=true`，`image_sha` 显式指定）绿。curl：/health 200。env 未动。
@@ -337,6 +339,7 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- **2026-11-10（spec 046 每日体重记录）** — `sha-dfca1ef310d029d0535fc5e548e9f1a62bad10b9`（=staging HEAD，#289 合并），依赖 0071（已先行应用）。[部署 run 42768236235](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/42768236235)（`migrations_applied=true`）绿；curl：/health 200，`/students/me/body-weights` 无 token 401。env 未动。两端体重页（rn#169 / meetpr#447）登录态联调待做。
 - 2026-09-02 — `sha-d604c8c`(=staging HEAD,#273 已发布计划 batch 更新入 outbox 推 plan_updated + 注册 plan_published builder + 纯树改动 bump updated_at,#274 纯 web/ 换装 plan-web #99:横幅在场直接更新 + 逐组字段透传,入口 index-DVyPjsWT.js)经 deploy-staging.yml(migrations_applied=true,无迁移)部署 `meetpr-backend-staging`(deploy run 33622747305 绿);env 未动。curl 验证:/health 200、GET / 回新入口。配套 iOS #339 已落 release/1.0 进 1.0(22)。
 - 2026-08-22 — `sha-7b8e931`(=staging HEAD,#262 反馈视频摘要带 `rpe`:feedback-fetch 多 select
   `sl.rpe`,学员/教练共用投影 toFixed(1)/null,无新迁移)经 deploy-staging.yml(migrations_applied=true)
