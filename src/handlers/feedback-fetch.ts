@@ -31,13 +31,14 @@ export async function fetchOwnFeedback(
   studentId: string,
   locale?: PreferredLocale,
   oss?: OssService,
+  caps?: string | string[],
 ): Promise<FeedbackWithVideoResponse[]> {
   const rows = await feedbackWithVideoQuery(db)
     .where('f.student_id', '=', studentId)
     .orderBy('f.posted_at', 'desc')
     .execute();
 
-  return Promise.all(rows.map((row) => toFeedbackWithVideo(row, locale, oss)));
+  return Promise.all(rows.map((row) => toFeedbackWithVideo(row, locale, oss, caps)));
 }
 
 export async function fetchCoachFeedback(
@@ -46,6 +47,7 @@ export async function fetchCoachFeedback(
   studentId: string,
   locale?: PreferredLocale,
   oss?: OssService,
+  caps?: string | string[],
 ): Promise<FeedbackWithVideoResponse[]> {
   const rows = await feedbackWithVideoQuery(db)
     .where('f.student_id', '=', studentId)
@@ -53,5 +55,5 @@ export async function fetchCoachFeedback(
     .orderBy('f.posted_at', 'desc')
     .execute();
 
-  return Promise.all(rows.map((row) => toFeedbackWithVideo(row, locale, oss)));
+  return Promise.all(rows.map((row) => toFeedbackWithVideo(row, locale, oss, caps)));
 }

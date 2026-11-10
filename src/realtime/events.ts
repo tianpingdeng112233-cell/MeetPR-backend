@@ -1,3 +1,4 @@
+import type { ExerciseRefV1 } from '../domain/exercise-ref';
 export interface HelloEvent {
   type: 'hello';
   payload: Record<string, never>;
@@ -9,6 +10,7 @@ export interface ChatMessageEvent {
     conversation_id: string;
     seq: number;
     sender_id: string;
+    exercise_ref?: ExerciseRefV1;
   };
 }
 

@@ -257,3 +257,38 @@ describe('GET /students/:id/sets', () => {
     expect(asStudent.status).toBe(403);
   });
 });
+
+it('negotiates null weights in coach exercise history without changing e1RM or PRs', async () => {
+  const ctx = await makeContext();
+  const plan = await createPublishedPlan(ctx);
+  const endpoint = `/coach/students/${ids.trainee}/exercise-stats?exercise_id=${ids.exercise}`;
+  await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+    plan_exercise_id: plan.planExerciseId,
+    set_index: 1,
+    logged_date: '2026-05-15',
+    weight_kg: '100',
+    reps: 5,
+    rpe: '8',
+    completed: true,
+  });
+  const before = await request(ctx.app).get(endpoint).set(auth(ctx.coachToken));
+  await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+    plan_exercise_id: plan.planExerciseId,
+    set_index: 0,
+    logged_date: '2026-05-15',
+    weight_kg: null,
+    reps: 5,
+    rpe: '8',
+    completed: true,
+  });
+  for (const caps of ['', 'set-weight-nullable']) {
+    const response = await request(ctx.app)
+      .get(endpoint)
+      .set({ ...auth(ctx.coachToken), 'X-MeetPR-Caps': caps });
+    expect(response.status).toBe(200);
+    expect(response.body.recent_sessions[0].sets[0].weight_kg).toBe(caps ? null : '0');
+    expect(response.body.e1rm).toEqual(before.body.e1rm);
+    expect(response.body.rep_prs).toEqual(before.body.rep_prs);
+    expect(response.body.by_set_count).toEqual(before.body.by_set_count);
+  }
+});

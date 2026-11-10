@@ -1,3 +1,4 @@
+import { serializeSetLogWeight } from './set-log-serialization';
 import { catalogName } from '../i18n/copy';
 import type { PreferredLocale } from '../i18n/locale';
 import type { Selectable } from 'kysely';
@@ -73,6 +74,7 @@ export async function toFeedbackWithVideo(
   row: FeedbackRow & FeedbackVideoMetadataRow,
   locale?: PreferredLocale,
   oss?: OssService,
+  caps?: string | string[],
 ): Promise<FeedbackWithVideoResponse> {
   return {
     ...toFeedback(row),
@@ -88,7 +90,10 @@ export async function toFeedbackWithVideo(
                 : catalogName(row.video_exercise_name, row.video_exercise_owner, locale),
             exercise_name_en: row.video_exercise_name_en,
             set_index: row.video_set_index,
-            weight_kg: row.video_weight_kg === null ? null : Number(row.video_weight_kg).toFixed(2),
+            weight_kg:
+              row.video_set_index === null
+                ? null
+                : serializeSetLogWeight({ weight_kg: row.video_weight_kg }, caps).weight_kg,
             reps: row.video_reps,
             rpe: row.video_rpe === null ? null : Number(row.video_rpe).toFixed(1),
             logged_at: row.video_logged_at === null ? null : timestamp(row.video_logged_at),

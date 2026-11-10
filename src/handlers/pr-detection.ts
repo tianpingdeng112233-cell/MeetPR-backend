@@ -185,7 +185,7 @@ export async function detectSetLogPr(
     .where('sl.id', '=', setLogId)
     .where('sl.student_id', '=', studentId)
     .executeTakeFirst();
-  if (!trigger || trigger.assumed) return null;
+  if (trigger?.weight_kg == null || trigger.assumed) return null;
 
   const onboarding = await db
     .selectFrom('student_onboarding_profiles')
@@ -219,6 +219,7 @@ export async function detectSetLogPr(
     ])
     .where('sl.student_id', '=', studentId)
     .where('sl.id', '!=', setLogId)
+    .where('sl.weight_kg', 'is not', null)
     // Imported-history rows (assumed=true) never trigger a PR themselves (see
     // the trigger guard above) but DO raise the baseline: an experienced
     // lifter importing 12 weeks of history must not get fake PRs afterwards

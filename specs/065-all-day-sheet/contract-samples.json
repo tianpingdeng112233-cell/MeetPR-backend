@@ -1,0 +1,100 @@
+{
+  "nullable_set_log": {
+    "request": {
+      "method": "GET",
+      "path": "/students/65000000-0000-4000-8000-000000000002/sets?from=2026-11-10&to=2026-11-11&scope=all",
+      "headers": {
+        "X-MeetPR-Caps": "set-weight-nullable"
+      }
+    },
+    "response": {
+      "logs": [
+        {
+          "id": "65000000-0000-4000-8000-000000000001",
+          "student_id": "65000000-0000-4000-8000-000000000002",
+          "plan_exercise_id": "65000000-0000-4000-8000-000000000004",
+          "plan_day_id": null,
+          "exercise_id": "65000000-0000-4000-8000-000000000005",
+          "set_index": 0,
+          "weight_kg": null,
+          "reps": 5,
+          "rpe": "8.0",
+          "actual_rir": null,
+          "coach_rpe": null,
+          "completed": true,
+          "failed": false,
+          "assumed": false,
+          "adhoc": false,
+          "logged_date": "2026-11-10",
+          "logged_at": "2026-11-10T10:00:00.000Z"
+        }
+      ]
+    }
+  },
+  "exercise_ref_message": {
+    "request": {
+      "method": "POST",
+      "path": "/conversations/65000000-0000-4000-8000-000000000007/messages",
+      "headers": {
+        "X-MeetPR-Locale": "zh-Hans"
+      },
+      "body": {
+        "kind": "text",
+        "body": "[动作留言] 暂停卧推 · 11/10\n最后一组有点吃力，下次要调整吗？",
+        "exercise_ref": {
+          "v": 1,
+          "exercise_name": "暂停卧推",
+          "day_date": "2026-11-10",
+          "plan_day_id": "65000000-0000-4000-8000-000000000003",
+          "plan_exercise_id": "65000000-0000-4000-8000-000000000004",
+          "exercise_id": "65000000-0000-4000-8000-000000000005"
+        },
+        "client_id": "fixture-exercise-note-065"
+      }
+    },
+    "response": {
+      "message": {
+        "id": "65000000-0000-4000-8000-000000000006",
+        "conversation_id": "65000000-0000-4000-8000-000000000007",
+        "seq": 1,
+        "sender_id": "65000000-0000-4000-8000-000000000002",
+        "kind": "text",
+        "body": "[动作留言] 暂停卧推 · 11/10\n最后一组有点吃力，下次要调整吗？",
+        "attachment_id": null,
+        "image_url": null,
+        "image_expires_in": null,
+        "set_ref": null,
+        "exercise_ref": {
+          "v": 1,
+          "exercise_name": "暂停卧推",
+          "day_date": "2026-11-10",
+          "plan_day_id": "65000000-0000-4000-8000-000000000003",
+          "plan_exercise_id": "65000000-0000-4000-8000-000000000004",
+          "exercise_id": "65000000-0000-4000-8000-000000000005"
+        },
+        "video_url": null,
+        "video_expires_in": null,
+        "poster_url": null,
+        "duration_seconds": null,
+        "client_id": "fixture-exercise-note-065",
+        "created_at": "2026-11-10T10:01:00.000Z"
+      }
+    }
+  },
+  "weight_suggestions": {
+    "request": {
+      "method": "GET",
+      "path": "/students/65000000-0000-4000-8000-000000000002/plan-days/65000000-0000-4000-8000-000000000003/weight-suggestions"
+    },
+    "response": {
+      "suggestions": [
+        {
+          "plan_set_id": "65000000-0000-4000-8000-000000000008",
+          "weight_kg": "102.50",
+          "source_set_log_id": "65000000-0000-4000-8000-000000000009",
+          "source_logged_date": "2026-11-03"
+        }
+      ]
+    }
+  }
+}

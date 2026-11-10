@@ -4,6 +4,39 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { auth, createPublishedPlan, ids, makeContext } from './helpers/studentActions';
 
 describe('POST /sets/log', () => {
+  it('preserves null weight through create/update and negotiates legacy reads', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    const payload = {
+      plan_exercise_id: plan.planExerciseId,
+      set_index: 0,
+      logged_date: '2026-05-15',
+      weight_kg: null,
+      reps: 5,
+      rpe: '8',
+      completed: true,
+    };
+    for (const weight of [null, '100', null]) {
+      const saved = await request(ctx.app)
+        .post('/sets/log')
+        .set(auth(ctx.traineeToken))
+        .send({ ...payload, weight_kg: weight });
+      expect(saved.status).toBe(201);
+      for (const token of [ctx.traineeToken, ctx.coachToken]) {
+        for (const caps of ['', 'other-cap, set-weight-nullable']) {
+          const response = await request(ctx.app)
+            .get(`/students/${ids.trainee}/sets?from=2026-05-15&to=2026-05-16`)
+            .set({ ...auth(token), 'X-MeetPR-Caps': caps });
+          expect(response.status).toBe(200);
+          expect(response.body.logs).toHaveLength(1);
+          expect(response.body.logs[0].weight_kg).toBe(
+            weight === null ? (caps ? null : '0') : '100.00',
+          );
+        }
+      }
+    }
+  });
+
   it('logs a set for a published plan exercise owned by the student', async () => {
     const ctx = await makeContext();
     const plan = await createPublishedPlan(ctx);
@@ -424,3 +457,73 @@ describe('POST /sets/log (adhoc)', () => {
 function dateText(value: unknown): string {
   return value instanceof Date ? value.toISOString().slice(0, 10) : String(value);
 }
+
+it('stores null student-added weights and still permits explicit day completion', async () => {
+  const ctx = await makeContext();
+  const plan = await createPublishedPlan(ctx);
+  const saved = await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+    exercise_id: ids.exercise,
+    plan_day_id: plan.dayId,
+    logged_date: '2026-05-15',
+    set_index: 0,
+    weight_kg: null,
+    reps: 5,
+    rpe: null,
+    completed: true,
+  });
+  expect(saved.status).toBe(201);
+  const completed = await request(ctx.app)
+    .post(`/plans/days/${plan.dayId}/complete`)
+    .set(auth(ctx.traineeToken))
+    .send({});
+  expect(completed.status).toBe(200);
+  for (const caps of ['', 'set-weight-nullable']) {
+    const listed = await request(ctx.app)
+      .get(`/students/${ids.trainee}/sets?from=2026-05-15&to=2026-05-16&scope=all`)
+      .set({ ...auth(ctx.traineeToken), 'X-MeetPR-Caps': caps });
+    expect(listed.body.logs[0]).toMatchObject({
+      id: saved.body.id,
+      adhoc: true,
+      weight_kg: caps ? null : '0',
+    });
+  }
+});
+
+it('settles the activity ledger when the prescribed set has null weight', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-10T10:00:00Z'));
+  try {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    const saved = await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+      plan_exercise_id: plan.planExerciseId,
+      logged_date: '2026-11-10',
+      set_index: 0,
+      weight_kg: null,
+      reps: 5,
+      rpe: '8',
+      completed: true,
+    });
+    expect(saved.status).toBe(201);
+    const session = await request(ctx.app)
+      .get('/students/me/session?date=2026-11-10')
+      .set(auth(ctx.traineeToken));
+    expect(session.status).toBe(200);
+    expect(session.body.session).toMatchObject({
+      status: 'completed',
+      completed_at: '2026-11-10T10:00:00.000Z',
+    });
+    const events = await request(ctx.app)
+      .get(`/coach/students/${ids.trainee}/events?from=2026-11-10&to=2026-11-10`)
+      .set(auth(ctx.coachToken));
+    expect(events.status).toBe(200);
+    expect(events.body.events).toEqual([
+      expect.objectContaining({
+        event_type: 'session_completed',
+        payload: expect.objectContaining({ sets_logged: 1, plan_day_ids: [plan.dayId] }),
+      }),
+    ]);
+  } finally {
+    vi.useRealTimers();
+  }
+});

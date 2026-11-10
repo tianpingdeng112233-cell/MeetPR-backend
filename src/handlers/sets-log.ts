@@ -18,7 +18,7 @@ export interface SetLogInput {
    */
   update_logged_date: boolean;
   set_index: number;
-  weight_kg: string;
+  weight_kg: string | null;
   reps: number;
   rpe: string | null;
   actual_rir?: number | null;
@@ -31,7 +31,7 @@ export interface AdhocSetLogInput {
   exercise_id: string;
   logged_date: string;
   set_index: number;
-  weight_kg: string;
+  weight_kg: string | null;
   reps: number;
   rpe: string | null;
   actual_rir?: number | null;

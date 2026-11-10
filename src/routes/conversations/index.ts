@@ -1,3 +1,9 @@
+import { ownsExerciseRef } from '../../handlers/exercise-ref';
+import {
+  bodyMatchesExerciseRef,
+  ExerciseRefV1Schema,
+  type ExerciseRefV1,
+} from '../../domain/exercise-ref';
 import { randomUUID } from 'node:crypto';
 
 import { Router, type Router as ExpressRouter } from 'express';
@@ -80,6 +86,7 @@ interface MessageWire extends VideoPreview {
   image_url: string | null;
   image_expires_in: number | null;
   set_ref: SetRefV1 | null;
+  exercise_ref: ExerciseRefV1 | null;
   video_url: string | null;
   video_expires_in: number | null;
   client_id: string;
@@ -94,6 +101,7 @@ interface ConversationWire {
     seq: number;
     kind: 'text' | 'image';
     preview: string;
+    exercise_ref: ExerciseRefV1 | null;
     created_at: string;
     sender_id: string;
   } | null;
@@ -281,6 +289,7 @@ async function serializeMessage(
     image_url: imageUrl,
     image_expires_in: isImage ? IMAGE_URL_TTL_SECONDS : null,
     set_ref: row.set_ref,
+    exercise_ref: row.exercise_ref,
     video_url: videoUrl,
     ...(await videoPreview(row.video_id === null ? null : row.video_oss_key, oss, signOptions)),
     video_expires_in: videoUrl === null ? null : IMAGE_URL_TTL_SECONDS,
@@ -355,7 +364,7 @@ async function fetchConversationWire(
           .executeTakeFirst(),
     db
       .selectFrom('messages')
-      .select(['id', 'seq', 'kind', 'body', 'set_ref', 'created_at', 'sender_id'])
+      .select(['id', 'seq', 'kind', 'body', 'set_ref', 'exercise_ref', 'created_at', 'sender_id'])
       .where('conversation_id', '=', conversation.id)
       .where(visibleMessagePredicate(visibility))
       .orderBy('seq', 'desc')
@@ -391,6 +400,7 @@ async function fetchConversationWire(
                 : (lastMessage.body ?? ''),
           created_at: timestamp(lastMessage.created_at),
           sender_id: lastMessage.sender_id,
+          exercise_ref: lastMessage.exercise_ref,
         }
       : null,
     last_message_at: visibility.showSetRefs
@@ -432,6 +442,7 @@ function messagePayloadMatches(
         body: string;
         client_id: string;
         set_ref?: unknown;
+        exercise_ref?: unknown;
         video_id?: unknown;
       }
     | { kind: 'image'; attachment_id: string; client_id: string },
@@ -444,6 +455,7 @@ function messagePayloadMatches(
       message.body === body.body &&
       message.attachment_id === null &&
       JSON.stringify(message.set_ref) === JSON.stringify(setRef) &&
+      JSON.stringify(message.exercise_ref) === JSON.stringify(body.exercise_ref ?? null) &&
       (message.video_id === null ? videoId === null : uuidEquals(message.video_id, videoId))
     );
   }
@@ -766,6 +778,44 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
             return { outcome: 'message', message: existing, created: false };
           }
 
+          let exerciseRef: ExerciseRefV1 | null = null;
+          if (body.data.kind === 'text' && body.data.exercise_ref !== undefined) {
+            const parsed = ExerciseRefV1Schema.safeParse(body.data.exercise_ref);
+            if (!parsed.success)
+              return { outcome: 'validation_error', error: validationEnvelope(parsed.error) };
+            exerciseRef = parsed.data;
+            if (
+              !uuidEquals(user.id, conversation.student_id) ||
+              body.data.set_ref !== undefined ||
+              body.data.video_id !== undefined
+            ) {
+              return {
+                outcome: 'validation_error',
+                error: messageValidationError(
+                  ['exercise_ref'],
+                  'exercise_ref is student-only and excludes set_ref and video_id',
+                ),
+              };
+            }
+            if (!bodyMatchesExerciseRef(body.data.body, exerciseRef, req.locale)) {
+              return {
+                outcome: 'validation_error',
+                error: messageValidationError(
+                  ['body'],
+                  'body must equal or begin with the canonical exercise_ref first line',
+                ),
+              };
+            }
+            if (!(await ownsExerciseRef(trx, user.id, exerciseRef))) {
+              return {
+                outcome: 'validation_error',
+                error: messageValidationError(
+                  ['exercise_ref'],
+                  'plan references must belong to the sender',
+                ),
+              };
+            }
+          }
           let setRef: SetRefV1 | null = null;
           let videoId: string | null = null;
           if (body.data.kind === 'text') {
@@ -946,6 +996,7 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
                     body: body.data.body,
                     attachment_id: null,
                     set_ref: setRef,
+                    exercise_ref: exerciseRef,
                     video_id: videoId,
                     client_id: body.data.client_id,
                     created_at: sql<Date>`clock_timestamp()`,
@@ -1068,6 +1119,9 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
           conversation_id: conversation.id,
           seq: result.message.seq,
           sender_id: result.message.sender_id,
+          ...(result.message.exercise_ref === null
+            ? {}
+            : { exercise_ref: result.message.exercise_ref }),
         });
         hub?.publish(conversation.coach_id, event);
         hub?.publish(conversation.student_id, event);
