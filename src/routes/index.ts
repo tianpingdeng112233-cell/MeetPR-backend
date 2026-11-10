@@ -26,6 +26,7 @@ import { coachExerciseStatsRouter } from './exercise-stats';
 import { coachFeedbackRouter, feedbackRouter, studentFeedbackRouter } from './feedback';
 import { coachInviteCodesRouter } from './invite-codes';
 import { meRouter } from './me';
+import { bodyWeightsRouter } from './body-weights';
 import { coachOneRmRouter, studentOnboardingRouter } from './onboarding';
 import { studentVideosRouter } from './videos';
 import { plansRouter, studentPlansRouter } from './plans';
@@ -93,6 +94,7 @@ export function mountRoutes(app: Express, deps: RouteDeps): void {
   app.use('/students', deps.requireAuth, studentFeedbackRouter({ db: deps.db, oss: deps.oss }));
   app.use('/students', deps.requireAuth, studentEvaluationsRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentOnboardingRouter({ db: deps.db }));
+  app.use('/students', deps.requireAuth, bodyWeightsRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentVideosRouter({ db: deps.db, oss: deps.oss }));
   app.use('/students', deps.requireAuth, studentSignalsRouter({ db: deps.db }));
   app.use('/students', deps.requireAuth, studentTrainingStreakRouter({ db: deps.db }));
