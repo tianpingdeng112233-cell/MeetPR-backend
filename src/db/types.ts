@@ -1,3 +1,4 @@
+import type { ExerciseRefV1 } from '../domain/exercise-ref';
 import type {
   ListedCoachesTable,
   CoachReviewAccountsTable,
@@ -577,7 +578,7 @@ export interface SetLogsTable {
   plan_exercise_id: NullableColumn<string>;
   exercise_id: string;
   set_index: number;
-  weight_kg: string;
+  weight_kg: string | null;
   reps: number;
   rpe: NullableColumn<string>;
   coach_rpe: NullableColumn<string>;
@@ -737,6 +738,7 @@ export interface MessagesTable {
   body: NullableColumn<string>;
   attachment_id: NullableColumn<string>;
   set_ref: NullableJsonColumn<SetRefV1>;
+  exercise_ref: NullableJsonColumn<ExerciseRefV1>;
   video_id: NullableColumn<string>;
   client_id: string;
   created_at: Generated<Date>;

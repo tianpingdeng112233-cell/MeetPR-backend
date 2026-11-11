@@ -304,3 +304,26 @@ describe('GET /students/:id/feedback', () => {
     expect(asStudent.status).toBe(403);
   });
 });
+
+it('negotiates null set weights in feedback video metadata for student and coach', async () => {
+  const ctx = await makeContext();
+  const videoId = await seedLinkedVideo(ctx);
+  await ctx.db
+    .updateTable('set_logs')
+    .set({ weight_kg: null })
+    .where('student_id', '=', ids.trainee)
+    .execute();
+  await ctx.db
+    .insertInto('feedback')
+    .values({ coach_id: ids.coach, student_id: ids.trainee, video_id: videoId, text: '反馈' })
+    .execute();
+  for (const token of [ctx.traineeToken, ctx.coachToken]) {
+    for (const caps of ['', 'set-weight-nullable']) {
+      const response = await request(ctx.app)
+        .get(`/students/${ids.trainee}/feedback`)
+        .set({ ...auth(token), 'X-MeetPR-Caps': caps });
+      expect(response.status).toBe(200);
+      expect(response.body.items[0].video.weight_kg).toBe(caps ? null : '0');
+    }
+  }
+});

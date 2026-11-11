@@ -595,6 +595,8 @@ export async function makeContext(
   );
 
   mem.public.none(fs.readFileSync('db/migrations/0083-service-term.sql', 'utf8'));
+  mem.public.none(fs.readFileSync('db/migrations/0085-set-log-weight-nullable.sql', 'utf8'));
+  mem.public.none(fs.readFileSync('db/migrations/0086-add-message-exercise-ref.sql', 'utf8'));
 
   const { Pool } = mem.adapters.createPg();
   const pool = new Pool();

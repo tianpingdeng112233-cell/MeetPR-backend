@@ -1,3 +1,6 @@
+import { hasAcceptedBond } from '../db/bonds';
+import { fetchWeightSuggestions } from '../handlers/weight-suggestions';
+import { serializeSetLogWeight } from '../handlers/set-log-serialization';
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
@@ -46,7 +49,7 @@ const SetLogCommonFields = {
   weight_kg: DecimalSchema.refine(
     (value) => Number(value) >= 0 && Number(value) <= 9999.99,
     'weight_kg must be between 0 and 9999.99',
-  ),
+  ).nullable(),
   reps: z.number().int().min(0).max(99),
   rpe: RpeSchema.nullable().optional(),
   actual_rir: z.number().int().min(0).max(9).nullable().optional(),
@@ -55,7 +58,7 @@ const SetLogCommonFields = {
 };
 
 interface SetLogCommonShape {
-  weight_kg: string;
+  weight_kg: string | null;
   rpe?: string | null | undefined;
   failed?: boolean | undefined;
 }
@@ -64,7 +67,7 @@ function normalizeSetLogBody<T extends SetLogCommonShape>(body: T) {
   return {
     ...body,
     failed: body.failed ?? false,
-    weight_kg: Number(body.weight_kg).toFixed(2),
+    weight_kg: body.weight_kg === null ? null : Number(body.weight_kg).toFixed(2),
     rpe: body.rpe == null ? null : Number(body.rpe).toFixed(1),
   };
 }
@@ -269,6 +272,39 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
 
 export function studentSetsRouter(deps: SetsRouterDeps): ExpressRouter {
   const router = Router();
+  router.get(
+    '/:id/plan-days/:planDayId/weight-suggestions',
+    route(async (req, res) => {
+      if (!req.user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      const params = z.object({ id: UuidSchema, planDayId: UuidSchema }).safeParse(req.params);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+      if (
+        !uuidEquals(req.user.id, params.data.id) &&
+        !(
+          req.user.role === 'coach' && (await hasAcceptedBond(deps.db, req.user.id, params.data.id))
+        )
+      ) {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
+      const suggestions = await fetchWeightSuggestions(
+        deps.db,
+        params.data.id,
+        params.data.planDayId,
+      );
+      if (suggestions === null) {
+        res.status(404).json({ error: 'PLAN_DAY_NOT_FOUND' });
+        return;
+      }
+      res.status(200).json({ suggestions });
+    }),
+  );
 
   router.get(
     '/:id/sets',
@@ -297,7 +333,9 @@ export function studentSetsRouter(deps: SetsRouterDeps): ExpressRouter {
           query.data.to,
           query.data.scope,
         );
-        res.status(200).json({ logs });
+        res.status(200).json({
+          logs: logs.map((log) => serializeSetLogWeight(log, req.headers['x-meetpr-caps'])),
+        });
         return;
       }
 
@@ -314,7 +352,9 @@ export function studentSetsRouter(deps: SetsRouterDeps): ExpressRouter {
         query.data.to,
         query.data.scope,
       );
-      res.status(200).json({ logs });
+      res.status(200).json({
+        logs: logs.map((log) => serializeSetLogWeight(log, req.headers['x-meetpr-caps'])),
+      });
     }),
   );
 

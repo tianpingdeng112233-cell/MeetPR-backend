@@ -143,7 +143,13 @@ export function studentFeedbackRouter(deps: FeedbackRouterDeps): ExpressRouter {
       }
 
       if (uuidEquals(req.user.id, params.data.id)) {
-        const items = await fetchOwnFeedback(deps.db, req.user.id, req.locale, deps.oss);
+        const items = await fetchOwnFeedback(
+          deps.db,
+          req.user.id,
+          req.locale,
+          deps.oss,
+          req.headers['x-meetpr-caps'],
+        );
         res.status(200).json({ items });
         return;
       }
@@ -165,6 +171,7 @@ export function studentFeedbackRouter(deps: FeedbackRouterDeps): ExpressRouter {
         params.data.id,
         req.locale,
         deps.oss,
+        req.headers['x-meetpr-caps'],
       );
       res.status(200).json({ items });
     }),

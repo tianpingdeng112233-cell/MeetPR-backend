@@ -1038,3 +1038,151 @@ describe('set_ref visibility matrix: student / current coach / former coach', ()
     });
   });
 });
+
+describe('POST /conversations/:id/messages exercise_ref', () => {
+  it('keeps the exercise note body and reference in send, list and preview responses', async () => {
+    const ctx = await makeContext();
+    await chooseCanonicalCoach(ctx);
+    const conversation = await createConversation(ctx);
+    const plan = await createPublishedPlan(ctx);
+    const exercise_ref = {
+      v: 1,
+      exercise_name: '暂停卧推',
+      day_date: '2026-11-10',
+      plan_day_id: plan.dayId,
+      plan_exercise_id: plan.planExerciseId,
+      exercise_id: ids.exercise,
+    };
+    const body = '[动作留言] 暂停卧推 · 11/10\n今天感觉不错';
+    const sent = await request(ctx.app)
+      .post(`/conversations/${conversation.id}/messages`)
+      .set(auth(ctx.traineeToken))
+      .send({ kind: 'text', body, exercise_ref, client_id: 'note-valid' });
+    expect(sent.status).toBe(201);
+    expect(sent.body.message).toMatchObject({ body, exercise_ref });
+    const list = await request(ctx.app)
+      .get(`/conversations/${conversation.id}/messages`)
+      .set(auth(ctx.coachToken));
+    expect(list.body.messages[0]).toMatchObject({ body, exercise_ref });
+    const preview = await request(ctx.app).get('/conversations').set(auth(ctx.coachToken));
+    expect(preview.body.conversations[0].last_message).toMatchObject({
+      preview: body,
+      exercise_ref,
+    });
+  });
+});
+
+it('rejects forged exercise notes, coach direction, foreign references and mixed attachments', async () => {
+  const ctx = await makeContext();
+  await chooseCanonicalCoach(ctx);
+  const conversation = await createConversation(ctx);
+  const plan = await createPublishedPlan(ctx);
+  const foreign = await createPublishedPlan(ctx, ids.coach, ids.otherStudent);
+  const exercise_ref = {
+    v: 1,
+    exercise_name: '暂停卧推',
+    day_date: '2026-11-10',
+    plan_day_id: plan.dayId,
+    plan_exercise_id: plan.planExerciseId,
+    exercise_id: ids.exercise,
+  };
+  const body = '[动作留言] 暂停卧推 · 11/10\n问题';
+  const variants = [
+    { body: '伪造首行\n问题' },
+    { exercise_ref: { ...exercise_ref, plan_day_id: foreign.dayId } },
+    { exercise_ref: { ...exercise_ref, plan_exercise_id: foreign.planExerciseId } },
+    { exercise_ref: { ...exercise_ref, extra: true } },
+    { exercise_ref: { ...exercise_ref, day_date: '2026-02-30' } },
+    { exercise_ref: { ...exercise_ref, exercise_name: '卧推\n伪造' } },
+    { set_ref: plannedRef((await createPlanSet(ctx)).id) },
+    { video_id: '80000000-0000-4000-8000-000000000099' },
+  ];
+  for (const [index, variant] of variants.entries()) {
+    const response = await request(ctx.app)
+      .post(`/conversations/${conversation.id}/messages`)
+      .set(auth(ctx.traineeToken))
+      .send({
+        kind: 'text',
+        body,
+        exercise_ref,
+        client_id: `note-invalid-${String(index)}`,
+        ...variant,
+      });
+    expect(response.status, String(index)).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+  }
+  const coach = await request(ctx.app)
+    .post(`/conversations/${conversation.id}/messages`)
+    .set(auth(ctx.coachToken))
+    .send({ kind: 'text', body, exercise_ref, client_id: 'note-coach' });
+  expect(coach.status).toBe(400);
+  expect(coach.body.error).toBe('VALIDATION_ERROR');
+  const listed = await request(ctx.app)
+    .get(`/conversations/${conversation.id}/messages`)
+    .set(auth(ctx.coachToken));
+  expect(listed.body.messages).toEqual([]);
+});
+
+it('accepts student-added exercise notes and validates the English first line by locale', async () => {
+  const ctx = await makeContext();
+  await chooseCanonicalCoach(ctx);
+  const conversation = await createConversation(ctx);
+  const plan = await createPublishedPlan(ctx);
+  const exercise_ref = {
+    v: 1,
+    exercise_name: 'Bench press',
+    day_date: '2026-01-02',
+    plan_day_id: plan.dayId,
+    plan_exercise_id: null,
+    exercise_id: ids.exercise,
+  };
+  const send = (body: string, client_id: string) =>
+    request(ctx.app)
+      .post(`/conversations/${conversation.id}/messages`)
+      .set({ ...auth(ctx.traineeToken), 'X-MeetPR-Locale': 'en' })
+      .send({ kind: 'text', body, exercise_ref, client_id });
+  expect((await send('[动作留言] Bench press · 1/2\nHello', 'note-en-wrong')).status).toBe(400);
+  const sent = await send('[Exercise note] Bench press · 1/2\nHello', 'note-en');
+  expect(sent.status).toBe(201);
+  expect(sent.body.message.exercise_ref).toEqual(exercise_ref);
+});
+
+it('carries exercise_ref in realtime hints and keeps push preview as ordinary text', async () => {
+  const events: unknown[] = [];
+  const ctx = await makeContext(undefined, {
+    hub: {
+      register: () => 0,
+      unregister: () => 0,
+      connectionCount: () => 0,
+      publish: (_userId, event) => {
+        events.push(event);
+      },
+    },
+    config: { PUSH_ENABLED: true },
+  });
+  await chooseCanonicalCoach(ctx);
+  const conversation = await createConversation(ctx);
+  const exercise_ref = {
+    v: 1,
+    exercise_name: '卧推',
+    day_date: '2026-11-10',
+    plan_day_id: null,
+    plan_exercise_id: null,
+    exercise_id: ids.exercise,
+  };
+  const body = '[动作留言] 卧推 · 11/10\n问题';
+  const response = await request(ctx.app)
+    .post(`/conversations/${conversation.id}/messages`)
+    .set(auth(ctx.traineeToken))
+    .send({ kind: 'text', body, exercise_ref, client_id: 'note-realtime' });
+  expect(response.status).toBe(201);
+  expect(events).toHaveLength(2);
+  expect(events[0]).toMatchObject({ type: 'chat.message', payload: { exercise_ref } });
+  const outbox = await ctx.db
+    .selectFrom('notification_outbox')
+    .select('payload')
+    .where('event_type', '=', 'chat_message')
+    .executeTakeFirstOrThrow();
+  expect(outbox.payload).toMatchObject({ preview: body });
+  expect(outbox.payload).not.toHaveProperty('preview_is_system');
+});

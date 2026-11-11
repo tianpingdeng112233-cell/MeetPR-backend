@@ -1,3 +1,4 @@
+import { serializeSetLogWeight } from './set-log-serialization';
 import { sql, type Kysely } from 'kysely';
 
 import { catalogName } from '../i18n/copy';
@@ -108,7 +109,7 @@ export interface ExerciseStatsAggregationLog {
   main_lift_family: LiftFamily | null;
   is_competition_lift: boolean;
   competition_stance: CompetitionStance | null;
-  weight_kg: string | number;
+  weight_kg: string | number | null;
   reps: number;
   rpe: string | number | null;
   coach_rpe: string | number | null;
@@ -268,7 +269,7 @@ export function buildE1RMSeries(
 
   for (const log of logs) {
     const date = dateOnly(log.logged_date);
-    if (log.assumed || date < chartStart || date > endDate) continue;
+    if (log.weight_kg === null || log.assumed || date < chartStart || date > endDate) continue;
     const family = resolveCompetitionFamily(log, onboarding);
     const value = calculateEligibleE1RM({
       family,
@@ -333,7 +334,14 @@ export function buildWeeklyVolume(
 
   for (const log of logs) {
     const date = dateOnly(log.logged_date);
-    if (!log.completed || log.assumed || date < startDate || date > endDate) continue;
+    if (
+      log.weight_kg === null ||
+      !log.completed ||
+      log.assumed ||
+      date < startDate ||
+      date > endDate
+    )
+      continue;
     const weekStart = mondayOfWeek(date);
     const bucket = buckets.get(weekStart) ?? emptyWeeklyVolumeAccumulator();
     const family = log.main_lift_family ?? 'other';
@@ -423,7 +431,14 @@ export function buildTrackingAggregates(
   for (const log of logs) {
     const date = dateOnly(log.logged_date);
     const family = log.main_lift_family;
-    if (family === null || !log.completed || log.assumed || date < startDate || date > endDate) {
+    if (
+      log.weight_kg === null ||
+      family === null ||
+      !log.completed ||
+      log.assumed ||
+      date < startDate ||
+      date > endDate
+    ) {
       continue;
     }
 
@@ -605,7 +620,8 @@ function groupedSessions(logs: ScopedLog[]) {
 function repPrs(logs: ScopedLog[]) {
   const bestByReps = new Map<number, ScopedLog>();
   for (const log of logs) {
-    if (!log.completed || log.failed || Number(log.weight_kg) <= 0) continue;
+    if (log.weight_kg === null || !log.completed || log.failed || Number(log.weight_kg) <= 0)
+      continue;
     const current = bestByReps.get(log.reps);
     if (!current || Number(log.weight_kg) > Number(current.weight_kg)) {
       bestByReps.set(log.reps, log);
@@ -623,7 +639,7 @@ function repPrs(logs: ScopedLog[]) {
 
 function currentE1rm(logs: ScopedLog[], family: LiftFamily | null) {
   const points = logs.flatMap((log) => {
-    if (log.assumed) return [];
+    if (log.weight_kg === null || log.assumed) return [];
     const value = calculateEligibleE1RM({
       family,
       weightKg: Number(log.weight_kg),
@@ -654,14 +670,14 @@ interface ExerciseHistoryFilter {
   reps: number | undefined;
 }
 
-function sessionSets(logs: ScopedLog[], videoIds: Map<string, string>) {
+function sessionSets(logs: ScopedLog[], videoIds: Map<string, string>, caps?: string | string[]) {
   return [...logs]
     .sort((left, right) => left.set_index - right.set_index)
     .map((log) => {
       const videoId = videoIds.get(log.id) ?? null;
       return {
         set_index: log.set_index,
-        weight_kg: Number(log.weight_kg).toFixed(2),
+        weight_kg: serializeSetLogWeight(log, caps).weight_kg,
         reps: log.reps,
         rpe: log.rpe === null ? null : Number(log.rpe).toFixed(1),
         actual_rir: log.actual_rir ?? null,
@@ -679,6 +695,7 @@ async function filteredSessions(
   logs: ScopedLog[],
   filter: ExerciseHistoryFilter,
   videoIds: Map<string, string>,
+  caps?: string | string[],
 ) {
   if (logs.length === 0) return [];
   const byPlanExercise = new Map<string, ScopedLog[]>();
@@ -716,7 +733,7 @@ async function filteredSessions(
         date: session.date,
         plan_exercise_id: planExerciseId,
         prescribed,
-        sets: sessionSets(session.rows, videoIds),
+        sets: sessionSets(session.rows, videoIds, caps),
       }));
     })
     .sort((left, right) => right.date.localeCompare(left.date))
@@ -729,6 +746,7 @@ export async function fetchExerciseStatsDetail(
   studentId: string,
   exerciseId: string,
   filter?: ExerciseHistoryFilter,
+  caps?: string | string[],
 ) {
   const [logs, onboarding, exercise] = await Promise.all([
     fetchScopedLogs(db, coachId, studentId, exerciseId),
@@ -773,7 +791,7 @@ export async function fetchExerciseStatsDetail(
   const sessions = groupedSessions(logs);
   const recentSessions = sessions.slice(0, EXERCISE_STATS_LIMITS.recentSessions).map((session) => ({
     date: session.date,
-    sets: sessionSets(session.rows, videoIds),
+    sets: sessionSets(session.rows, videoIds, caps),
   }));
 
   const bySetCount: Record<
@@ -786,7 +804,7 @@ export async function fetchExerciseStatsDetail(
       completed_sets: number;
     }[]
   > = {};
-  for (const session of sessions) {
+  for (const session of groupedSessions(logs.filter((log) => log.weight_kg !== null))) {
     const key = String(session.rows.length);
     const bucket = bySetCount[key] ?? [];
     if (bucket.length >= EXERCISE_STATS_LIMITS.sessionsPerSetCount) continue;
@@ -818,6 +836,6 @@ export async function fetchExerciseStatsDetail(
     one_rm_reference: family === null ? null : onboarding.oneRm[family],
     ...(filter === undefined
       ? {}
-      : { filtered_sessions: await filteredSessions(db, logs, filter, videoIds) }),
+      : { filtered_sessions: await filteredSessions(db, logs, filter, videoIds, caps) }),
   };
 }

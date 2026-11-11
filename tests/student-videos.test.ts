@@ -328,3 +328,23 @@ describe('GET /uploads/:id/url wall-scoping parity (spec 007)', () => {
     expect(url.body).toEqual({ error: 'ATTACHMENT_NOT_FOUND' });
   });
 });
+
+it('negotiates linked null weights while preserving unlinked video metadata', async () => {
+  const ctx = await makeUploadsContext();
+  const logId = await seedSetLog(ctx);
+  await ctx.db.updateTable('set_logs').set({ weight_kg: null }).where('id', '=', logId).execute();
+  const linked = await uploadReadyVideo(ctx, logId);
+  const unlinked = await uploadReadyVideo(ctx);
+  for (const caps of ['', 'set-weight-nullable']) {
+    const response = await request(ctx.app)
+      .get(`/students/${ids.trainee}/videos`)
+      .set({ ...auth(ctx.traineeToken), 'X-MeetPR-Caps': caps });
+    expect(response.status).toBe(200);
+    expect(
+      response.body.videos.find((video: { id: string }) => video.id === linked).weight_kg,
+    ).toBe(caps ? null : '0');
+    expect(
+      response.body.videos.find((video: { id: string }) => video.id === unlinked).weight_kg,
+    ).toBeNull();
+  }
+});

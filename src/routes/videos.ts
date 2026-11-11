@@ -1,3 +1,4 @@
+import { serializeSetLogWeight } from '../handlers/set-log-serialization';
 import { catalogName } from '../i18n/copy';
 import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
@@ -107,7 +108,10 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
               ? null
               : catalogName(row.exercise_name, row.exercise_owner, req.locale),
           set_index: row.set_index,
-          weight_kg: row.weight_kg === null ? null : Number(row.weight_kg).toFixed(2),
+          weight_kg:
+            row.set_index === null
+              ? null
+              : serializeSetLogWeight(row, req.headers['x-meetpr-caps']).weight_kg,
           reps: row.reps,
           rpe: row.rpe === null ? null : Number(row.rpe).toFixed(1),
           actual_rir: row.actual_rir ?? null,

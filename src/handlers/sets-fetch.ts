@@ -32,7 +32,7 @@ export interface SetLogResponse {
   plan_day_id: string | null;
   exercise_id: string;
   set_index: number;
-  weight_kg: string;
+  weight_kg: string | null;
   reps: number;
   rpe: string | null;
   actual_rir: number | null;
@@ -53,7 +53,7 @@ export function toSetLog(row: SerializableSetLogRow): SetLogResponse {
     plan_day_id: row.plan_day_id,
     exercise_id: row.exercise_id,
     set_index: row.set_index,
-    weight_kg: Number(row.weight_kg).toFixed(2),
+    weight_kg: row.weight_kg === null ? null : Number(row.weight_kg).toFixed(2),
     reps: row.reps,
     rpe: row.rpe == null ? null : Number(row.rpe).toFixed(1),
     actual_rir: row.actual_rir ?? null,

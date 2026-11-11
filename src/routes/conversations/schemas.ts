@@ -22,6 +22,7 @@ const TextMessageBodySchema = z
     // hits intentionally return the stored message without revalidating a
     // retried payload (chat spec 024 idempotency contract).
     set_ref: z.unknown().optional(),
+    exercise_ref: z.unknown().optional(),
     video_id: z.unknown().optional(),
   })
   .strict();
