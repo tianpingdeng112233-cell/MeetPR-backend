@@ -12,6 +12,7 @@ export interface ReadinessCheckinResponse {
   sleep_quality: number;
   mood: number;
   stress: number;
+  energy: number | null;
   muscle_fatigue: MuscleFatigueEntry[];
   submitted_at: string;
   updated_at: string;
@@ -30,6 +31,7 @@ export function toReadinessCheckin(row: ReadinessCheckinRow): ReadinessCheckinRe
     sleep_quality: row.sleep_quality,
     mood: row.mood,
     stress: row.stress,
+    energy: row.energy,
     muscle_fatigue: muscleFatigue(row.muscle_fatigue),
     submitted_at: timestamp(row.submitted_at),
     updated_at: timestamp(row.updated_at),

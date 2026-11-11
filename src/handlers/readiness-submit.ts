@@ -9,12 +9,15 @@ export interface ReadinessCheckinInput {
   sleep_quality: number;
   mood: number;
   stress: number;
+  // `| undefined` is required under exactOptionalPropertyTypes: the zod schema
+  // makes energy optional, so the parsed body carries an explicit undefined.
+  energy?: number | undefined;
   muscle_fatigue: MuscleFatigueEntry[];
 }
 
 /**
  * Upsert the student's check-in for the day. ON CONFLICT (student_id,
- * checkin_date) overwrites the three scales + muscle_fatigue and bumps
+ * checkin_date) overwrites the submitted scales + muscle_fatigue and bumps
  * updated_at; submitted_at keeps the first-submission time. Callers return
  * 201 either way (aligned with POST /sets/log, spec 030 §C7).
  *
@@ -35,6 +38,7 @@ export async function upsertReadinessCheckin(
       sleep_quality: input.sleep_quality,
       mood: input.mood,
       stress: input.stress,
+      energy: input.energy ?? null,
       muscle_fatigue: JSON.stringify(input.muscle_fatigue),
     })
     .onConflict((oc) =>
@@ -42,6 +46,7 @@ export async function upsertReadinessCheckin(
         sleep_quality: (eb) => eb.ref('excluded.sleep_quality'),
         mood: (eb) => eb.ref('excluded.mood'),
         stress: (eb) => eb.ref('excluded.stress'),
+        energy: (eb) => eb.ref('excluded.energy'),
         muscle_fatigue: (eb) => eb.ref('excluded.muscle_fatigue'),
         updated_at: sql<Date>`now()`,
       }),
