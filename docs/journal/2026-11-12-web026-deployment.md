@@ -20,7 +20,12 @@ No migration delta from the already-running CN image. Existing 0085/0086 applica
 
 ## Deployment evidence
 
-Pending backend PR/CI, image build, SAE deployment and online hash checks.
+- [Backend artifact PR #400](https://github.com/tianpingdeng112233-cell/MeetPR-backend/pull/400) merged as `0a8f1dcfd56be6e1567a78f086a5df5c4b824eb1`.
+- PR CI [43160277088](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43160277088) and exact-SHA image build [43160606056](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43160606056) passed.
+- CN SAE [deployment 43161055914](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43161055914) succeeded on 2026-11-12 with explicit `image_sha=0a8f1dcfd56be6e1567a78f086a5df5c4b824eb1` and `migrations_applied=true`. Change order and health/login/same-origin bundle smoke gates passed.
+- Independent HTTP verification at 05:25 UTC: `/health` returned 200 / `status: ok`; served build ID and both asset SHA256 values exactly matched the reviewed artifact below. Both CN install URLs were retained.
+- Browser loaded the actual deployed JS/CSS with isolated API fixtures: student hover, two/eight clips, 40px rows, side arrows, target-specific draft restoration, Enter feedback/chat routing, and right rail collapse/reopen passed; no page errors. Screenshot visually inspected. These fixtures do not constitute a real authenticated messaging or media-playback smoke; no real user messages were sent.
+- This follow-up records deployment only; its documentation commit does not change the running artifact or require another runtime rollout.
 
 ## Local delivery gates
 
