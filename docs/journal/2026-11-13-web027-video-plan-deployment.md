@@ -18,4 +18,13 @@ David 在本卡明确要求「合并部署」。仅国内 SAE 同源网页换装
 - assets/index-NupKQPxc.css SHA256：`c43b281bfe5cad75a741d36bd26b217f034ce6cbc97b7b55e5da27e51bd77e73`。
 - 后端 Node 22 基线：typecheck/lint 通过；189 文件，2163 测试通过、6 既有跳过（2 workers，未修改断言或超时）。后端源代码与上一部署完全一致。
 - 正式 bundle + 隔离 HTTP fixture 浏览器：首日/末日/按天排 gap=12px；真实鼠标拖动 100px，队列悬停不回跳；关闭清除高亮与额外滚动空间；零 pageerror。未登录真实账号、未写真实计划或发送消息；媒体响应为夹具，不宣称验证真实视频传输/解码。
-- 已完成本地产物替换，尚未部署；远端 CI、镜像、部署与线上哈希待记录。
+- 发布状态：2026-11-13 已上线国内 SAE，实际证据如下。
+
+## 合并与线上证据
+
+- 后端 [PR #404](https://github.com/tianpingdeng112233-cell/MeetPR-backend/pull/404) 已合并，部署镜像 SHA `fe93336d0029c41f7cac8838faa9f5b095f7d133`。合并期间包含上一卡纯部署文档 #403，后端运行代码与迁移相对上一部署仍无差异。
+- [PR CI 43364671380](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43364671380)、[合并后 CI 43365016750](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43365016750)、[镜像构建 43365016727](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43365016727) 全绿。
+- [部署 43365552034](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43365552034) 成功，明确传入上述 image_sha 与 migrations_applied=true（无新迁移）。SAE 变更成功，health/login/同源入口 smoke 通过。
+- 本地候选全量：189 文件、2163 通过、6 既有跳过；typecheck/lint/format:check/build 全通过，未修改测试阈值。
+- 独立核验时间 2026-11-13T04:28:07.750Z：/health 200；线上 HTML/JS/CSS 与本卡产物 SHA256 全匹配，Build ID `1794543197927`。
+- 线上真实资源 + 隔离 HTTP fixture 的浏览器复验：首日、末日、按天排均间距 12px，鼠标横拖100px后悬停不拉回，关闭清除选中和额外空间；零 pageerror。API 包括写请求均被测试上下文拦截，未登录真实账号、未改真实计划、未发消息。截图：[首日](../evidence/web027-video-plan/live-first.png)、[按天排](../evidence/web027-video-plan/live-by-day.png)。此验收不覆盖真实视频传输/解码。
