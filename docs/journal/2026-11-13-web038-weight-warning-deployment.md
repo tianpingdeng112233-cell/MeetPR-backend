@@ -21,5 +21,14 @@
 - 实际生产 bundle + 隔离 API fixture 在 Chrome 验收：100→97.5/102.5 红，100 正常；100–110 区间 99.5 红、100/110 正常；缺首组时 45 对应第二组正常、47.5 对应第三组 50 红。总览只有重量摘要红，展开定位具体组。零 pageerror，未写真实数据或发送消息。
 - 本机 Node 25 基线两次分别发生单项 HTTP parse / ECONNRESET；单项 video-markers 复跑通过。安装 Node 22 遇本机 ENOSPC，清理本任务用完的 node_modules 后恢复。期间串行复跑也遭 ENOSPC，未将该轮计为通过。恢复后 Node 22 基线 189 文件 / 2163 通过 / 6 跳过；后续以换装后全量验证与 CI 为准。未修改测试或断言。
 - 换装后 typecheck/lint/format:check 已通过。默认并发复跑有单项 HTTP parse，明确 Node 22 的另一轮有两项 5 秒超时；本机收敛为 2 workers，保留原测试与超时，CI 仍运行默认配置。不将偶发测试环境问题宣称为已修复。
-- 发布状态：待本卡后续追加 CI、镜像、实际部署和线上资源校验证据。
+- 发布状态：2026-11-13 已部署国内 SAE，详见下方线上证据。
 - 换装后 Node 22 / 2 workers 全量：189 文件，2163 通过、6 跳过；typecheck/lint/format:check/build 全通过。未调大测试超时、未跳过额外用例。
+
+## 合并与线上证据
+
+- 后端 [PR #402](https://github.com/tianpingdeng112233-cell/MeetPR-backend/pull/402) 已合并，镜像 SHA `4d54e038773571a0ff50751e6ec85e3e7bde9976`。
+- [PR CI 43362478765](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43362478765)、[合并后 CI 43362808985](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43362808985)、[镜像构建 43362808989](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43362808989) 全绿，均按仓内默认配置验证。
+- [部署 43363239954](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43363239954) 成功；明确传入上述完整 image_sha，`migrations_applied=true`（已确认无新增迁移）。SAE change order 于 04:06:57 UTC 成功，health/login/同源入口 smoke 于 04:07:01 UTC 全部通过，登录测试返回 `AUTH_INVALID_CREDENTIALS`。
+- 独立 curl：`http://121.40.160.241:3000/health` 返回 `{"status":"ok"}`；线上 HTML/JS/CSS 均与上文产物逐字节一致，build ID `1794541359771`。安装链接和同源 API 标记保留。
+
+- 线上资源 + 隔离 API fixture 的 Chrome 复验全通过，零 pageerror；固定重量、区间端点和缺组映射符合预期。截图：[展开逐组](../evidence/web038-weight-warning/live-sets.png)、[总览](../evidence/web038-weight-warning/live-overview.png)。所有 API 请求由浏览器上下文拦截，不登录真实账号、未写真实计划或发送消息。

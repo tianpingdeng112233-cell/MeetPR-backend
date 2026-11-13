@@ -341,6 +341,8 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- **2026-11-13（web 038 教练重量偏差）** — `sha-4d54e038773571a0ff50751e6ec85e3e7bde9976`（#402），纯 `web/` 换装。后端代码/env/迁移未变，沿用 0085/0086 已应用状态。[部署 run 43363239954](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43363239954) 绿；health/login/同源入口门禁通过。独立核对线上 HTML/JS/CSS 与产物逐字节一致，build ID `1794541359771`；线上资源配隔离 API fixture 的 Chrome 复验通过，未写真实数据或发送消息。仅国内 SAE。完整证据见 [本卡 JOURNAL](../docs/journal/2026-11-13-web038-weight-warning-deployment.md)。
+
 - **2026-11-12（web 026 教练统一沟通）** — `sha-0a8f1dcfd56be6e1567a78f086a5df5c4b824eb1`（#400），纯 `web/` 换装，后端代码/env/迁移未变，既有 0085/0086 状态沿用。[部署 run 43161055914](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43161055914) 绿；health/login/同源入口门禁通过；独立核对线上 `index-BoECzI9j.js` 与 `index-CCESVbej.css` SHA256 和 build ID `1794460338852` 全匹配。实际线上资源配隔离 API fixture 的浏览器交互复验通过，无真实消息发送。仅国内 SAE，海外线未动。完整证据见 [本卡 JOURNAL](../docs/journal/2026-11-12-web026-deployment.md)。
 
 - **2026-11-11（spec 065 全天一览）** — `sha-18afe5fac0d6b8ae3b623a4a3614335b326a7f2c`（=staging HEAD，#397 合并），依赖 0085 + 0086（已先行应用）。[部署 run 42951098925](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/42951098925)（`migrations_applied=true`）绿；curl：/health 200。env 未动。`weight-suggestions` 接口已上线但两端暂不调用（David 11/11 选 A，历史预填暂缓）；老客户端不带 `X-MeetPR-Caps` 时空重量仍回 `"0"`。
