@@ -343,6 +343,8 @@
 
 ## SAE 镜像部署记录（同为手动步骤,滚镜像后追加一行）
 
+- **2026-11-13（spec066 / web028 休息日）** — `sha-0fede2a099cd76002a1576da10e38b0431cf59fd`（#405），包含 web #168 七日网格及后端休息日持久化/学员过滤。0087 已先行应用并核验，RDS 手动备份成功。合并后 [CI43370469348](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43370469348)、[镜像43370469353](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43370469353)、[部署43370894290](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43370894290) 全绿。独立核验 health200、线上 HTML/JS/CSS 与候选哈希一致；线上真实资源配隔离API夹具验证28格、切换恢复和两种布局，无真实用户写入。`PLAN_REST_DAYS_ENABLED` 尚待控制台启用及运行时核验，不能据此宣布功能已开放。仅CN；[本卡JOURNAL](../docs/journal/2026-11-13-066-A.md)。
+
 - **2026-11-13（web 027 视频与计划联动）** — `sha-fe93336d0029c41f7cac8838faa9f5b095f7d133`（#404），纯 web/ 换装已合并的 plan-web #166 / main `4f07f7a`：播放日贴齐、高亮与横向浏览。无后端代码/env/迁移变化，沿用 0085/0086 已应用状态。[部署 run 43365552034](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43365552034) 绿，health/login/同源入口门禁通过；独立核对线上 HTML/JS/CSS 哈希与 Build ID `1794543197927` 全匹配。线上真实资源配隔离 API fixture 浏览器复验通过，无真实数据写入。仅国内 SAE，海外未动。详见 [本卡 JOURNAL](../docs/journal/2026-11-13-web027-video-plan-deployment.md)。
 
 - **2026-11-13（web 038 教练重量偏差）** — `sha-4d54e038773571a0ff50751e6ec85e3e7bde9976`（#402），纯 `web/` 换装。后端代码/env/迁移未变，沿用 0085/0086 已应用状态。[部署 run 43363239954](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43363239954) 绿；health/login/同源入口门禁通过。独立核对线上 HTML/JS/CSS 与产物逐字节一致，build ID `1794541359771`；线上资源配隔离 API fixture 的 Chrome 复验通过，未写真实数据或发送消息。仅国内 SAE。完整证据见 [本卡 JOURNAL](../docs/journal/2026-11-13-web038-weight-warning-deployment.md)。

@@ -1,0 +1,83 @@
+{
+  "base": "http://121.40.160.241:3000",
+  "label": "live",
+  "cells": 28,
+  "restoredBricks": 1,
+  "byDayCells": 28,
+  "errors": [],
+  "interceptedRequests": [
+    {
+      "path": "/coach/overview-alerts",
+      "method": "GET"
+    },
+    {
+      "path": "/exercises",
+      "method": "GET"
+    },
+    {
+      "path": "/exercises/usage-stats",
+      "method": "GET"
+    },
+    {
+      "path": "/coach/students",
+      "method": "GET"
+    },
+    {
+      "path": "/coach/bind-requests",
+      "method": "GET"
+    },
+    {
+      "path": "/students/s/plans",
+      "method": "GET"
+    },
+    {
+      "path": "/students/s/onboarding",
+      "method": "GET"
+    },
+    {
+      "path": "/coach/students/s/exercise-stats",
+      "method": "GET"
+    },
+    {
+      "path": "/conversations",
+      "method": "GET"
+    },
+    {
+      "path": "/plans/plan",
+      "method": "GET"
+    },
+    {
+      "path": "/conversations",
+      "method": "GET"
+    },
+    {
+      "path": "/plans/plan",
+      "method": "GET"
+    },
+    {
+      "path": "/plans/plan/pending-revision",
+      "method": "GET"
+    },
+    {
+      "path": "/students/s/sets",
+      "method": "GET"
+    },
+    {
+      "path": "/students/s/feedback",
+      "method": "GET"
+    },
+    {
+      "path": "/students/s/videos",
+      "method": "GET"
+    },
+    {
+      "path": "/plans/plan/pending-revision",
+      "method": "DELETE"
+    },
+    {
+      "path": "/plans/plan",
+      "method": "GET"
+    }
+  ],
+  "scope": "Real served assets, synthetic API fixture. No live authenticated writes or persistence assertion."
+}
