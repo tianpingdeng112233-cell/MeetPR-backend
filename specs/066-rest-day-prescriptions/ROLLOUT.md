@@ -5,8 +5,8 @@ Status: prepared; production migration and gate change NOT executed. No Global d
 ## Candidate and ordering
 
 - Web spec 028 + backend spec 066. Merge exact reviewed PRs after CI; build web from the latest `main` including weight-warning PR 165. Copy its `dist/` into backend `web/` and verify hashes before backend PR merge.
-- Reserve migration `0087-plan-day-rest.sql`; immediately before application recheck `origin/staging`, open PRs and the applied ledger. Current latest remote staging on 2026-11-13 is 4d54e03 (weight-warning assets); schema head is 0086. 0084's unrelated gate remains off.
-- David approves this additive production migration explicitly under global AGENTS. Apply through the established DMS/manual channel to CN RDS `meetpr`, schema `public`. No data deletion, ID remap or rewrite.
+- Reserve migration `0087-plan-day-rest.sql`; immediately before application recheck `origin/staging`, open PRs and the applied ledger. Integrated remote staging is fe93336 (video alignment, including weight-warning assets); schema head is 0086. Recheck these values at the actual deployment gate. 0084's unrelated gate remains off.
+- David approves this additive production migration explicitly under global AGENTS. Apply through the established DMS/manual channel to CN RDS `meetpr`, schema `public`. Before applying, run the repository backup procedure (`pnpm tsx scripts/backup-db.ts`) through the approved credential channel; verify a non-empty backup and record its path without exposing credentials. No data deletion, ID remap or rewrite.
 
 ## Reviewable migration
 
