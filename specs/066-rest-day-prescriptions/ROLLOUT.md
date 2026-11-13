@@ -1,6 +1,6 @@
 # CN rollout — rest-day prescriptions
 
-Status: prepared; production migration and gate change NOT executed. No Global deployment.
+Status: migration0087 applied and schema/count verified from David’s DMS screenshots on 2026-11-13. Cloud backup metadata pending. Deployment and gate activation pending. No Global deployment.
 
 ## Candidate and ordering
 
