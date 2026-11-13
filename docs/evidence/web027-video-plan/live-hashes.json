@@ -1,0 +1,21 @@
+{
+  "verifiedAt": "2026-11-13T04:28:07.750Z",
+  "base": "http://121.40.160.241:3000",
+  "source": "4f07f7a6320e93952d1d0bcc749aaa2f92a98539",
+  "buildId": "1794543197927",
+  "health": 200,
+  "files": {
+    "index.html": {
+      "status": 200,
+      "sha256": "2ff8c38d3f0d3c0c7b1006b155631dcc3dae11928200fbe465ad568cf5c22555"
+    },
+    "assets/index-0A76wI8o.js": {
+      "status": 200,
+      "sha256": "cef663d10885a6ff5ebb4aa0e29a44924e6c22e194973090b42f8a78cb9c9bcf"
+    },
+    "assets/index-NupKQPxc.css": {
+      "status": 200,
+      "sha256": "c43b281bfe5cad75a741d36bd26b217f034ce6cbc97b7b55e5da27e51bd77e73"
+    }
+  }
+}
