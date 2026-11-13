@@ -1,6 +1,6 @@
 # 066 — Durable rest-day prescriptions
 
-Status: InProgress. Authorized 2026-11-13 by David together with plan-web 027 final HTML and development through CN release. Base staging 2ea533e. One backend card A.
+Status: InProgress. Authorized 2026-11-13 by David together with plan-web 028 final HTML and development through CN release. Base staging 2ea533e. One backend card A.
 
 ## Contract
 
@@ -25,4 +25,4 @@ HTTP through existing createApp + pg-mem adapters; real interfaces, no private-m
 
 ## Out of scope
 
-Student app UI, calendar-enforced recovery, deleting retained prescriptions, retroactive changes to logged days, Global catch-up, unrelated migrations or open PRs. Frontend spec/design is plan-web 027.
+Student app UI, calendar-enforced recovery, deleting retained prescriptions, retroactive changes to logged days, Global catch-up, unrelated migrations or open PRs. Frontend spec/design is plan-web 028.
