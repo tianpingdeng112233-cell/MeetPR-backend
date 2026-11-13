@@ -1,6 +1,6 @@
 # CN rollout — rest-day prescriptions
 
-Status: migration0087 applied and schema/count verified from David’s DMS screenshots on 2026-11-13. RDS manual instance backup success verified from Task Center screenshot. Deployment and gate activation pending. No Global deployment.
+Status: migration0087 applied and schema/count verified from David’s DMS screenshots on 2026-11-13. RDS manual instance backup success verified from Task Center screenshot. Image0fede2a deployed successfully; gate activation/runtime verification pending. No Global deployment.
 
 ## Candidate and ordering
 

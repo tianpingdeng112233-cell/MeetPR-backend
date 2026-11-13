@@ -1,0 +1,21 @@
+{
+  "verifiedAt": "2026-11-13T05:17:33.343Z",
+  "base": "http://121.40.160.241:3000",
+  "backendImageSha": "0fede2a099cd76002a1576da10e38b0431cf59fd",
+  "sourceWebRuntimeSha": "4003b4387a8af593b1a2a2c316ae0e361e2fbf27",
+  "health": 200,
+  "files": {
+    "index.html": {
+      "status": 200,
+      "sha256": "79afbfdd6e14100ad6c1c30e9285d596dc01abebc7bcae12627deffc1aa01c6f"
+    },
+    "assets/index-BUX3vULo.js": {
+      "status": 200,
+      "sha256": "34ce43bb46d9e0733a00c7ce1e21f2df73d39a2ed45a74593d691fe0d61a44de"
+    },
+    "assets/index-BF0HLUOv.css": {
+      "status": 200,
+      "sha256": "6092973daa7f34156e817fbf18e479c68a9c62da296c21e4e0b142575340b8e4"
+    }
+  }
+}
