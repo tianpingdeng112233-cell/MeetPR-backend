@@ -356,6 +356,7 @@ export interface PlanPendingRevisionsTable {
 }
 
 export interface PlanDaysTable {
+  is_rest: Generated<boolean>;
   id: Generated<string>;
   plan_id: string;
   day_of_week: number;

@@ -11,6 +11,7 @@ import { deleteStudentAddedSetLog } from '../handlers/sets-delete';
 import { fetchCoachSetLogs, fetchOwnSetLogs } from '../handlers/sets-fetch';
 import {
   AdhocDayConflictError,
+  PlanDayRestError,
   canLogPlanDay,
   exerciseExists,
   isAccessoryExercise,
@@ -158,21 +159,30 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
           res.status(400).json({ error: 'SETS_RIR_ACCESSORY_ONLY' });
           return;
         }
-        const result = await upsertSetLog(deps.db, req.user.id, {
-          plan_id: resolved.planId,
-          plan_day_id: resolved.planDayId,
-          plan_exercise_id: body.data.plan_exercise_id,
-          exercise_id: resolved.exerciseId,
-          logged_date: body.data.logged_date ?? trainingDay(new Date(), resolved.timezone),
-          update_logged_date: body.data.logged_date !== undefined,
-          set_index: body.data.set_index,
-          weight_kg: body.data.weight_kg,
-          reps: body.data.reps,
-          rpe: body.data.rpe,
-          ...(body.data.actual_rir !== undefined ? { actual_rir: body.data.actual_rir } : {}),
-          completed: body.data.completed,
-          failed: body.data.failed,
-        });
+        let result;
+        try {
+          result = await upsertSetLog(deps.db, req.user.id, {
+            plan_id: resolved.planId,
+            plan_day_id: resolved.planDayId,
+            plan_exercise_id: body.data.plan_exercise_id,
+            exercise_id: resolved.exerciseId,
+            logged_date: body.data.logged_date ?? trainingDay(new Date(), resolved.timezone),
+            update_logged_date: body.data.logged_date !== undefined,
+            set_index: body.data.set_index,
+            weight_kg: body.data.weight_kg,
+            reps: body.data.reps,
+            rpe: body.data.rpe,
+            ...(body.data.actual_rir !== undefined ? { actual_rir: body.data.actual_rir } : {}),
+            completed: body.data.completed,
+            failed: body.data.failed,
+          });
+        } catch (error: unknown) {
+          if (error instanceof PlanDayRestError) {
+            res.status(409).json({ error: 'PLAN_DAY_NOT_ACTIVE' });
+            return;
+          }
+          throw error;
+        }
         try {
           await recordSetLogActivity(deps.db, req.user.id, result.id, new Date(), {
             enabled: deps.pushEnabled === true,
@@ -224,6 +234,10 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
           failed: body.data.failed,
         });
       } catch (error: unknown) {
+        if (error instanceof PlanDayRestError) {
+          res.status(409).json({ error: 'PLAN_DAY_NOT_ACTIVE' });
+          return;
+        }
         if (error instanceof AdhocDayConflictError) {
           res.status(409).json({ error: 'SETS_ADHOC_DAY_CONFLICT' });
           return;

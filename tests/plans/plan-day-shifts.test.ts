@@ -135,6 +135,7 @@ async function makeContext(configOverride: Partial<Config> = {}): Promise<TestCo
 
 
     CREATE TABLE plan_days (
+      is_rest BOOLEAN NOT NULL DEFAULT FALSE,
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       plan_id UUID NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
       day_of_week SMALLINT NOT NULL,
@@ -1253,4 +1254,38 @@ describe('coach plan shifts', () => {
     const disabledRows = await disabled.db.selectFrom('notification_outbox').selectAll().execute();
     expect(disabledRows).toHaveLength(0);
   });
+});
+
+it('undoes the original full shift batch even after every shifted day becomes rest', async () => {
+  const ctx = await makeContext({ COACH_PLAN_SHIFT_ENABLED: true, PLAN_REST_DAYS_ENABLED: true });
+  const { plan, days } = await seedPlan(ctx, { dayOffsets: [0, 2] });
+  const shifted = await request(ctx.app)
+    .post(`/plans/${plan.id}/shift`)
+    .set(auth(ctx.coachToken))
+    .send({ anchor_date: ctx.today, offset_days: 2 });
+  expect(shifted.status).toBe(201);
+  await ctx.db
+    .updateTable('plan_days')
+    .set({ is_rest: true })
+    .where('plan_id', '=', plan.id)
+    .execute();
+  const undone = await request(ctx.app).delete(`/plans/${plan.id}/shift`).set(auth(ctx.coachToken));
+  expect(undone.status).toBe(204);
+  const rows = await ctx.db
+    .selectFrom('plan_day_shifts')
+    .select('id')
+    .where(
+      'plan_day_id',
+      'in',
+      days.map((day) => day.id),
+    )
+    .execute();
+  expect(rows).toEqual([]);
+  const loaded = await request(ctx.app)
+    .get(`/plans/${plan.id}?include_rest_days=true`)
+    .set(auth(ctx.coachToken));
+  expect(loaded.body.latest_shift).toBeNull();
+  expect(
+    loaded.body.days.map((day: { shifted_to_date: string | null }) => day.shifted_to_date),
+  ).toEqual([null, null]);
 });

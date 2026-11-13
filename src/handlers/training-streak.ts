@@ -44,6 +44,7 @@ export async function getStudentTrainingStreak(
       ? []
       : await db
           .selectFrom('plan_days')
+          .where('is_rest', '=', false)
           .select(['id', 'plan_id', 'week_number', 'day_of_week'])
           .where('plan_id', 'in', planIds)
           .execute();

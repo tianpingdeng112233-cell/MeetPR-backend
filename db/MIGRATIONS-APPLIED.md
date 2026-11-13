@@ -95,6 +95,8 @@
 
 **0071 已应用（2026-11-10）**：真实 RDS `meetpr-rds-v01-staging`，库 `public@meetpr`，spec 046 每日体重记录（新表 `body_weight_records` + 从 `student_onboarding_profiles.weight_kg` 回填）。迁移前由 David 在控制台做 RDS 全量快照（完成时间未登记），随后 David 经 DMS SQLConsole 整段直接执行（加 `SET search_path TO public;`）。核对：`body_weight_records` 51 行 = 有体重的档案 51 行。
 
+**0087 已应用（2026-11-13）**：David 批准 spec 066 具体上线方案后，经 CN RDS `meetpr-rds-v01-staging` / `meetpr` 的 DMS SQLConsole 逐条执行并提交。截图核验 `public.plan_days.is_rest` 为 `boolean / is_nullable=NO / default=false`，启用前 `rest_days=0`。现有处方和 ID 不改。整段提交曾报 SQL 解析错误，逐条执行后成功；不将未查明的 DMS 解析原因写为定论。证据：[字段](../docs/evidence/066-rest-day-prescriptions/migration-column.png)、[计数](../docs/evidence/066-rest-day-prescriptions/migration-rest-count.png)。David 补充 RDS 任务中心截图，目标实例“手动备份实例”任务显示执行成功：[备份证据](../docs/evidence/066-rest-day-prescriptions/rds-backup-success.png)；应用发布与开关状态见本卡 JOURNAL。
+
 **0085 + 0086 已应用（2026-11-11）**：真实 RDS `meetpr-rds-v01-staging`，库 `public@meetpr`，spec 065 全天一览（`set_logs.weight_kg` 去掉 NOT NULL；`messages.exercise_ref JSONB NULL` + 三条 CHECK：仅 text、与 set_ref 互斥、与 video 互斥）。纯放宽 / 纯新增，存量行不变、无回填。迁移前由 David 在控制台做 RDS 手动快照，随后 David 经 DMS SQLConsole 在一个事务里整段执行（加 `SET search_path TO public;`、ADD COLUMN 用 IF NOT EXISTS）。核对：`information_schema.columns` 两行 `is_nullable = YES`（截图实证）。0084 仍未应用（spec 063 开关关），号段空缺属预期。执行人：David。
 
 ## 变更历史
