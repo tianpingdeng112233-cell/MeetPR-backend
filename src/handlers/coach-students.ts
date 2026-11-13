@@ -111,6 +111,7 @@ export async function listCoachStudents(
       .execute(),
     db
       .selectFrom('plan_days as pd')
+      .where('pd.is_rest', '=', false)
       .innerJoin('plans as p', 'p.id', 'pd.plan_id')
       .leftJoin('plan_day_completions as completed', (join) =>
         join
@@ -131,6 +132,7 @@ export async function listCoachStudents(
     db
       .selectFrom('plan_day_shifts as shift')
       .innerJoin('plan_days as pd', 'pd.id', 'shift.plan_day_id')
+      .where('pd.is_rest', '=', false)
       .innerJoin('plans as p', 'p.id', 'pd.plan_id')
       .selectAll('shift')
       .select('pd.plan_id')

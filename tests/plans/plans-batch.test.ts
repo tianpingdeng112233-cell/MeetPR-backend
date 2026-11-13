@@ -737,3 +737,128 @@ describe('POST /plans/:id/days/batch', () => {
     expect(renamed.body.name).toBe('Published rename is allowed');
   });
 });
+
+it('retains a resting prescription durably for its coach without exposing it to students', async () => {
+  const ctx = await makeContext(undefined, { config: { PLAN_REST_DAYS_ENABLED: true } });
+  const plan = await createPublishedPlan(ctx);
+  const before = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.coachToken));
+  const resting = await batch(ctx, plan.planId, {
+    day_types: [{ day_id: plan.dayId, is_rest: true }],
+  });
+  expect(resting.status).toBe(200);
+  const coach = await request(ctx.app)
+    .get(`/plans/${plan.planId}?include_rest_days=true`)
+    .set(auth(ctx.coachToken));
+  expect(coach.body.rest_days_enabled).toBe(true);
+  expect(coach.body.days[0]).toMatchObject({ ...before.body.days[0], is_rest: true });
+  const student = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.traineeToken));
+  expect(student.body.days).toEqual([]);
+  const legacyCoach = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.coachToken));
+  expect(legacyCoach.body.days).toEqual([]);
+  const restored = await batch(ctx, plan.planId, {
+    day_types: [{ day_id: plan.dayId, is_rest: false }],
+  });
+  expect(restored.status).toBe(200);
+  const after = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.traineeToken));
+  expect(after.body.days).toEqual(before.body.days);
+  await ctx.db.destroy();
+});
+
+it('refuses a cached student logging or completing a rest day', async () => {
+  const ctx = await makeContext(undefined, { config: { PLAN_REST_DAYS_ENABLED: true } });
+  const plan = await createPublishedPlan(ctx);
+  expect(
+    (await batch(ctx, plan.planId, { day_types: [{ day_id: plan.dayId, is_rest: true }] })).status,
+  ).toBe(200);
+  const log = await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+    plan_exercise_id: plan.planExerciseId,
+    set_index: 0,
+    weight_kg: '100',
+    reps: 5,
+    completed: true,
+  });
+  expect(log.status).toBe(400);
+  const completion = await request(ctx.app)
+    .post(`/plans/days/${plan.dayId}/complete`)
+    .set(auth(ctx.traineeToken))
+    .send({});
+  expect(completion.status).toBe(409);
+  await ctx.db.destroy();
+});
+
+it('publishes active training without treating an empty rest day as incomplete', async () => {
+  const ctx = await makeContext(undefined, { config: { PLAN_REST_DAYS_ENABLED: true } });
+  const plan = await createDraftPlan(ctx);
+  const stored = await batch(ctx, plan.id, {
+    day_types: [],
+    upsert_days: [upsertDay(1, 1), { ...upsertDay(1, 2), exercises: [], is_rest: true }],
+  });
+  expect(stored.status).toBe(200);
+  const published = await request(ctx.app)
+    .post(`/plans/${plan.id}/publish`)
+    .set(auth(ctx.coachToken))
+    .send({});
+  expect(published.status).toBe(200);
+  await ctx.db.destroy();
+});
+
+it('rejects a completed day switch before applying any other day switch', async () => {
+  const ctx = await makeContext(undefined, { config: { PLAN_REST_DAYS_ENABLED: true } });
+  const plan = await createPublishedPlan(ctx);
+  const another = await addDayTree(ctx, plan.planId, 1, 2);
+  expect(
+    (
+      await request(ctx.app)
+        .post(`/plans/days/${another.dayId}/complete`)
+        .set(auth(ctx.traineeToken))
+        .send({})
+    ).status,
+  ).toBe(200);
+  const changed = await batch(ctx, plan.planId, {
+    day_types: [
+      { day_id: plan.dayId, is_rest: true },
+      { day_id: another.dayId, is_rest: true },
+    ],
+  });
+  expect(changed.status).toBe(409);
+  expect(changed.body.error).toBe('DAY_HISTORY_IMMUTABLE');
+  const after = await request(ctx.app)
+    .get(`/plans/${plan.planId}?include_rest_days=true`)
+    .set(auth(ctx.coachToken));
+  expect(after.body.days.map((day: { is_rest: boolean }) => day.is_rest)).toEqual([false, false]);
+  await ctx.db.destroy();
+});
+
+it('keeps the feature off by default while retaining legacy batch behavior', async () => {
+  const ctx = await makeBatchContext();
+  const plan = await createPublishedPlan(ctx);
+  const disabled = await batch(ctx, plan.planId, {
+    day_types: [{ day_id: plan.dayId, is_rest: true }],
+  });
+  expect(disabled.status).toBe(409);
+  expect(disabled.body.error).toBe('REST_DAYS_DISABLED');
+  expect((await batch(ctx, plan.planId, { upsert_days: [upsertDay(2, 2)] })).status).toBe(200);
+  await ctx.db.destroy();
+});
+
+it('atomically refuses restoring an empty live training day while allowing empty rests', async () => {
+  const ctx = await makeContext(undefined, { config: { PLAN_REST_DAYS_ENABLED: true } });
+  const plan = await createPublishedPlan(ctx);
+  const added = await batch(ctx, plan.planId, {
+    upsert_days: [{ ...upsertDay(1, 2), exercises: [], is_rest: true }],
+  });
+  expect(added.status).toBe(200);
+  const empty = added.body.days.find((day: { day_of_week: number }) => day.day_of_week === 2);
+  const restore = await batch(ctx, plan.planId, {
+    day_types: [
+      { day_id: plan.dayId, is_rest: true },
+      { day_id: empty.id, is_rest: false },
+    ],
+  });
+  expect(restore.status).toBe(422);
+  const after = await request(ctx.app)
+    .get(`/plans/${plan.planId}?include_rest_days=true`)
+    .set(auth(ctx.coachToken));
+  expect(after.body.days.map((day: { is_rest: boolean }) => day.is_rest)).toEqual([false, true]);
+  await ctx.db.destroy();
+});

@@ -98,6 +98,7 @@ interface PlansRouterDeps {
   logger: Logger;
   pushEnabled?: boolean;
   coachPlanShiftEnabled?: boolean;
+  restDaysEnabled?: boolean;
 }
 
 type DbExecutor = Kysely<Database> | Transaction<Database>;
@@ -199,6 +200,7 @@ function parsedJson(value: unknown): unknown {
 export async function getPlanWithChildren(
   db: Kysely<Database>,
   plan: PlanRow,
+  includeRestDays = false,
 ): Promise<PlanWithChildrenResponse> {
   const dayRows = await db
     .selectFrom('plan_days as pd')
@@ -206,6 +208,7 @@ export async function getPlanWithChildren(
     .selectAll('pd')
     .select(['pdc.completed_at as completion_completed_at', 'pdc.source as completion_source'])
     .where('pd.plan_id', '=', plan.id)
+    .$if(!includeRestDays, (query) => query.where('pd.is_rest', '=', false))
     .orderBy('pd.week_number', 'asc')
     .orderBy('pd.day_of_week', 'asc')
     .orderBy('pd.sort_order', 'asc')
@@ -223,7 +226,7 @@ export async function getPlanWithChildren(
           .orderBy('sort_order', 'asc')
           .execute();
 
-  const shiftData = await planShiftSummaries(db, [plan]);
+  const shiftData = await planShiftSummaries(db, [plan], includeRestDays);
   const shiftRows = shiftData.shiftsByPlan.get(plan.id) ?? [];
 
   const exerciseIds = exerciseRows.map((exercise) => exercise.id);
@@ -264,21 +267,23 @@ export async function getPlanWithChildren(
   return {
     ...toPlan(plan),
     ...shiftSummary,
-    days: dayRows.map((day) =>
-      toPlanDay(
+    days: dayRows.map((day) => ({
+      ...(includeRestDays ? { is_rest: day.is_rest } : {}),
+      ...toPlanDay(
         day,
         exercisesByDay.get(day.id) ?? [],
         shiftsByDay.get(day.id)?.shifted_to_date ?? null,
         day.completion_completed_at ?? null,
         day.completion_source ?? null,
       ),
-    ),
+    })),
   };
 }
 
 async function planShiftSummaries(
   db: Kysely<Database>,
   plans: Pick<PlanRow, 'id' | 'start_date'>[],
+  includeRestDays = false,
 ): Promise<{
   summaries: Map<string, PlanShiftSummaryResponse>;
   shiftsByPlan: Map<string, PlanDayShiftRow[]>;
@@ -290,6 +295,7 @@ async function planShiftSummaries(
   const rows = await db
     .selectFrom('plan_day_shifts as pds')
     .innerJoin('plan_days as pd', 'pd.id', 'pds.plan_day_id')
+    .$if(!includeRestDays, (query) => query.where('pd.is_rest', '=', false))
     .leftJoin('plan_shift_batches as psb', 'psb.id', 'pds.batch_id')
     .select([
       'pd.plan_id as plan_id',
@@ -397,6 +403,7 @@ async function planShiftSummaries(
 async function publishCounts(db: DbExecutor, planId: string): Promise<PublishCounts> {
   const days = await db
     .selectFrom('plan_days')
+    .where('is_rest', '=', false)
     .select(['id'])
     .where('plan_id', '=', planId)
     .execute();
@@ -621,7 +628,11 @@ async function createWholePlanShift(
   const coachId = context.plan.coach_id;
 
   const today = localCalendarDate(new Date(), context.timezone);
-  const effectiveDays = effectivePlanDays(context.plan, context.days, context.shifts);
+  const effectiveDays = effectivePlanDays(
+    context.plan,
+    context.days.filter((day) => !day.is_rest),
+    context.shifts,
+  );
   const todayDay = effectiveDays.find((item) => item.effectiveDate === today);
   if (!todayDay) {
     return { type: 'error', error: 'SHIFT_ONLY_TODAY' };
@@ -778,7 +789,11 @@ async function createCoachPlanShift(
           )
           .execute();
   const completedDayIds = new Set(completedRows.map((row) => row.plan_day_id));
-  const effectiveDays = effectivePlanDays(context.plan, context.days, context.shifts);
+  const effectiveDays = effectivePlanDays(
+    context.plan,
+    context.days.filter((day) => !day.is_rest),
+    context.shifts,
+  );
   const anchoredDays = effectiveDays.filter((item) => item.effectiveDate >= anchorDate);
   const candidates = anchoredDays.filter((item) => !completedDayIds.has(item.day.id));
   if (candidates.length === 0) {
@@ -893,6 +908,7 @@ export async function createImportedHistory(
 
   const rows = await db
     .selectFrom('plan_days as pd')
+    .where('pd.is_rest', '=', false)
     .innerJoin('plan_exercises as pe', 'pe.plan_day_id', 'pd.id')
     .innerJoin('plan_sets as ps', 'ps.plan_exercise_id', 'pe.id')
     .select([
@@ -1418,11 +1434,13 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      const response = await getPlanWithChildren(deps.db, plan);
+      const includeRestDays = user.role === 'coach' && req.query.include_rest_days === 'true';
+      const response = await getPlanWithChildren(deps.db, plan, includeRestDays);
       res.status(200).json(
         user.role === 'coach'
           ? {
               ...response,
+              ...(includeRestDays ? { rest_days_enabled: deps.restDaysEnabled === true } : {}),
               pending_revision_saved_at:
                 pendingRevisionSavedAt === null ? null : timestamp(pendingRevisionSavedAt),
             }
@@ -1866,6 +1884,18 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
+      const includesRestDays =
+        body.data.day_types !== undefined ||
+        body.data.upsert_days.some((day) => day.is_rest !== undefined);
+      if (includesRestDays && !deps.restDaysEnabled) {
+        res.status(409).json({ error: 'REST_DAYS_DISABLED' });
+        return;
+      }
+      if (includesRestDays && (plan.status === 'completed' || plan.status === 'paused')) {
+        res.status(409).json({ error: 'PLAN_NOT_EDITABLE' });
+        return;
+      }
+
       const exerciseIds = [
         ...new Set(
           body.data.upsert_days.flatMap((day) =>
@@ -1890,20 +1920,92 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         body.data.plan_patch?.end_date !== undefined ||
         body.data.plan_patch?.plan_weeks !== undefined;
       const hasTreeMutation =
-        body.data.delete_day_ids.length > 0 || body.data.upsert_days.length > 0;
+        body.data.delete_day_ids.length > 0 ||
+        body.data.upsert_days.length > 0 ||
+        !!body.data.day_types?.length;
 
       const result = await deps.db.transaction().execute(async (trx) => {
         let currentPlan = plan;
 
-        if (hasCalendarMetadataMutation) {
+        if (hasCalendarMetadataMutation || includesRestDays) {
           const lockedTree = await lockOwnedPlanTree(trx, plan.id, user.id);
           if (!lockedTree) return { type: 'not-found' } as const;
           currentPlan = lockedTree.plan;
           if (
+            hasCalendarMetadataMutation &&
             !isPurePlanExtension(currentPlan, body.data.plan_patch ?? {}) &&
             (await planHistoryLocked(trx, plan.id, lockedTree.exerciseIds))
           ) {
             return { type: 'plan-history-immutable' } as const;
+          }
+        }
+
+        if (
+          includesRestDays &&
+          (currentPlan.status === 'completed' || currentPlan.status === 'paused')
+        ) {
+          return { type: 'plan-history-immutable' } as const;
+        }
+        const changes = body.data.day_types ?? [];
+        if (
+          new Set(changes.map((change) => change.day_id)).size !== changes.length ||
+          changes.some((change) => body.data.delete_day_ids.includes(change.day_id))
+        ) {
+          return { type: 'invalid-day-types' } as const;
+        }
+        if (includesRestDays && currentPlan.status === 'published') {
+          // Validate the proposed tree before any write, so refusal cannot commit a partial switch.
+          const tree = await getPlanWithChildren(trx, currentPlan, true);
+          const proposed = [
+            ...tree.days
+              .filter((day) => !body.data.delete_day_ids.includes(day.id))
+              .map((day) => ({
+                ...day,
+                is_rest: changes.find((change) => change.day_id === day.id)?.is_rest ?? day.is_rest,
+              })),
+            ...body.data.upsert_days,
+          ];
+          const incomplete = proposed.filter(
+            (day) =>
+              !day.is_rest &&
+              (!day.exercises.length || day.exercises.some((exercise) => !exercise.sets.length)),
+          );
+          if (incomplete.length)
+            return {
+              type: 'incomplete-days',
+              days: incomplete.map((day) => ({
+                week_number: day.week_number,
+                day_of_week: day.day_of_week,
+              })),
+            } as const;
+        }
+
+        for (const change of body.data.day_types ?? []) {
+          const day = await trx
+            .selectFrom('plan_days')
+            .selectAll()
+            .where('id', '=', change.day_id)
+            .where('plan_id', '=', plan.id)
+            .executeTakeFirst();
+          if (!day) return { type: 'not-found' } as const;
+          if (day.is_rest === change.is_rest) continue;
+          const locked = await lockPlanDayTree(trx, day.id);
+          const completed = await trx
+            .selectFrom('plan_day_completions')
+            .select('id')
+            .where('plan_day_id', '=', day.id)
+            .executeTakeFirst();
+          const addedLogs = await trx
+            .selectFrom('set_logs')
+            .select('id')
+            .where('plan_day_id', '=', day.id)
+            .executeTakeFirst();
+          if (
+            completed ||
+            addedLogs ||
+            (locked && (await planExercisesWithLogs(trx, locked.exerciseIds)).size > 0)
+          ) {
+            return { type: 'day-history-immutable', dayIds: [day.id] } as const;
           }
         }
 
@@ -1920,7 +2022,25 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         const immutableDayIds: string[] = [];
         for (const deleteDay of ownedDeleteDays) {
           const lockedDay = await lockPlanDayTree(trx, deleteDay.id);
-          if (lockedDay && (await planExercisesWithLogs(trx, lockedDay.exerciseIds)).size > 0) {
+          const completed =
+            includesRestDays &&
+            (await trx
+              .selectFrom('plan_day_completions')
+              .select('id')
+              .where('plan_day_id', '=', deleteDay.id)
+              .executeTakeFirst());
+          const added =
+            includesRestDays &&
+            (await trx
+              .selectFrom('set_logs')
+              .select('id')
+              .where('plan_day_id', '=', deleteDay.id)
+              .executeTakeFirst());
+          if (
+            completed ||
+            added ||
+            (lockedDay && (await planExercisesWithLogs(trx, lockedDay.exerciseIds)).size > 0)
+          ) {
             immutableDayIds.push(deleteDay.id);
           }
         }
@@ -1961,6 +2081,15 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
             .executeTakeFirstOrThrow();
         }
 
+        for (const change of body.data.day_types ?? []) {
+          await trx
+            .updateTable('plan_days')
+            .set({ is_rest: change.is_rest })
+            .where('id', '=', change.day_id)
+            .where('plan_id', '=', plan.id)
+            .execute();
+        }
+
         const deletedDays =
           body.data.delete_day_ids.length === 0
             ? []
@@ -1978,6 +2107,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
             .insertInto('plan_days')
             .values({
               plan_id: plan.id,
+              ...(day.is_rest !== undefined ? { is_rest: day.is_rest } : {}),
               week_number: day.week_number,
               day_of_week: day.day_of_week,
               sort_order: day.sort_order,
@@ -2041,6 +2171,14 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         } as const;
       });
 
+      if (result.type === 'invalid-day-types') {
+        res.status(400).json({ error: 'INVALID_DAY_TYPES' });
+        return;
+      }
+      if (result.type === 'incomplete-days') {
+        res.status(422).json({ error: 'PLAN_PUBLISH_INCOMPLETE', details: { days: result.days } });
+        return;
+      }
       if (result.type === 'not-found') {
         res.status(404).json({ error: 'PLAN_NOT_FOUND' });
         return;
@@ -2084,7 +2222,16 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           },
         }));
       }
-      res.status(200).json(await getPlanWithChildren(deps.db, result.plan));
+      res.status(200).json({
+        ...(await getPlanWithChildren(
+          deps.db,
+          result.plan,
+          includesRestDays || req.query.include_rest_days === 'true',
+        )),
+        ...(includesRestDays || req.query.include_rest_days === 'true'
+          ? { rest_days_enabled: deps.restDaysEnabled === true }
+          : {}),
+      });
     }),
   );
 

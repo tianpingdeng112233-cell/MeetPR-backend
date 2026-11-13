@@ -9,7 +9,7 @@ type PlanRow = Selectable<PlansTable>;
 type PlanDayRow = Selectable<PlanDaysTable>;
 type PlanDayCompletionRow = Selectable<PlanDayCompletionsTable>;
 
-export type CompletionCommandError = 'NOT_PLAN_STUDENT' | 'PLAN_NOT_ACTIVE';
+export type CompletionCommandError = 'NOT_PLAN_STUDENT' | 'PLAN_NOT_ACTIVE' | 'PLAN_DAY_REST';
 
 async function lockCompletionContext(
   db: Transaction<Database>,
@@ -50,6 +50,7 @@ async function lockCompletionContext(
     .where('plan_id', '=', plan.id)
     .forUpdate()
     .executeTakeFirst();
+  if (lockedDay?.is_rest) return { type: 'error', error: 'PLAN_DAY_REST' };
   return lockedDay
     ? { type: 'context', plan, day: lockedDay, timezone: plan.student_timezone }
     : { type: 'error', error: 'NOT_PLAN_STUDENT' };

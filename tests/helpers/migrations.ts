@@ -85,6 +85,7 @@ export function createPlanSchema(mem: ReturnType<typeof newDb>): void {
     );
 
     CREATE TABLE plan_days (
+      is_rest BOOLEAN NOT NULL DEFAULT FALSE,
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       plan_id UUID NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
       day_of_week SMALLINT NOT NULL,

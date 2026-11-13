@@ -72,6 +72,7 @@ export async function resolvePlanExercise(
     .where('pe.id', '=', planExerciseId)
     .where('p.trainee_id', '=', studentId)
     .where('p.status', '=', 'published')
+    .where('pd.is_rest', '=', false)
     .limit(1)
     .executeTakeFirst();
 
@@ -97,6 +98,7 @@ export async function canLogPlanDay(
     .where('pd.id', '=', planDayId)
     .where('p.trainee_id', '=', studentId)
     .where('p.status', '=', 'published')
+    .where('pd.is_rest', '=', false)
     .executeTakeFirst();
   return day !== undefined;
 }
@@ -124,6 +126,46 @@ export async function isAccessoryExercise(
   return row?.exercise_type === 'accessory';
 }
 
+export class PlanDayRestError extends Error {}
+
+async function withWritablePlanDay<T>(
+  db: Kysely<Database>,
+  studentId: string,
+  dayId: string | null,
+  write: (db: Kysely<Database>) => Promise<T>,
+): Promise<T> {
+  if (!dayId) return write(db);
+  return db.transaction().execute(async (trx) => {
+    const ref = await trx
+      .selectFrom('plan_days')
+      .select('plan_id')
+      .where('id', '=', dayId)
+      .executeTakeFirst();
+    if (!ref) throw new PlanDayRestError('PLAN_DAY_NOT_ACTIVE');
+    const plan = await trx
+      .selectFrom('plans')
+      .select(['id', 'status', 'trainee_id'])
+      .where('id', '=', ref.plan_id)
+      .forUpdate()
+      .executeTakeFirst();
+    const day = await trx
+      .selectFrom('plan_days')
+      .select('is_rest')
+      .where('id', '=', dayId)
+      .forUpdate()
+      .executeTakeFirst();
+    if (
+      !plan ||
+      !uuidEquals(plan.trainee_id, studentId) ||
+      plan.status !== 'published' ||
+      !day ||
+      day.is_rest
+    )
+      throw new PlanDayRestError('PLAN_DAY_NOT_ACTIVE');
+    return write(trx);
+  });
+}
+
 export async function upsertSetLog(
   db: Kysely<Database>,
   studentId: string,
@@ -135,54 +177,56 @@ export async function upsertSetLog(
   // completion — the explicit hold-to-complete call
   // (POST /plans/days/:dayId/complete) is the only student-side settlement
   // (David 2026-08-08, revising spec 035 拍板 1's auto half; coach backfill
-  // imports are untouched). With the auto-completion transaction gone, the
-  // plan/day locks it needed are gone too — this is a plain idempotent upsert.
-  const saved = await db
-    .insertInto('set_logs')
-    .values({
-      student_id: studentId,
-      plan_exercise_id: input.plan_exercise_id,
-      exercise_id: input.exercise_id,
-      logged_date: input.logged_date,
-      set_index: input.set_index,
-      weight_kg: input.weight_kg,
-      reps: input.reps,
-      rpe: input.rpe,
-      actual_rir: input.actual_rir ?? null,
-      completed: input.completed,
-      failed,
-      assumed: false,
-    })
-    .onConflict((oc) =>
-      input.update_logged_date
-        ? oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
-            weight_kg: (eb) => eb.ref('excluded.weight_kg'),
-            reps: (eb) => eb.ref('excluded.reps'),
-            rpe: (eb) => eb.ref('excluded.rpe'),
-            ...(input.actual_rir !== undefined || input.rpe !== null
-              ? { actual_rir: input.actual_rir ?? null }
-              : {}),
-            completed: (eb) => eb.ref('excluded.completed'),
-            failed: (eb) => eb.ref('excluded.failed'),
-            assumed: false,
-            logged_date: (eb) => eb.ref('excluded.logged_date'),
-            logged_at: sql<Date>`now()`,
-          })
-        : oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
-            weight_kg: (eb) => eb.ref('excluded.weight_kg'),
-            reps: (eb) => eb.ref('excluded.reps'),
-            rpe: (eb) => eb.ref('excluded.rpe'),
-            ...(input.actual_rir !== undefined || input.rpe !== null
-              ? { actual_rir: input.actual_rir ?? null }
-              : {}),
-            completed: (eb) => eb.ref('excluded.completed'),
-            failed: (eb) => eb.ref('excluded.failed'),
-            assumed: false,
-            logged_at: sql<Date>`now()`,
-          }),
-    )
-    .returning(['id', 'logged_at'])
-    .executeTakeFirstOrThrow();
+  // imports are untouched). The plan/day lock serializes this write against
+  // a coach switching the day to rest; completion is still entirely explicit.
+  const saved = await withWritablePlanDay(db, studentId, input.plan_day_id, async (lockedDb) =>
+    lockedDb
+      .insertInto('set_logs')
+      .values({
+        student_id: studentId,
+        plan_exercise_id: input.plan_exercise_id,
+        exercise_id: input.exercise_id,
+        logged_date: input.logged_date,
+        set_index: input.set_index,
+        weight_kg: input.weight_kg,
+        reps: input.reps,
+        rpe: input.rpe,
+        actual_rir: input.actual_rir ?? null,
+        completed: input.completed,
+        failed,
+        assumed: false,
+      })
+      .onConflict((oc) =>
+        input.update_logged_date
+          ? oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
+              weight_kg: (eb) => eb.ref('excluded.weight_kg'),
+              reps: (eb) => eb.ref('excluded.reps'),
+              rpe: (eb) => eb.ref('excluded.rpe'),
+              ...(input.actual_rir !== undefined || input.rpe !== null
+                ? { actual_rir: input.actual_rir ?? null }
+                : {}),
+              completed: (eb) => eb.ref('excluded.completed'),
+              failed: (eb) => eb.ref('excluded.failed'),
+              assumed: false,
+              logged_date: (eb) => eb.ref('excluded.logged_date'),
+              logged_at: sql<Date>`now()`,
+            })
+          : oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
+              weight_kg: (eb) => eb.ref('excluded.weight_kg'),
+              reps: (eb) => eb.ref('excluded.reps'),
+              rpe: (eb) => eb.ref('excluded.rpe'),
+              ...(input.actual_rir !== undefined || input.rpe !== null
+                ? { actual_rir: input.actual_rir ?? null }
+                : {}),
+              completed: (eb) => eb.ref('excluded.completed'),
+              failed: (eb) => eb.ref('excluded.failed'),
+              assumed: false,
+              logged_at: sql<Date>`now()`,
+            }),
+      )
+      .returning(['id', 'logged_at'])
+      .executeTakeFirstOrThrow(),
+  );
 
   return {
     id: saved.id,
@@ -242,39 +286,49 @@ export async function upsertAdhocSetLog(
   studentId: string,
   input: AdhocSetLogInput,
 ): Promise<SetLogResult> {
-  const updated = await updateAdhocSetLog(db, studentId, input);
+  const updated = await withWritablePlanDay(db, studentId, input.plan_day_id ?? null, (lockedDb) =>
+    updateAdhocSetLog(lockedDb, studentId, input),
+  );
   if (updated !== null) {
     return updated;
   }
 
   try {
-    const row = await db
-      .insertInto('set_logs')
-      .values({
-        student_id: studentId,
-        plan_exercise_id: null,
-        plan_day_id: input.plan_day_id ?? null,
-        exercise_id: input.exercise_id,
-        logged_date: input.logged_date,
-        adhoc: true,
-        set_index: input.set_index,
-        weight_kg: input.weight_kg,
-        reps: input.reps,
-        rpe: input.rpe,
-        actual_rir: input.actual_rir ?? null,
-        completed: input.completed,
-        failed: input.failed,
-        assumed: false,
-      })
-      .returning(['id', 'logged_at'])
-      .executeTakeFirstOrThrow();
+    const row = await withWritablePlanDay(
+      db,
+      studentId,
+      input.plan_day_id ?? null,
+      async (lockedDb) =>
+        lockedDb
+          .insertInto('set_logs')
+          .values({
+            student_id: studentId,
+            plan_exercise_id: null,
+            plan_day_id: input.plan_day_id ?? null,
+            exercise_id: input.exercise_id,
+            logged_date: input.logged_date,
+            adhoc: true,
+            set_index: input.set_index,
+            weight_kg: input.weight_kg,
+            reps: input.reps,
+            rpe: input.rpe,
+            actual_rir: input.actual_rir ?? null,
+            completed: input.completed,
+            failed: input.failed,
+            assumed: false,
+          })
+          .returning(['id', 'logged_at'])
+          .executeTakeFirstOrThrow(),
+    );
 
     return { id: row.id, logged_at: timestamp(row.logged_at) };
   } catch (error: unknown) {
     if (!isUniqueViolation(error)) {
       throw error;
     }
-    const raced = await updateAdhocSetLog(db, studentId, input);
+    const raced = await withWritablePlanDay(db, studentId, input.plan_day_id ?? null, (lockedDb) =>
+      updateAdhocSetLog(lockedDb, studentId, input),
+    );
     if (raced === null) {
       const existing = await db
         .selectFrom('set_logs')

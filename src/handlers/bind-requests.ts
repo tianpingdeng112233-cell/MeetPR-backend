@@ -197,7 +197,9 @@ async function fetchFirstRun(
   // to students. completed_at shares the plan-detail serialization's source.
   const plans = await db
     .selectFrom('plans as p')
-    .leftJoin('plan_days as pd', 'pd.plan_id', 'p.id')
+    .leftJoin('plan_days as pd', (join) =>
+      join.onRef('pd.plan_id', '=', 'p.id').on('pd.is_rest', '=', false),
+    )
     .leftJoin('plan_day_completions as pdc', 'pdc.plan_day_id', 'pd.id')
     .select(['p.id', 'p.status', 'p.published_at', 'p.plan_weeks'])
     .select((eb) => [

@@ -68,6 +68,7 @@ export const ConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((v) => v === 'true'),
+    PLAN_REST_DAYS_ENABLED: BooleanEnvSchema,
     COACH_PLAN_SHIFT_ENABLED: z
       .enum(['true', 'false'])
       .default('false')

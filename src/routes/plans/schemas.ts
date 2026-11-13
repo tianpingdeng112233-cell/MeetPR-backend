@@ -330,6 +330,7 @@ const BatchExerciseSchema = z.object({
 });
 
 const BatchDaySchema = z.object({
+  is_rest: z.boolean().optional(),
   week_number: WeekNumberSchema,
   day_of_week: DayOfWeekSchema,
   sort_order: SortOrderSchema,
@@ -348,6 +349,10 @@ const BatchPlanPatchSchema = z
 
 export const BatchDaysBodySchema = z
   .object({
+    day_types: z
+      .array(z.object({ day_id: UuidSchema, is_rest: z.boolean() }).strict())
+      .max(MAX_UPSERT_DAYS)
+      .optional(),
     plan_patch: BatchPlanPatchSchema.optional(),
     delete_day_ids: z.array(UuidSchema).max(MAX_DELETE_IDS).default([]),
     upsert_days: z.array(BatchDaySchema).max(MAX_UPSERT_DAYS).default([]),
