@@ -862,3 +862,71 @@ it('atomically refuses restoring an empty live training day while allowing empty
   expect(after.body.days.map((day: { is_rest: boolean }) => day.is_rest)).toEqual([false, true]);
   await ctx.db.destroy();
 });
+
+it('creates a four-week coach draft and saves its training weekdays from the version returned by GET', async () => {
+  const ctx = await makeContext(undefined, { config: { PLAN_REST_DAYS_ENABLED: true } });
+  try {
+    const created = await request(ctx.app).post('/plans').set(auth(ctx.coachToken)).send({
+      trainee_id: ids.trainee,
+      name: '新计划',
+      start_date: '2026-11-02',
+      end_date: '2026-11-29',
+      plan_weeks: 4,
+      anchor_weekday: 1,
+      source: 'coach',
+      kind: 'regular',
+    });
+    expect(created.status).toBe(201);
+    const { id: planId } = created.body as { id: string };
+    const path = `/plans/${planId}?include_rest_days=true`;
+    const read = () => request(ctx.app).get(path).set(auth(ctx.coachToken));
+    const draft = await read();
+    expect(draft.body).toMatchObject({ rest_days_enabled: true, days: [] });
+    const upsert_days = [1, 2, 3, 4].flatMap((week_number) =>
+      [1, 2, 4, 5].map((day_of_week) => ({
+        week_number,
+        day_of_week,
+        sort_order: day_of_week - 1,
+        is_rest: false,
+        exercises: [],
+      })),
+    );
+    const body = { expected_updated_at: draft.body.updated_at, delete_day_ids: [], upsert_days };
+    const saved = await batch(ctx, planId, body);
+    expect(saved.status, JSON.stringify(saved.body.error ? saved.body : undefined)).toBe(200);
+    const reopened = await read();
+    expect(reopened.body.days).toHaveLength(16);
+    for (const day of upsert_days)
+      expect(reopened.body.days).toContainEqual(expect.objectContaining(day));
+    const stale = await batch(ctx, planId, body);
+    expect(stale.status).toBe(409);
+    expect(stale.body.error).toBe('PLAN_VERSION_CONFLICT');
+    expect((await read()).body.days).toEqual(reopened.body.days);
+  } finally {
+    await ctx.db.destroy();
+  }
+});
+
+it('keeps a training day added through the individual-day route between the initial read and the batch', async () => {
+  const ctx = await makeContext(undefined, { config: { PLAN_REST_DAYS_ENABLED: true } });
+  try {
+    const plan = await createDraftPlan(ctx);
+    const read = () =>
+      request(ctx.app).get(`/plans/${plan.id}?include_rest_days=true`).set(auth(ctx.coachToken));
+    const draft = await read();
+    const slot = { week_number: 1, day_of_week: 1, sort_order: 0 };
+    const added = await request(ctx.app)
+      .post(`/plans/${plan.id}/days`)
+      .set(auth(ctx.coachToken))
+      .send(slot);
+    expect(added.status).toBe(201);
+    const saved = await batch(ctx, plan.id, {
+      expected_updated_at: draft.body.updated_at,
+      upsert_days: [{ ...slot, is_rest: false, exercises: [] }],
+    });
+    expect(saved.status).toBe(409);
+    expect((await read()).body.days.map((day: { id: string }) => day.id)).toEqual([added.body.id]);
+  } finally {
+    await ctx.db.destroy();
+  }
+});

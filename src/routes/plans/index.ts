@@ -1938,7 +1938,47 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           ) {
             return { type: 'plan-history-immutable' } as const;
           }
+        } else if (body.data.expected_updated_at !== undefined) {
+          const lockedPlan = await lockOwnedPlan(trx, plan.id, user.id);
+          if (!lockedPlan) return { type: 'not-found' } as const;
+          currentPlan = lockedPlan;
         }
+
+        const expectedVersion = body.data.expected_updated_at;
+        if (
+          expectedVersion !== undefined &&
+          Date.parse(expectedVersion) !== currentPlan.updated_at.getTime()
+        ) {
+          return { type: 'version-conflict', updatedAt: currentPlan.updated_at } as const;
+        }
+        if (expectedVersion !== undefined && body.data.upsert_days.length) {
+          // Individual-day inserts on older clients do not advance plans.updated_at.
+          // Reject an occupied slot unless this same transaction explicitly replaces it.
+          const existingDays = await trx
+            .selectFrom('plan_days')
+            .select(['id', 'week_number', 'day_of_week'])
+            .where('plan_id', '=', plan.id)
+            .execute();
+          const replaced = new Set(body.data.delete_day_ids);
+          const occupied = new Set(
+            existingDays
+              .filter((day) => !replaced.has(day.id))
+              .map((day) => [day.week_number, day.day_of_week].join(':')),
+          );
+          if (
+            body.data.upsert_days.some((day) =>
+              occupied.has([day.week_number, day.day_of_week].join(':')),
+            )
+          ) {
+            return { type: 'version-conflict', updatedAt: currentPlan.updated_at } as const;
+          }
+        }
+        // GET serializes to milliseconds. A successful conditional write must retire its token,
+        // even if the transaction started during the same millisecond as the prior change.
+        const nextUpdatedAt =
+          expectedVersion === undefined
+            ? sql<Date>`now()`
+            : sql<Date>`greatest(now(), ${new Date(currentPlan.updated_at.getTime() + 1)}::timestamptz)`;
 
         if (
           includesRestDays &&
@@ -2059,7 +2099,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
             return { type: 'invalid-date-order' } as const;
           }
 
-          const patch: Record<string, unknown> = { updated_at: sql<Date>`now()` };
+          const patch: Record<string, unknown> = { updated_at: nextUpdatedAt };
           if (body.data.plan_patch.name !== undefined) patch.name = body.data.plan_patch.name;
           if (body.data.plan_patch.start_date !== undefined) {
             patch.start_date = body.data.plan_patch.start_date;
@@ -2155,7 +2195,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (hasTreeMutation && !body.data.plan_patch) {
           currentPlan = await trx
             .updateTable('plans')
-            .set({ updated_at: sql<Date>`now()` })
+            .set({ updated_at: nextUpdatedAt })
             .where('id', '=', plan.id)
             .returningAll()
             .executeTakeFirstOrThrow();
@@ -2171,6 +2211,13 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         } as const;
       });
 
+      if (result.type === 'version-conflict') {
+        res.status(409).json({
+          error: 'PLAN_VERSION_CONFLICT',
+          current_updated_at: result.updatedAt.toISOString(),
+        });
+        return;
+      }
       if (result.type === 'invalid-day-types') {
         res.status(400).json({ error: 'INVALID_DAY_TYPES' });
         return;

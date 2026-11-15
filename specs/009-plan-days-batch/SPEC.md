@@ -18,6 +18,8 @@
 
 挂载点已定：`plansRouter` 在 `src/routes/index.ts:38` 挂 `/plans` + `deps.requireAuth`。新路由加在 `plansRouter` 内，`requireRole('coach')`，Express 路径 `'/:id/days/batch'`（三段，与既有 `'/:id/days'`(两段) / `'/days/:dayId/exercises'` 不冲突）。
 
+网页新建草稿时可传 `expected_updated_at`，取自上一次 GET 的 `updated_at`。服务端在事务内锁定计划后核对版本。版本不符，或待新增的位置已存在且同批未要求替换该日时，返回 409 `PLAN_VERSION_CONFLICT` 并带 `current_updated_at`，整批不写入。客户端重新读取课表后再决定是否提交。省略该字段沿用原有批量协议。
+
 请求 body（`delete_day_ids` + `upsert_days` + 可选 `plan_patch`，一次一个事务）：
 
 ```json

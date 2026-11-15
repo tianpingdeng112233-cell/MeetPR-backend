@@ -349,6 +349,7 @@ const BatchPlanPatchSchema = z
 
 export const BatchDaysBodySchema = z
   .object({
+    expected_updated_at: z.string().datetime({ offset: true }).optional(),
     day_types: z
       .array(z.object({ day_id: UuidSchema, is_rest: z.boolean() }).strict())
       .max(MAX_UPSERT_DAYS)
