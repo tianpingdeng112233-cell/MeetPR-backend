@@ -10,3 +10,9 @@
 - review-loop：Spec 独立复核新建与版本重试通过。Standards 发现旧单日 API 与条件批次相遇可能创建重复日期，已先红后绿并定向复审。显式同批删除后在原位置替换的路径也通过。
 
 本地 typecheck、lint、format 与 build 通过。首次全量出现与计划无关的本机 HTTP 测试偶发失败（包括 coach-reviews），单独复验与最终 Linux CI 分开记录。
+
+## 部署与验收
+
+国内 SAE 已部署 `sha-9a6cec911837aeeac7d85537c042f392a5ab327b`（[修复 #410](https://github.com/tianpingdeng112233-cell/MeetPR-backend/pull/410)）。[CI](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43691021961)、[镜像构建](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43691021814)和[部署](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43691273234)通过。沿用已应用的 0087。部署后登录路由、健康检查通过，07:45 UTC 独立核对网页 HTML、JS、CSS 与发布包一致。
+
+本地全量 190 个文件通过，2173 项通过、6 项跳过。Linux PR CI 与合并后 CI 均通过。新建及刷新使用本地真实 PostgreSQL 与同版前端验证，国内站点仅进行了只读资源、健康和登录路由探测。
