@@ -1,0 +1,37 @@
+{
+  "entry": "assets/index-Dvc_Vh0T.js",
+  "checks": [
+    {
+      "sample": 1,
+      "status": 200,
+      "htmlSha256": "16cdcf1a6eb39e03a5cefdd5c5813fb231395de25ffb956fec6aa7fee6e5d3e9"
+    },
+    {
+      "sample": 2,
+      "status": 200,
+      "htmlSha256": "16cdcf1a6eb39e03a5cefdd5c5813fb231395de25ffb956fec6aa7fee6e5d3e9"
+    },
+    {
+      "sample": 3,
+      "status": 200,
+      "htmlSha256": "16cdcf1a6eb39e03a5cefdd5c5813fb231395de25ffb956fec6aa7fee6e5d3e9"
+    },
+    {
+      "asset": "assets/index-Dvc_Vh0T.js",
+      "status": 200,
+      "sha256": "c6890c09067b651eea5493b9bed5124cbe5c264a22c2f68d36d21b490b28e39c"
+    },
+    {
+      "asset": "assets/index-Cmpmwkks.css",
+      "status": 200,
+      "sha256": "be592019b5ad1154eb96188e1e19ef6a2180759a3a9d4aafe03819e1716d06ad"
+    },
+    {
+      "health": {
+        "status": "ok"
+      },
+      "status": 200
+    }
+  ],
+  "sameOriginAndInstallLinks": true
+}
