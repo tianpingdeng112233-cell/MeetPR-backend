@@ -15,4 +15,7 @@ David 2026-11-16：「我给你所有的权限……网页端合并部署完」�
 
 ## 验证
 
-CI、镜像构建、部署与线上入口核对结果见 `db/MIGRATIONS-APPLIED.md` 对应条目与后续追加。
+- [#423](https://github.com/tianpingdeng112233-cell/MeetPR-backend/pull/423) 已合并，`staging@a1e269f37605be5071d081deb0e419e1441e8989`。
+- 镜像 [build 43897740304](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43897740304) 成功；[deploy 43898292443](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43898292443) 成功（`migrations_applied=true`，无新迁移，env 未动）。
+- 部署后独立核对：连续 3 次 `GET /` 的入口均为 `assets/index-DAYvx1ov.js`；该文件线上 SHA-256 为 `ebe9708b9fe572dbd02dd6c60e36675e95407ef40f1dd2eb64ddf510b20b6196`，与构建产物一致；`/health` 200。
+- 部署前已用同一份源码（本地开发服务指向 staging）在浏览器里验过状态标签、学员进度、重叠提示与新建默认日期，见来源仓 journal。部署后的线上页面未再登录走查。
