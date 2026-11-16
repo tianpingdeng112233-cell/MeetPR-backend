@@ -1,223 +1,136 @@
-import { randomUUID } from 'node:crypto';
-
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
+import { afterEach, beforeEach, expect, it } from 'vitest';
 import { utcDate, utcDateOnly } from '../../src/utils/date';
 import { request } from '../helpers/inMemoryRequest';
-import { auth, createPublishedPlan, ids, makeContext, signToken } from '../helpers/studentActions';
-import type { TestContext } from '../helpers/studentActions';
+import {
+  auth,
+  createPublishedPlan,
+  ids,
+  makeContext,
+  type TestContext,
+} from '../helpers/studentActions';
 
-// Freeze at midday in Shanghai, using the real day's date rather than a fixed incident date.
-const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
-const now = new Date(`${today}T04:00:00Z`);
-
-function dateOffset(days: number): string {
+const today = utcDateOnly(new Date());
+function dateOffset(days: number) {
   const date = utcDate(today);
   date.setUTCDate(date.getUTCDate() + days);
   return utcDateOnly(date);
 }
-
-async function seedPlan(ctx: TestContext, startOffset: number, endOffset: number) {
+let ctx: TestContext;
+beforeEach(async () => {
+  ctx = await makeContext();
+});
+afterEach(async () => {
+  await ctx.db.destroy();
+});
+async function seed(start: number) {
   const fixture = await createPublishedPlan(ctx);
   await ctx.db
     .updateTable('plans')
     .set({
-      start_date: dateOffset(startOffset),
-      end_date: dateOffset(endOffset),
-      published_at: new Date(now.getTime() - (startOffset < 0 ? 2 : 1) * 86_400_000),
+      start_date: dateOffset(start),
+      end_date: dateOffset(start + 27),
+      published_at: new Date(Date.now() + start * 86400000),
     })
     .where('id', '=', fixture.planId)
     .execute();
   return fixture;
 }
+async function list(token = ctx.traineeToken, suffix = '') {
+  const response = await request(ctx.app)
+    .get(`/students/${ids.trainee}/plans${suffix}`)
+    .set(auth(token));
+  expect(response.status).toBe(200);
+  return response.body.plans as { id: string }[];
+}
+it('keeps the unfinished old cycle after the new start date and reveals the new cycle after settlement', async () => {
+  const old = await seed(-40);
+  const next = await seed(-5);
+  expect((await list()).map((p) => p.id)).toEqual([old.planId]);
+  const completed = await request(ctx.app)
+    .post(`/plans/days/${old.dayId}/complete`)
+    .set(auth(ctx.traineeToken));
+  expect(completed.status).toBe(200);
+  expect((await list()).map((p) => p.id).sort()).toEqual([old.planId, next.planId].sort());
+});
 
-describe('student plan list visibility', () => {
-  let ctx: TestContext;
+async function log(plan: Awaited<ReturnType<typeof seed>>, at: Date, added = false) {
+  await ctx.db
+    .insertInto('set_logs')
+    .values({
+      student_id: ids.trainee,
+      exercise_id: ids.exercise,
+      plan_exercise_id: added ? null : plan.planExerciseId,
+      plan_day_id: added ? plan.dayId : null,
+      adhoc: added,
+      set_index: 0,
+      weight_kg: '100',
+      reps: 1,
+      completed: false,
+      failed: false,
+      logged_date: today,
+      logged_at: at,
+    })
+    .execute();
+}
 
-  beforeEach(async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(now);
-    ctx = await makeContext();
-  });
+it('hides only the untouched upcoming cycle in the feedback scenario and supports include_all', async () => {
+  const old = await seed(-28);
+  const next = await seed(7);
+  await log(old, new Date());
+  const visible = await list();
+  expect(visible.map((p) => p.id)).toEqual([old.planId]);
+  const all = await list(ctx.traineeToken, '?include_all=true');
+  expect(all.map((p) => p.id).sort()).toEqual([old.planId, next.planId].sort());
+  expect(visible[0]).toEqual(all.find((p) => p.id === old.planId));
+  expect((await list(ctx.coachToken)).map((p) => p.id).sort()).toEqual(
+    [old.planId, next.planId].sort(),
+  );
+  expect(
+    (await request(ctx.app).get(`/plans/${next.planId}`).set(auth(ctx.traineeToken))).status,
+  ).toBe(200);
+});
 
-  afterEach(async () => {
-    await ctx.db.destroy();
-    vi.useRealTimers();
-  });
+it('preserves an earlier recorded plan republished after the current plan (A/B history regression)', async () => {
+  const a = await seed(-60);
+  const b = await seed(-20);
+  await log(a, new Date(Date.now() - 86400000));
+  await log(b, new Date());
+  await ctx.db
+    .updateTable('plans')
+    .set({ published_at: new Date(Date.now() + 1000) })
+    .where('id', '=', a.planId)
+    .execute();
+  expect((await list()).map((p) => p.id).sort()).toEqual([a.planId, b.planId].sort());
+});
 
-  it('hides a newer published future plan while the old plan covers today', async () => {
-    const oldPlan = await seedPlan(ctx, -28, 5);
-    await seedPlan(ctx, 7, 34);
-
-    const response = await request(ctx.app)
-      .get(`/students/${ids.trainee}/plans`)
-      .set(auth(ctx.traineeToken));
-
-    expect(response.status).toBe(200);
-    expect(response.body.plans.map((plan: { id: string }) => plan.id)).toEqual([oldPlan.planId]);
-  });
-
-  it('still returns both plans to the coach', async () => {
-    const oldPlan = await seedPlan(ctx, -28, 5);
-    const futurePlan = await seedPlan(ctx, 7, 34);
-
-    const response = await request(ctx.app)
-      .get(`/students/${ids.trainee}/plans`)
-      .set(auth(ctx.coachToken));
-
-    expect(response.status).toBe(200);
-    expect(response.body.plans.map((plan: { id: string }) => plan.id).sort()).toEqual(
-      [oldPlan.planId, futurePlan.planId].sort(),
-    );
-  });
-
-  it('returns both plans when the old plan ended before yesterday', async () => {
-    const oldPlan = await seedPlan(ctx, -28, -2);
-    const futurePlan = await seedPlan(ctx, 7, 34);
-
-    const response = await request(ctx.app)
-      .get(`/students/${ids.trainee}/plans`)
-      .set(auth(ctx.traineeToken));
-
-    expect(response.status).toBe(200);
-    expect(response.body.plans.map((plan: { id: string }) => plan.id).sort()).toEqual(
-      [oldPlan.planId, futurePlan.planId].sort(),
-    );
-  });
-
-  it('returns the only future plan', async () => {
-    const futurePlan = await seedPlan(ctx, 7, 34);
-
-    const response = await request(ctx.app)
-      .get(`/students/${ids.trainee}/plans`)
-      .set(auth(ctx.traineeToken));
-
-    expect(response.status).toBe(200);
-    expect(response.body.plans.map((plan: { id: string }) => plan.id)).toEqual([futurePlan.planId]);
-  });
-
-  it('returns both plans when the new plan starts today', async () => {
-    const oldPlan = await seedPlan(ctx, -28, 5);
-    const newPlan = await seedPlan(ctx, 0, 27);
-
-    const response = await request(ctx.app)
-      .get(`/students/${ids.trainee}/plans`)
-      .set(auth(ctx.traineeToken));
-
-    expect(response.status).toBe(200);
-    expect(response.body.plans.map((plan: { id: string }) => plan.id).sort()).toEqual(
-      [oldPlan.planId, newPlan.planId].sort(),
-    );
-  });
-
-  it('counts a training day shifted past end_date as ongoing coverage', async () => {
-    const oldPlan = await seedPlan(ctx, -28, -2);
-    await seedPlan(ctx, 7, 34);
-    await ctx.db
-      .insertInto('plan_day_shifts')
-      .values({
-        plan_day_id: oldPlan.dayId,
-        student_id: ids.trainee,
-        batch_id: randomUUID(),
-        shifted_to_date: dateOffset(2),
-      })
-      .execute();
-
-    const response = await request(ctx.app)
-      .get(`/students/${ids.trainee}/plans`)
-      .set(auth(ctx.traineeToken));
-
-    expect(response.status).toBe(200);
-    expect(response.body.plans.map((plan: { id: string }) => plan.id)).toEqual([oldPlan.planId]);
-  });
-
-  it('includes the end date even if the last training day was earlier', async () => {
-    const oldPlan = await seedPlan(ctx, -28, 0);
-    await seedPlan(ctx, 7, 34);
-
-    const response = await request(ctx.app)
-      .get(`/students/${ids.trainee}/plans`)
-      .set(auth(ctx.traineeToken));
-
-    expect(response.status).toBe(200);
-    expect(response.body.plans.map((plan: { id: string }) => plan.id)).toEqual([oldPlan.planId]);
-  });
-
-  it.each([false, true])(
-    'only training days in an extended week extend coverage (is_rest=%s)',
-    async (isRest) => {
-      const oldPlan = await seedPlan(ctx, -28, -2);
-      const futurePlan = await seedPlan(ctx, 7, 34);
-      const extension = await request(ctx.app)
-        .patch(`/plans/${oldPlan.planId}`)
-        .set(auth(ctx.coachToken))
-        .send({ plan_weeks: 5 });
-      expect(extension.status).toBe(200);
-      // pg-mem serializes DATE columns as midnight timestamps in this fixture.
-      expect(extension.body.end_date.slice(0, 10)).toBe(dateOffset(-2));
+it.each(['planned', 'added', 'completion'])(
+  'never hides an upcoming plan with a %s record even if another plan is the latest anchor',
+  async (type) => {
+    const old = await seed(-30);
+    const next = await seed(5);
+    const earlier = new Date(Date.now() - 86400000);
+    if (type === 'completion')
       await ctx.db
-        .insertInto('plan_days')
+        .insertInto('plan_day_completions')
         .values({
-          plan_id: oldPlan.planId,
-          week_number: 5,
-          day_of_week: 3,
-          is_rest: isRest,
-          sort_order: 0,
+          plan_day_id: next.dayId,
+          student_id: ids.trainee,
+          source: 'manual',
+          completed_at: earlier,
         })
         .execute();
+    else await log(next, earlier, type === 'added');
+    await log(old, new Date());
+    expect((await list()).map((p) => p.id).sort()).toEqual([old.planId, next.planId].sort());
+  },
+);
 
-      const response = await request(ctx.app)
-        .get(`/students/${ids.trainee}/plans`)
-        .set(auth(ctx.traineeToken));
-
-      expect(response.status).toBe(200);
-      expect(response.body.plans.map((plan: { id: string }) => plan.id).sort()).toEqual(
-        (isRest ? [oldPlan.planId, futurePlan.planId] : [oldPlan.planId]).sort(),
-      );
-    },
-  );
-
-  it.each([
-    ['Asia/Shanghai', '15:59:59', false],
-    ['Asia/Shanghai', '16:00:00', true],
-    ['Pacific/Honolulu', '16:00:00', false],
-  ])('uses the student calendar date in %s at %s UTC', async (timezone, time, newPlanVisible) => {
-    vi.setSystemTime(new Date(`${today}T${time}Z`));
-    await ctx.db.updateTable('users').set({ timezone }).where('id', '=', ids.trainee).execute();
-    const oldPlan = await seedPlan(ctx, -28, 5);
-    const newPlan = await seedPlan(ctx, 1, 28);
-
-    const response = await request(ctx.app)
-      .get(`/students/${ids.trainee}/plans`)
-      .set(auth(signToken(ids.trainee, 'coached_student')));
-
-    expect(response.status).toBe(200);
-    expect(response.body.plans.map((plan: { id: string }) => plan.id).sort()).toEqual(
-      (newPlanVisible ? [oldPlan.planId, newPlan.planId] : [oldPlan.planId]).sort(),
-    );
-  });
-
-  it('preserves the response fields and direct access to a hidden future plan', async () => {
-    const oldPlan = await seedPlan(ctx, -28, 5);
-    const futurePlan = await seedPlan(ctx, 7, 34);
-    const coachResponse = await request(ctx.app)
-      .get(`/students/${ids.trainee}/plans`)
-      .set(auth(ctx.coachToken));
-    const studentResponse = await request(ctx.app)
-      .get(`/students/${ids.trainee}/plans`)
-      .set(auth(ctx.traineeToken));
-    const detail = await request(ctx.app)
-      .get(`/plans/${futurePlan.planId}`)
-      .set(auth(ctx.traineeToken));
-
-    expect(coachResponse.status).toBe(200);
-    expect(studentResponse.status).toBe(200);
-    expect(detail.status).toBe(200);
-    expect(detail.body.id).toBe(futurePlan.planId);
-    const coachPlan = coachResponse.body.plans.find(
-      (plan: { id: string }) => plan.id === oldPlan.planId,
-    );
-    delete coachPlan.pending_revision_saved_at;
-    expect(studentResponse.body).toEqual({ plans: [coachPlan] });
-  });
+it('returns no plans, a single future plan, and validates include_all', async () => {
+  expect(await list()).toEqual([]);
+  const only = await seed(7);
+  expect((await list()).map((p) => p.id)).toEqual([only.planId]);
+  const bad = await request(ctx.app)
+    .get(`/students/${ids.trainee}/plans?include_all=maybe`)
+    .set(auth(ctx.traineeToken));
+  expect(bad.status).toBe(400);
 });

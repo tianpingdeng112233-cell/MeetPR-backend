@@ -1,4 +1,4 @@
-import request from 'supertest';
+import { request } from '../helpers/inMemoryRequest';
 import { describe, expect, it } from 'vitest';
 
 import { normalizeDateOnly } from '../../src/utils/date';
@@ -411,7 +411,10 @@ describe('spec 016 plan tree mutability', () => {
 
     expect(response.status).toBe(409);
     expect(response.body.error).toBe('DAY_HISTORY_IMMUTABLE');
-    expect(lockedTableOrder(gate.queries)).toEqual(['plan_days', 'plan_exercises']);
+    // 067 locks the student scope and plan before changing a day's calendar.
+    // Descendants must still be locked before the history check; the scope lock
+    // uses NO KEY UPDATE so log writers' student FK KEY SHARE stays compatible.
+    expect(lockedTableOrder(gate.queries)).toEqual(['plans', 'plan_days', 'plan_exercises']);
     const day = await ctx.db
       .selectFrom('plan_days')
       .select('sort_order')
@@ -449,5 +452,40 @@ describe('spec 016 plan tree mutability', () => {
       .where('id', '=', plan.planId)
       .executeTakeFirstOrThrow();
     expect(normalizeDateOnly(lockedPlan.start_date as string | Date)).toBe('2026-05-01');
+  });
+
+  it('locks days before exercises and log writes when backfilling imported history', async () => {
+    const queries: string[] = [];
+    const ctx = await makeContext(undefined, {
+      afterQuery: (sql) => {
+        queries.push(sql);
+        return Promise.resolve();
+      },
+    });
+    const plan = await createPublishedPlan(ctx);
+    const start = new Date();
+    start.setUTCDate(start.getUTCDate() - 14);
+    await ctx.db
+      .updateTable('plans')
+      .set({ start_date: start.toISOString().slice(0, 10) })
+      .where('id', '=', plan.planId)
+      .execute();
+    queries.length = 0;
+    const response = await request(ctx.app)
+      .post(`/plans/${plan.planId}/imported-history`)
+      .set(auth(ctx.coachToken))
+      .send({ confirm: true });
+    expect(response.status).toBe(200);
+    expect(response.body.created_set_logs).toBeGreaterThan(0);
+    const firstLogWrite = queries.findIndex((sql) => sql.startsWith('insert into "set_logs"'));
+    expect(firstLogWrite).toBeGreaterThan(-1);
+    // FK locks acquired by inserting logs then completions would otherwise run
+    // exercise -> day, opposite to DELETE day. Lock the tree before either write.
+    expect(lockedTableOrder(queries.slice(0, firstLogWrite))).toEqual([
+      'plans',
+      'plan_days',
+      'plan_exercises',
+    ]);
+    expect(queries.some((sql) => sql.startsWith('insert into "plan_day_completions"'))).toBe(true);
   });
 });

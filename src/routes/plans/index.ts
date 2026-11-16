@@ -4,7 +4,20 @@ import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely, Selectable, Transaction, Updateable } from 'kysely';
 import { sql } from 'kysely';
 
-import { hasAcceptedBond } from '../../db/bonds';
+import {
+  currentPlanId,
+  handoffOrder,
+  handoffStatus,
+  trainingProgress,
+  visibleToLegacyStudent,
+} from '../../domain/plan-handoff';
+import {
+  lockPlanCalendarChange,
+  assertPlanDates,
+  planDatesErrorHandler,
+} from '../../handlers/plan-dates';
+import { readHandoffPlans } from '../../handlers/plan-handoff';
+import { hasAcceptedBond, resolveCanonicalAcceptedBond } from '../../db/bonds';
 import { planIdForDay, planIdForExercise, planIdForSet } from '../../db/planOwnership';
 import type {
   Database,
@@ -555,27 +568,18 @@ function addUtcDaysToDateOnly(value: string, days: number): string {
 
 async function lockPlanShiftContext(
   db: Transaction<Database>,
-  planId: string,
+  plan: PlanRow,
 ): Promise<{
   plan: PlanRow;
   days: PlanDayRow[];
   shifts: PlanDayShiftRow[];
   timezone: string;
-} | null> {
-  const plan = await db
-    .selectFrom('plans as p')
-    .innerJoin('users as student', 'student.id', 'p.trainee_id')
-    .selectAll('p')
-    .select('student.timezone as student_timezone')
-    .where('p.id', '=', planId)
-    .forUpdate()
-    .executeTakeFirst();
-  if (!plan) return null;
-
+}> {
+  // Calendar validation has already locked this plan after the student scope.
   const days = await db
     .selectFrom('plan_days')
     .selectAll()
-    .where('plan_id', '=', planId)
+    .where('plan_id', '=', plan.id)
     .orderBy('week_number', 'asc')
     .orderBy('day_of_week', 'asc')
     .orderBy('sort_order', 'asc')
@@ -601,7 +605,13 @@ async function lockPlanShiftContext(
           .orderBy('seq', 'asc')
           .execute();
   const shifts = rawShifts.map((shift) => ({ ...shift, seq: Number(shift.seq) }));
-  return { plan, days, shifts, timezone: plan.student_timezone };
+  // Read timezone without locking users after plans (calendar writers lock the student first).
+  const student = await db
+    .selectFrom('users')
+    .select('timezone')
+    .where('id', '=', plan.trainee_id)
+    .executeTakeFirstOrThrow();
+  return { plan, days, shifts, timezone: student.timezone };
 }
 
 async function createWholePlanShift(
@@ -618,8 +628,17 @@ async function createWholePlanShift(
     }
   | { type: 'error'; error: PlanShiftError }
 > {
-  const context = await lockPlanShiftContext(db, planId);
-  if (context?.plan.coach_id == null || !uuidEquals(context.plan.trainee_id, studentId)) {
+  const owner = await db
+    .selectFrom('plans')
+    .select('coach_id')
+    .where('id', '=', planId)
+    .where('trainee_id', '=', studentId)
+    .executeTakeFirst();
+  if (owner?.coach_id == null) return { type: 'error', error: 'NOT_PLAN_STUDENT' };
+  const calendar = await lockPlanCalendarChange(db, planId, owner.coach_id);
+  if (!calendar) return { type: 'error', error: 'NOT_PLAN_STUDENT' };
+  const context = await lockPlanShiftContext(db, calendar.plan);
+  if (context.plan.coach_id == null || !uuidEquals(context.plan.trainee_id, studentId)) {
     return { type: 'error', error: 'NOT_PLAN_STUDENT' };
   }
   if (context.plan.status !== 'published') {
@@ -648,6 +667,24 @@ async function createWholePlanShift(
       day_id: item.day.id,
       shifted_to_date: addUtcDaysToDateOnly(item.effectiveDate, 1),
     }));
+  const nextSeq = Math.max(0, ...calendar.shifts.map((shift) => shift.seq)) + 1;
+  assertPlanDates(
+    calendar,
+    context.plan,
+    calendar.days,
+    [
+      ...calendar.shifts,
+      ...shiftedDays.map((day) => ({
+        id: randomUUID(),
+        seq: nextSeq,
+        plan_day_id: day.day_id,
+        batch_id: batchId,
+        shifted_to_date: day.shifted_to_date,
+        created_at: new Date(),
+      })),
+    ],
+    true,
+  );
   await db
     .insertInto('plan_shift_batches')
     .values({
@@ -685,8 +722,17 @@ async function undoLatestWholePlanShift(
   planId: string,
   studentId: string,
 ): Promise<{ type: 'deleted'; batchId: string } | { type: 'error'; error: PlanShiftError }> {
-  const context = await lockPlanShiftContext(db, planId);
-  if (context?.plan.coach_id == null || !uuidEquals(context.plan.trainee_id, studentId)) {
+  const owner = await db
+    .selectFrom('plans')
+    .select('coach_id')
+    .where('id', '=', planId)
+    .where('trainee_id', '=', studentId)
+    .executeTakeFirst();
+  if (owner?.coach_id == null) return { type: 'error', error: 'NOT_PLAN_STUDENT' };
+  const calendar = await lockPlanCalendarChange(db, planId, owner.coach_id);
+  if (!calendar) return { type: 'error', error: 'NOT_PLAN_STUDENT' };
+  const context = await lockPlanShiftContext(db, calendar.plan);
+  if (context.plan.coach_id == null || !uuidEquals(context.plan.trainee_id, studentId)) {
     return { type: 'error', error: 'NOT_PLAN_STUDENT' };
   }
 
@@ -723,6 +769,12 @@ async function undoLatestWholePlanShift(
     }
   }
 
+  assertPlanDates(
+    calendar,
+    context.plan,
+    calendar.days,
+    calendar.shifts.filter((shift) => shift.batch_id !== firstBatchRow.batch_id),
+  );
   if (context.days.length > 0) {
     await db
       .deleteFrom('plan_day_shifts')
@@ -765,10 +817,9 @@ async function createCoachPlanShift(
     }
   | { type: 'error'; error: CoachPlanShiftError }
 > {
-  const context = await lockPlanShiftContext(db, planId);
-  if (!context) {
-    return { type: 'error', error: 'PLAN_NOT_FOUND' };
-  }
+  const calendar = await lockPlanCalendarChange(db, planId, coachId);
+  if (!calendar) return { type: 'error', error: 'PLAN_NOT_FOUND' };
+  const context = await lockPlanShiftContext(db, calendar.plan);
   if (context.plan.coach_id === null || !uuidEquals(context.plan.coach_id, coachId)) {
     return { type: 'error', error: 'PLAN_NOT_FOUND' };
   }
@@ -805,6 +856,24 @@ async function createCoachPlanShift(
     day_id: item.day.id,
     shifted_to_date: addUtcDaysToDateOnly(item.effectiveDate, offsetDays),
   }));
+  const nextSeq = Math.max(0, ...calendar.shifts.map((shift) => shift.seq)) + 1;
+  assertPlanDates(
+    calendar,
+    context.plan,
+    calendar.days,
+    [
+      ...calendar.shifts,
+      ...shiftedDays.map((day) => ({
+        id: randomUUID(),
+        seq: nextSeq,
+        plan_day_id: day.day_id,
+        batch_id: batchId,
+        shifted_to_date: day.shifted_to_date,
+        created_at: new Date(),
+      })),
+    ],
+    true,
+  );
   await db
     .insertInto('plan_shift_batches')
     .values({
@@ -856,10 +925,9 @@ async function undoLatestCoachPlanShift(
   | { type: 'deleted'; batchId: string; traineeId: string }
   | { type: 'error'; error: CoachPlanShiftError }
 > {
-  const context = await lockPlanShiftContext(db, planId);
-  if (!context) {
-    return { type: 'error', error: 'PLAN_NOT_FOUND' };
-  }
+  const calendar = await lockPlanCalendarChange(db, planId, coachId);
+  if (!calendar) return { type: 'error', error: 'PLAN_NOT_FOUND' };
+  const context = await lockPlanShiftContext(db, calendar.plan);
   if (context.plan.coach_id === null || !uuidEquals(context.plan.coach_id, coachId)) {
     return { type: 'error', error: 'PLAN_NOT_FOUND' };
   }
@@ -868,6 +936,12 @@ async function undoLatestCoachPlanShift(
   if (latestBatch === undefined) {
     return { type: 'error', error: 'NO_ACTIVE_SHIFT' };
   }
+  assertPlanDates(
+    calendar,
+    context.plan,
+    calendar.days,
+    calendar.shifts.filter((shift) => shift.batch_id !== latestBatch.batch_id),
+  );
   if (context.days.length > 0) {
     await db
       .deleteFrom('plan_day_shifts')
@@ -905,6 +979,10 @@ export async function createImportedHistory(
     .where('id', '=', planRef.id)
     .forUpdate()
     .executeTakeFirstOrThrow();
+
+  // Logs take exercise FK locks; completions take day FK locks. Acquire the
+  // tree top-down first so a concurrent day deletion cannot invert that order.
+  await lockPlanDescendants(db, plan.id);
 
   const rows = await db
     .selectFrom('plan_days as pd')
@@ -1064,28 +1142,8 @@ async function lockPlanDayTree(
   return { day, exerciseIds: exercises.map((exercise) => exercise.id) };
 }
 
-async function lockOwnedPlan(
-  db: Transaction<Database>,
-  planId: string,
-  coachId: string,
-): Promise<PlanRow | undefined> {
-  return db
-    .selectFrom('plans')
-    .selectAll()
-    .where('id', '=', planId)
-    .where('coach_id', '=', coachId)
-    .forUpdate()
-    .executeTakeFirst();
-}
-
-async function lockOwnedPlanTree(
-  db: Transaction<Database>,
-  planId: string,
-  coachId: string,
-): Promise<{ plan: PlanRow; exerciseIds: string[] } | null> {
-  const plan = await lockOwnedPlan(db, planId, coachId);
-  if (!plan) return null;
-
+/** Caller must already hold the plan lock; lock descendants before checking history or writing logs. */
+async function lockPlanDescendants(db: Transaction<Database>, planId: string): Promise<string[]> {
   const days = await db
     .selectFrom('plan_days')
     .select('id')
@@ -1104,7 +1162,7 @@ async function lockOwnedPlanTree(
           .orderBy('id', 'asc')
           .forUpdate()
           .execute();
-  return { plan, exerciseIds: exercises.map((exercise) => exercise.id) };
+  return exercises.map((exercise) => exercise.id);
 }
 
 function exerciseHistoryImmutable(exerciseIds: string[]) {
@@ -1477,11 +1535,12 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         body.data.source_template_id !== undefined;
 
       const result = await deps.db.transaction().execute(async (trx) => {
-        const lockedTree = hasCalendarMetadataMutation
-          ? await lockOwnedPlanTree(trx, params.data.id, user.id)
+        const calendar = await lockPlanCalendarChange(trx, params.data.id, user.id);
+        if (!calendar) return { type: 'not-found' } as const;
+        const existing = calendar.plan;
+        const lockedExerciseIds = hasCalendarMetadataMutation
+          ? await lockPlanDescendants(trx, existing.id)
           : null;
-        const existing = lockedTree?.plan ?? (await lockOwnedPlan(trx, params.data.id, user.id));
-        if (!existing) return { type: 'not-found' } as const;
 
         if (body.data.status && !isAllowedPlanStatusTransition(existing.status, body.data.status)) {
           return { type: 'invalid-status' } as const;
@@ -1489,10 +1548,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
 
         if (
           hasCalendarMetadataMutation &&
-          lockedTree &&
+          lockedExerciseIds &&
           (body.data.source_template_id !== undefined ||
             !isPurePlanExtension(existing, body.data)) &&
-          (await planHistoryLocked(trx, existing.id, lockedTree.exerciseIds))
+          (await planHistoryLocked(trx, existing.id, lockedExerciseIds))
         ) {
           return { type: 'history-immutable' } as const;
         }
@@ -1509,6 +1568,13 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
             return { type: 'template-id-must-be-null' } as const;
           }
         }
+
+        assertPlanDates(calendar, {
+          ...existing,
+          start_date: body.data.start_date ?? existing.start_date,
+          end_date: body.data.end_date ?? existing.end_date,
+          status: body.data.status ?? existing.status,
+        });
 
         const patch: Record<string, unknown> = { updated_at: sql<Date>`now()` };
         if (body.data.name !== undefined) patch.name = body.data.name;
@@ -1709,12 +1775,8 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       }
 
       const result = await deps.db.transaction().execute(async (trx) => {
-        const plan = await trx
-          .selectFrom('plans')
-          .selectAll()
-          .where('id', '=', params.data.id)
-          .executeTakeFirst();
-
+        const calendar = await lockPlanCalendarChange(trx, params.data.id, user.id);
+        const plan = calendar?.plan;
         if (!plan || !uuidEquals(plan.coach_id, user.id)) {
           return { type: 'not-found' as const };
         }
@@ -1755,6 +1817,8 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (isPublishIncomplete(counts)) {
           return { type: 'incomplete' as const, planId: plan.id, counts };
         }
+
+        assertPlanDates(calendar, { ...plan, status: 'published' });
 
         const updated = await trx
           .updateTable('plans')
@@ -1925,23 +1989,19 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         !!body.data.day_types?.length;
 
       const result = await deps.db.transaction().execute(async (trx) => {
-        let currentPlan = plan;
+        const calendar = await lockPlanCalendarChange(trx, plan.id, user.id);
+        if (!calendar) return { type: 'not-found' } as const;
+        let currentPlan = calendar.plan;
 
         if (hasCalendarMetadataMutation || includesRestDays) {
-          const lockedTree = await lockOwnedPlanTree(trx, plan.id, user.id);
-          if (!lockedTree) return { type: 'not-found' } as const;
-          currentPlan = lockedTree.plan;
+          const lockedExerciseIds = await lockPlanDescendants(trx, currentPlan.id);
           if (
             hasCalendarMetadataMutation &&
             !isPurePlanExtension(currentPlan, body.data.plan_patch ?? {}) &&
-            (await planHistoryLocked(trx, plan.id, lockedTree.exerciseIds))
+            (await planHistoryLocked(trx, plan.id, lockedExerciseIds))
           ) {
             return { type: 'plan-history-immutable' } as const;
           }
-        } else if (body.data.expected_updated_at !== undefined) {
-          const lockedPlan = await lockOwnedPlan(trx, plan.id, user.id);
-          if (!lockedPlan) return { type: 'not-found' } as const;
-          currentPlan = lockedPlan;
         }
 
         const expectedVersion = body.data.expected_updated_at;
@@ -2087,6 +2147,33 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (immutableDayIds.length > 0) {
           return { type: 'day-history-immutable', dayIds: immutableDayIds } as const;
         }
+
+        const deletedIds = new Set(body.data.delete_day_ids);
+        const dayTypes = new Map(
+          (body.data.day_types ?? []).map((day) => [day.day_id, day.is_rest]),
+        );
+        const proposedDays = [
+          ...calendar.days
+            .filter((day) => !deletedIds.has(day.id))
+            .map((day) => ({ ...day, is_rest: dayTypes.get(day.id) ?? day.is_rest })),
+          ...body.data.upsert_days.map((day) => ({
+            id: randomUUID(),
+            plan_id: plan.id,
+            is_rest: day.is_rest ?? false,
+            week_number: day.week_number,
+            day_of_week: day.day_of_week,
+            sort_order: day.sort_order,
+          })),
+        ];
+        assertPlanDates(
+          calendar,
+          {
+            ...currentPlan,
+            start_date: body.data.plan_patch?.start_date ?? currentPlan.start_date,
+            end_date: body.data.plan_patch?.end_date ?? currentPlan.end_date,
+          },
+          proposedDays,
+        );
 
         if (body.data.plan_patch) {
           const mergedStartDate = normalizeDateOnly(
@@ -2309,11 +2396,21 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
-      const day = await deps.db
-        .insertInto('plan_days')
-        .values({ plan_id: plan.id, ...body.data })
-        .returningAll()
-        .executeTakeFirstOrThrow();
+      const day = await deps.db.transaction().execute(async (trx) => {
+        const calendar = await lockPlanCalendarChange(trx, plan.id, user.id);
+        if (!calendar) return null;
+        const proposed = { id: randomUUID(), plan_id: plan.id, is_rest: false, ...body.data };
+        assertPlanDates(calendar, calendar.plan, [...calendar.days, proposed]);
+        return trx
+          .insertInto('plan_days')
+          .values(proposed)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+      });
+      if (!day) {
+        res.status(404).json({ error: 'PLAN_NOT_FOUND' });
+        return;
+      }
 
       deps.logger.info(
         { planId: plan.id, action: 'day', op: 'create', resourceId: day.id },
@@ -2347,6 +2444,8 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         const planId = await planIdForDay(trx, params.data.dayId, user.id);
         if (!planId) return { type: 'not-found' } as const;
 
+        const calendar = await lockPlanCalendarChange(trx, planId, user.id);
+        if (!calendar) return { type: 'not-found' } as const;
         const locked = await lockPlanDayTree(trx, params.data.dayId);
         if (!locked) return { type: 'not-found' } as const;
         const loggedExerciseIds = [...(await planExercisesWithLogs(trx, locked.exerciseIds))];
@@ -2354,6 +2453,17 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           return { type: 'history-immutable', exerciseIds: loggedExerciseIds } as const;
         }
 
+        const proposedDays = calendar.days.map((day) =>
+          day.id !== params.data.dayId
+            ? day
+            : {
+                ...day,
+                week_number: body.data.week_number ?? day.week_number,
+                day_of_week: body.data.day_of_week ?? day.day_of_week,
+                sort_order: body.data.sort_order ?? day.sort_order,
+              },
+        );
+        assertPlanDates(calendar, calendar.plan, proposedDays);
         const day = await trx
           .updateTable('plan_days')
           .set(body.data)
@@ -3101,11 +3211,78 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
     }),
   );
 
+  router.use(planDatesErrorHandler);
   return router;
 }
 
 export function studentPlansRouter(deps: PlansRouterDeps): ExpressRouter {
   const router = Router();
+
+  router.get(
+    '/:studentId/plan-handoff',
+    route(async (req, res) => {
+      const user = ensureUser(req);
+      if (!user) {
+        res.status(401).json({ error: 'AUTH_INVALID_TOKEN' });
+        return;
+      }
+      const params = StudentPlansParamSchema.safeParse(req.params);
+      if (!params.success) {
+        res.status(400).json(validationEnvelope(params.error));
+        return;
+      }
+      const studentId = params.data.studentId;
+      if (user.role !== 'coach' && !uuidEquals(studentId, user.id)) {
+        res.status(403).json({ error: 'AUTHORIZATION_FORBIDDEN' });
+        return;
+      }
+      const result = await deps.db
+        .transaction()
+        .setIsolationLevel('repeatable read')
+        .execute(async (trx) => {
+          let coachId: string | undefined;
+          if (user.role === 'coach') {
+            if (!(await hasAcceptedBond(trx, user.id, studentId))) return null;
+            coachId = user.id;
+          } else {
+            coachId = (await resolveCanonicalAcceptedBond(trx, studentId))?.coach_id;
+          }
+          if (!coachId) return { current_plan_id: null, plans: [] };
+          const plans = await trx
+            .selectFrom('plans')
+            .selectAll()
+            .where('trainee_id', '=', studentId)
+            .where('coach_id', '=', coachId)
+            .where('status', '=', 'published')
+            .execute();
+          const facts = (await readHandoffPlans(trx, plans)).sort(handoffOrder);
+          const id = currentPlanId(facts);
+          const current = facts.find((plan) => plan.id === id);
+          const byId = new Map(plans.map((plan) => [plan.id, plan]));
+          return {
+            current_plan_id: id,
+            plans: facts.map((plan) => {
+              const row = byId.get(plan.id);
+              if (!row) throw new Error('Missing handoff plan');
+              return {
+                ...toPlan({
+                  ...row,
+                  start_date: plan.start_date,
+                  end_date: normalizeDateOnly(row.end_date),
+                }),
+                ...trainingProgress(plan),
+                handoff_status: handoffStatus(plan, current),
+              };
+            }),
+          };
+        });
+      if (result === null) {
+        res.status(403).json({ error: 'BIND_NOT_ACCEPTED' });
+        return;
+      }
+      res.status(200).json(result);
+    }),
+  );
 
   router.get(
     '/:studentId/plans',
@@ -3164,47 +3341,33 @@ export function studentPlansRouter(deps: PlansRouterDeps): ExpressRouter {
         .where('status', '=', 'published')
         .orderBy('created_at', 'desc')
         .execute();
-      const student = await deps.db
-        .selectFrom('users')
-        .select('timezone')
-        .where('id', '=', user.id)
-        .executeTakeFirstOrThrow();
-      // Plan availability follows the student's calendar date, like plan shifts,
-      // rather than the 04:00 training-session cutoff.
-      const today = localCalendarDate(new Date(), student.timezone);
-      const { summaries: shiftSummaries, shiftsByPlan } = await planShiftSummaries(deps.db, plans);
-      const days =
-        plans.length === 0
-          ? []
-          : await deps.db
-              .selectFrom('plan_days')
-              .select(['id', 'plan_id', 'week_number', 'day_of_week'])
-              .where(
-                'plan_id',
-                'in',
-                plans.map((plan) => plan.id),
-              )
-              .where('is_rest', '=', false)
-              .execute();
-      const daysByPlan = new Map<string, typeof days>();
-      for (const day of days) {
-        const planDays = daysByPlan.get(day.plan_id) ?? [];
-        planDays.push(day);
-        daysByPlan.set(day.plan_id, planDays);
+      const { summaries: shiftSummaries } = await planShiftSummaries(deps.db, plans);
+      const facts = query.data.include_all ? [] : await readHandoffPlans(deps.db, plans);
+      const factsById = new Map(facts.map((plan) => [plan.id, plan]));
+      const groups = new Map<string | null, typeof facts>();
+      for (const plan of plans) {
+        const fact = factsById.get(plan.id);
+        if (!fact) continue;
+        const group = groups.get(plan.coach_id) ?? [];
+        group.push(fact);
+        groups.set(plan.coach_id, group);
       }
-      const hasCurrentPlan = plans.some(
-        (plan) =>
-          normalizeDateOnly(plan.start_date) <= today &&
-          (normalizeDateOnly(plan.end_date) >= today ||
-            effectivePlanDays(
-              plan,
-              daysByPlan.get(plan.id) ?? [],
-              shiftsByPlan.get(plan.id) ?? [],
-            ).some(({ effectiveDate }) => effectiveDate >= today)),
+      const currentByCoach = new Map(
+        [...groups].map(([coachId, group]) => {
+          const id = currentPlanId(group);
+          return [coachId, group.find((plan) => plan.id === id)] as const;
+        }),
       );
-      const visiblePlans = hasCurrentPlan
-        ? plans.filter((plan) => normalizeDateOnly(plan.start_date) <= today)
-        : plans;
+      const visibleIds = new Set(
+        [...groups].flatMap(([coachId, group]) =>
+          group
+            .filter((plan) => visibleToLegacyStudent(plan, currentByCoach.get(coachId)))
+            .map((plan) => plan.id),
+        ),
+      );
+      const visiblePlans = query.data.include_all
+        ? plans
+        : plans.filter((plan) => visibleIds.has(plan.id));
       res.status(200).json({
         plans: visiblePlans.map((plan) => ({
           ...toPlan(plan),

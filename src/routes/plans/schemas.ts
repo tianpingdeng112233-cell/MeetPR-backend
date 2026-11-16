@@ -377,10 +377,14 @@ function splitCsvParam(value: unknown): string[] | undefined {
 export const StudentPlansQuerySchema = z
   .object({
     status: z.unknown().optional(),
+    include_all: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((value) => value === 'true'),
   })
   .transform((query, ctx) => {
     const statuses = splitCsvParam(query.status);
-    if (statuses === undefined) return {};
+    if (statuses === undefined) return { include_all: query.include_all };
     const parsedStatuses: z.infer<typeof PlanStatusQuerySchema>[] = [];
     for (const status of statuses) {
       const parsed = PlanStatusQuerySchema.safeParse(status);
@@ -403,7 +407,7 @@ export const StudentPlansQuerySchema = z
       });
       return z.NEVER;
     }
-    return { status: parsedStatuses };
+    return { status: parsedStatuses, include_all: query.include_all };
   });
 
 export type CreatePlanBody = z.infer<typeof CreatePlanBodySchema>;
