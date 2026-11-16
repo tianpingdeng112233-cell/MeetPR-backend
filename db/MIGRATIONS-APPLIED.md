@@ -711,3 +711,4 @@
   独立 curl 实证:/health 200、登录路由回 `AUTH_INVALID_CREDENTIALS`;连续 6 次 GET / 均回
   build id `1787829633716` 与入口 `assets/index-CIqZRySE.js`,资源 200、同源 API 标记及
   「更新计划没有完整成功」告警文案均在线。
+- **2026-11-16（plan-web 110 计划接续适配）** — David 授权合并部署；[#423](https://github.com/tianpingdeng112233-cell/MeetPR-backend/pull/423) 换装 plan-web #181 `1088cce`。镜像 `sha-a1e269f37605be5071d081deb0e419e1441e8989` 经 [build 43897740304](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43897740304) 与 [deploy 43898292443](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43898292443) 上线国内 staging；无迁移、env 未动；线上入口 `assets/index-DAYvx1ov.js` 哈希与构建一致，`/health` 200。详见 `docs/journal/2026-11-16-web110-deployment.md`。
