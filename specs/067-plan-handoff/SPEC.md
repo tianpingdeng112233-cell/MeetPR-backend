@@ -1,8 +1,8 @@
 # 067 — 旧周期练完再接新计划
 
-Status: InProgress · T2 / P1 · 2026-11-16
+Status: Deployed to staging · 真实账号目标场景及 PostgreSQL 并发验收待补 · Global 未部署 · T2 / P1 · 2026-11-16
 
-产品规则以 [110 快照](IOS-SPEC-110-SNAPSHOT.md) 与 David 本轮修订第 3 项为准；后者覆盖快照旧包过滤条款。仅工作区交付，不 commit / push / 部署 / 连库。
+产品规则以 [110 快照](IOS-SPEC-110-SNAPSHOT.md) 与 David 本轮修订第 3 项为准；后者覆盖快照旧包过滤条款。原实装卡仅工作区交付；后续合并与 staging 部署事实见 [JOURNAL 部署记录](../../docs/journal/2026-11-16-067-plan-handoff.md#部署2026-11-16)。本次 T0 台账卡只补文档与只读脚本，不合并、不部署、不连接远程数据库。
 
 ## 契约
 
@@ -33,4 +33,4 @@ Status: InProgress · T2 / P1 · 2026-11-16
 
 测试 seam 已由任务卡确认：纯函数四支、并列、空/休息日与撤销；HTTP 新契约权限、修订过滤和发布/PATCH/batch/shift 冲突；fixtures 为三端公开 JSON。先红后绿，全量 gates 及独立双轴审查证据见 JOURNAL。
 
-Out of Scope：客户端 UI/缓存/写入门禁改造、后移联动、plan_ending、线上修复或数据迁移、服务端保存选择指针。只读清单脚本只写不运行。A–F、H、J、M、P 覆盖和不能覆盖的端侧行为逐项记 JOURNAL。
+Out of Scope：客户端 UI/缓存/写入门禁改造、后移联动、plan_ending、线上修复或数据迁移、服务端保存选择指针。只读清单脚本原实装卡只写不运行；本次 T0 卡允许在临时本地 PostgreSQL 验证，不允许连接远程库，实际执行情况见 JOURNAL。A–F、H、J、M、P 覆盖和不能覆盖的端侧行为逐项记 JOURNAL。
