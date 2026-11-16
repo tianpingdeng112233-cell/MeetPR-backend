@@ -62,5 +62,5 @@
 
 - [#412](https://github.com/tianpingdeng112233-cell/MeetPR-backend/pull/412) 已合并，`staging@ef17157`。本机全量 191 文件 / 2186 passed（Codex 沙箱内的 581 个失败为端口监听受限，非代码问题）。
 - 国内 SAE 已部署 `sha-ef17157ed9499ea9d9b61a261192b841c52122b8`：[镜像构建](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43806713574)、[部署](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/43807254945)（`migrations_applied=true`，无新迁移，沿用已应用的 0087，env 未动）通过；独立请求 `/health` 返回 200。
-- 目标场景未由实装方验收：无学员账号。David 直接联系反馈学员确认，结果待补。
+- 目标场景验收：实装方无学员账号，未亲眼核对。2026-11-16 David 直接联系反馈学员，转述其确认「本周计划回来了」；无截图存档。
 - 定位变更：David 随后认定「学员不能提前看下周期」「到开始日仍会顶掉未练完的旧周期」两个代价不可接受，本改动降为旧包临时垫片。根治见 iOS 仓 `specs/110-plan-handoff`（含 `AMENDMENT-2026-11-16.md`），垫片退场由 110 后端卡处理。Global 生产未部署。
