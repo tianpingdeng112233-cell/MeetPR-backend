@@ -1,0 +1,53 @@
+{
+  "current_plan_id": "10000000-0000-4000-8000-000000000001",
+  "plans": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "coach_id": "10000000-0000-4000-8000-000000000001",
+      "trainee_id": "10000000-0000-4000-8000-000000000003",
+      "name": "Cycle 1",
+      "start_date": "2026-10-19",
+      "end_date": "2026-11-22",
+      "plan_weeks": 5,
+      "source": "coach",
+      "source_template_id": null,
+      "status": "published",
+      "kind": "regular",
+      "block_type": null,
+      "mesocycle_phase": null,
+      "training_max": null,
+      "tm_set_at": null,
+      "published_at": "2026-10-01T10:00:00.000Z",
+      "anchor_weekday": null,
+      "created_at": "2026-09-01T10:00:00.000Z",
+      "updated_at": "2026-10-01T10:00:00.000Z",
+      "completed_training_days": 16,
+      "total_training_days": 20,
+      "handoff_status": "current"
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000002",
+      "coach_id": "10000000-0000-4000-8000-000000000001",
+      "trainee_id": "10000000-0000-4000-8000-000000000003",
+      "name": "Cycle 2",
+      "start_date": "2026-11-23",
+      "end_date": "2026-12-20",
+      "plan_weeks": 4,
+      "source": "coach",
+      "source_template_id": null,
+      "status": "published",
+      "kind": "regular",
+      "block_type": null,
+      "mesocycle_phase": null,
+      "training_max": null,
+      "tm_set_at": null,
+      "published_at": "2026-10-02T10:00:00.000Z",
+      "anchor_weekday": null,
+      "created_at": "2026-09-02T10:00:00.000Z",
+      "updated_at": "2026-10-02T10:00:00.000Z",
+      "completed_training_days": 0,
+      "total_training_days": 4,
+      "handoff_status": "upcoming"
+    }
+  ]
+}

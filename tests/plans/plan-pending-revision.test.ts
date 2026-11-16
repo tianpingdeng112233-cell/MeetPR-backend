@@ -137,6 +137,14 @@ async function makeContext(): Promise<TestContext> {
       coach_note TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    -- The student list now reads record presence (067); retain its production columns.
+    CREATE TABLE set_logs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      student_id UUID NOT NULL REFERENCES users(id),
+      plan_exercise_id UUID REFERENCES plan_exercises(id),
+      plan_day_id UUID REFERENCES plan_days(id),
+      logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
     CREATE TABLE plan_shift_batches (
       id UUID PRIMARY KEY,
       plan_id UUID NOT NULL REFERENCES plans(id) ON DELETE CASCADE,

@@ -16,7 +16,7 @@ async function lockCompletionContext(
   dayId: string,
   studentId: string,
 ): Promise<
-  | { type: 'context'; plan: PlanRow; day: PlanDayRow; timezone: string }
+  | { type: 'context'; plan: PlanRow; day: PlanDayRow }
   | { type: 'error'; error: CompletionCommandError }
 > {
   const day = await db
@@ -30,10 +30,9 @@ async function lockCompletionContext(
   // lock serializes latest-completion undo against completion on another day.
   const plan = await db
     .selectFrom('plans as p')
-    .innerJoin('users as student', 'student.id', 'p.trainee_id')
     .selectAll('p')
-    .select('student.timezone as student_timezone')
     .where('p.id', '=', day.plan_id)
+    // Lock only the plan; calendar writers acquire the student scope before it.
     .forUpdate()
     .executeTakeFirst();
   if (!plan || !uuidEquals(plan.trainee_id, studentId)) {
@@ -52,7 +51,7 @@ async function lockCompletionContext(
     .executeTakeFirst();
   if (lockedDay?.is_rest) return { type: 'error', error: 'PLAN_DAY_REST' };
   return lockedDay
-    ? { type: 'context', plan, day: lockedDay, timezone: plan.student_timezone }
+    ? { type: 'context', plan, day: lockedDay }
     : { type: 'error', error: 'NOT_PLAN_STUDENT' };
 }
 

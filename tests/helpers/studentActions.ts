@@ -612,6 +612,8 @@ export async function makeContext(
     // original PostgreSQL SQL and affected rows before this adapter rewrite.
     const pgMemSql = (text: string) =>
       text
+        // pg-mem has no MVCC/isolation support; production keeps its read snapshot.
+        .replace(/^start transaction isolation level repeatable read$/i, 'begin')
         .replace(/\s+skip\s+locked/gi, '')
         .replace(
           /"preferred_locale" is distinct from (\$\d+)/gi,
