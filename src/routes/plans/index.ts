@@ -3164,9 +3164,49 @@ export function studentPlansRouter(deps: PlansRouterDeps): ExpressRouter {
         .where('status', '=', 'published')
         .orderBy('created_at', 'desc')
         .execute();
-      const { summaries: shiftSummaries } = await planShiftSummaries(deps.db, plans);
+      const student = await deps.db
+        .selectFrom('users')
+        .select('timezone')
+        .where('id', '=', user.id)
+        .executeTakeFirstOrThrow();
+      // Plan availability follows the student's calendar date, like plan shifts,
+      // rather than the 04:00 training-session cutoff.
+      const today = localCalendarDate(new Date(), student.timezone);
+      const { summaries: shiftSummaries, shiftsByPlan } = await planShiftSummaries(deps.db, plans);
+      const days =
+        plans.length === 0
+          ? []
+          : await deps.db
+              .selectFrom('plan_days')
+              .select(['id', 'plan_id', 'week_number', 'day_of_week'])
+              .where(
+                'plan_id',
+                'in',
+                plans.map((plan) => plan.id),
+              )
+              .where('is_rest', '=', false)
+              .execute();
+      const daysByPlan = new Map<string, typeof days>();
+      for (const day of days) {
+        const planDays = daysByPlan.get(day.plan_id) ?? [];
+        planDays.push(day);
+        daysByPlan.set(day.plan_id, planDays);
+      }
+      const hasCurrentPlan = plans.some(
+        (plan) =>
+          normalizeDateOnly(plan.start_date) <= today &&
+          (normalizeDateOnly(plan.end_date) >= today ||
+            effectivePlanDays(
+              plan,
+              daysByPlan.get(plan.id) ?? [],
+              shiftsByPlan.get(plan.id) ?? [],
+            ).some(({ effectiveDate }) => effectiveDate >= today)),
+      );
+      const visiblePlans = hasCurrentPlan
+        ? plans.filter((plan) => normalizeDateOnly(plan.start_date) <= today)
+        : plans;
       res.status(200).json({
-        plans: plans.map((plan) => ({
+        plans: visiblePlans.map((plan) => ({
           ...toPlan(plan),
           ...(shiftSummaries.get(plan.id) ?? toPlanShiftSummary(plan, [], [], [])),
         })),
