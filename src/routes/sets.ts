@@ -12,6 +12,7 @@ import { fetchCoachSetLogs, fetchOwnSetLogs } from '../handlers/sets-fetch';
 import {
   AdhocDayConflictError,
   PlanDayRestError,
+  SetLogValidationError,
   canLogPlanDay,
   exerciseExists,
   isAccessoryExercise,
@@ -56,6 +57,7 @@ const SetLogCommonFields = {
   actual_rir: z.number().int().min(0).max(9).nullable().optional(),
   completed: z.boolean(),
   failed: z.boolean().optional(),
+  is_warmup: z.boolean().optional().default(false),
 };
 
 interface SetLogCommonShape {
@@ -135,6 +137,20 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
         return;
       }
 
+      const warmupShape = z
+        .object({
+          is_warmup: z.literal(true),
+          plan_exercise_id: z.unknown().optional(),
+          adhoc: z.unknown().optional(),
+        })
+        .safeParse(req.body);
+      if (
+        warmupShape.success &&
+        (!warmupShape.data.plan_exercise_id || warmupShape.data.adhoc === true)
+      ) {
+        res.status(422).json({ error: 'SET_WARMUP_PLAN_REQUIRED' });
+        return;
+      }
       const body = SetLogBodySchema.safeParse(req.body);
       if (!body.success) {
         res.status(400).json(validationEnvelope(body.error));
@@ -169,6 +185,7 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
             logged_date: body.data.logged_date ?? trainingDay(new Date(), resolved.timezone),
             update_logged_date: body.data.logged_date !== undefined,
             set_index: body.data.set_index,
+            is_warmup: body.data.is_warmup,
             weight_kg: body.data.weight_kg,
             reps: body.data.reps,
             rpe: body.data.rpe,
@@ -177,6 +194,10 @@ export function setsRouter(deps: SetsRouterDeps): ExpressRouter {
             failed: body.data.failed,
           });
         } catch (error: unknown) {
+          if (error instanceof SetLogValidationError) {
+            res.status(error.status).json({ error: error.code });
+            return;
+          }
           if (error instanceof PlanDayRestError) {
             res.status(409).json({ error: 'PLAN_DAY_NOT_ACTIVE' });
             return;

@@ -628,3 +628,44 @@ describe('detectSetLogPr', () => {
     });
   });
 });
+
+it('SPEC 068: warm-ups neither trigger PRs nor raise the historical PR baseline', async () => {
+  const ctx = await makePrContext();
+  const plan = await createPublishedPlan(ctx);
+  await registerOneRm(ctx, { squat: 100 });
+  const warmup = await ctx.db
+    .insertInto('set_logs')
+    .values({
+      student_id: ids.trainee,
+      plan_exercise_id: plan.planExerciseId,
+      exercise_id: ids.exercise,
+      set_index: 1,
+      weight_kg: '500',
+      reps: 5,
+      rpe: '8',
+      completed: true,
+      is_warmup: true,
+      logged_date: '2026-07-09',
+      logged_at: daysBefore(1),
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  expect(await detectSetLogPr(ctx.db, ids.trainee, warmup.id, TRIGGER_AT)).toBeNull();
+  const working = await ctx.db
+    .insertInto('set_logs')
+    .values({
+      student_id: ids.trainee,
+      plan_exercise_id: plan.planExerciseId,
+      exercise_id: ids.exercise,
+      set_index: 0,
+      weight_kg: '120',
+      reps: 5,
+      rpe: '8',
+      completed: true,
+      logged_date: '2026-07-10',
+      logged_at: TRIGGER_AT,
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  expect(await detectSetLogPr(ctx.db, ids.trainee, working.id, TRIGGER_AT)).not.toBeNull();
+});

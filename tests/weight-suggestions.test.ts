@@ -182,3 +182,37 @@ it('uses the student gym-day and canonical RPE instead of legacy projections or 
     ]);
   }
 });
+
+it('SPEC 068: ignores a newer warm-up when prefilling a matching prescription', async () => {
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-10T12:00:00Z') });
+  const ctx = await makeContext();
+  const plan = await createPublishedPlan(ctx);
+  await ctx.db
+    .updateTable('plan_sets')
+    .set({ intensity_mode: 'rpe', target_value: '8.00' })
+    .where('plan_exercise_id', '=', plan.planExerciseId)
+    .execute();
+  for (const [index, is_warmup] of [false, true].entries()) {
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: plan.planExerciseId,
+        exercise_id: ids.exercise,
+        set_index: index,
+        weight_kg: is_warmup ? '500' : '100',
+        reps: 5,
+        rpe: '8',
+        completed: true,
+        is_warmup,
+        logged_date: '2026-11-09',
+        logged_at: new Date(`2026-11-09T1${String(index)}:00:00Z`),
+      })
+      .execute();
+  }
+  const response = await request(ctx.app)
+    .get(`/students/${ids.trainee}/plan-days/${plan.dayId}/weight-suggestions`)
+    .set(auth(ctx.traineeToken));
+  expect(response.status).toBe(200);
+  expect(response.body.suggestions).toEqual([expect.objectContaining({ weight_kg: '100.00' })]);
+});

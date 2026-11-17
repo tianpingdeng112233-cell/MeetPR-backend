@@ -137,6 +137,7 @@ export function coachOverviewAlertsRouter({ db }: { db: Kysely<Database> }): Rou
           .execute(),
         db
           .selectFrom('set_logs as sl')
+          .where('sl.is_warmup', '=', false)
           .innerJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
           .select([
             'sl.student_id',

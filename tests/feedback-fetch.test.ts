@@ -327,3 +327,43 @@ it('negotiates null set weights in feedback video metadata for student and coach
     }
   }
 });
+
+it('SPEC 068: defensive feedback/video reads exclude warm-up links and retain unlinked feedback', async () => {
+  const ctx = await makeUploadsContext();
+  const videoId = await seedLinkedVideo(ctx);
+  const attachment = await ctx.db
+    .selectFrom('attachments')
+    .select('set_log_id')
+    .where('id', '=', videoId)
+    .executeTakeFirstOrThrow();
+  if (attachment.set_log_id === null) throw new Error('Expected a linked video fixture');
+  await ctx.db
+    .updateTable('set_logs')
+    .set({ is_warmup: true })
+    .where('id', '=', attachment.set_log_id)
+    .execute();
+  await ctx.db
+    .insertInto('feedback')
+    .values([
+      {
+        coach_id: ids.coach,
+        student_id: ids.trainee,
+        video_id: videoId,
+        text: 'Hidden warm-up feedback',
+      },
+      { coach_id: ids.coach, student_id: ids.trainee, text: 'Visible day feedback' },
+    ])
+    .execute();
+  for (const token of [ctx.coachToken, ctx.traineeToken]) {
+    const feedback = await request(ctx.app)
+      .get(`/students/${ids.trainee}/feedback`)
+      .set(auth(token));
+    expect(feedback.status).toBe(200);
+    expect(feedback.body.items).toEqual([
+      expect.objectContaining({ text: 'Visible day feedback' }),
+    ]);
+    const videos = await request(ctx.app).get(`/students/${ids.trainee}/videos`).set(auth(token));
+    expect(videos.status).toBe(200);
+    expect(videos.body.videos).toEqual([]);
+  }
+});

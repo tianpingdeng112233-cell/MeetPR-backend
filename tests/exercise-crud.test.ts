@@ -1,3 +1,4 @@
+import { request as warmupRequest } from './helpers/inMemoryRequest';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
@@ -307,4 +308,38 @@ describe('custom exercise CRUD', () => {
     expect(seedResponse.body).toEqual({ error: 'EXERCISE_NOT_FOUND' });
     await ctx.db.destroy();
   });
+});
+
+it('SPEC 068: exercise usage counts hide warm-ups while the plan still protects deletion', async () => {
+  const ctx = await makeContext();
+  const exercise = await warmupRequest(ctx.app)
+    .post('/exercises')
+    .set(auth(ctx.coachToken))
+    .send(customExerciseBody);
+  expect(exercise.status).toBe(201);
+  const plan = await createPublishedPlan(ctx);
+  await ctx.db
+    .updateTable('plan_exercises')
+    .set({ exercise_id: exercise.body.id as string })
+    .where('id', '=', plan.planExerciseId)
+    .execute();
+  await ctx.db
+    .insertInto('set_logs')
+    .values({
+      student_id: ids.trainee,
+      plan_exercise_id: plan.planExerciseId,
+      exercise_id: exercise.body.id as string,
+      set_index: 1,
+      weight_kg: '20',
+      reps: 5,
+      completed: true,
+      is_warmup: true,
+      logged_date: '2026-11-17',
+    })
+    .execute();
+  const response = await warmupRequest(ctx.app)
+    .delete(`/exercises/${String(exercise.body.id)}`)
+    .set(auth(ctx.coachToken));
+  expect(response.status).toBe(409);
+  expect(response.body).toEqual({ error: 'EXERCISE_IN_USE', plan_count: 1, log_count: 0 });
 });

@@ -5,6 +5,7 @@ import type { Database } from '../db/types';
 type DbExecutor = Kysely<Database> | Transaction<Database>;
 
 export interface SessionProgressLog {
+  is_warmup?: boolean;
   plan_exercise_id: string | null;
   set_index: number;
   completed: boolean;
@@ -47,6 +48,7 @@ export async function sessionProgress(
   logs: SessionProgressLog[],
   scopedPlanDayIds?: string[],
 ): Promise<SessionProgress> {
+  logs = logs.filter((log) => !log.is_warmup);
   const touchedExerciseIds = [
     ...new Set(logs.map((log) => log.plan_exercise_id).filter((id): id is string => id !== null)),
   ];

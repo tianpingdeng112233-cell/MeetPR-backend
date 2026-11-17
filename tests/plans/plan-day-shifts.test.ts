@@ -187,6 +187,7 @@ async function makeContext(configOverride: Partial<Config> = {}): Promise<TestCo
     );
 
     CREATE TABLE set_logs (
+      is_warmup BOOLEAN NOT NULL DEFAULT FALSE,
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       plan_exercise_id UUID REFERENCES plan_exercises(id) ON DELETE RESTRICT,

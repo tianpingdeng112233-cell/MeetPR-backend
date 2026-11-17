@@ -92,6 +92,7 @@ async function autoResolveCurrentDay(
   const started =
     (await trx
       .selectFrom('set_logs')
+      .where('is_warmup', '=', false)
       .select('id')
       .where('student_id', '=', studentId)
       .where('logged_date', '=', gymDay)
@@ -299,6 +300,7 @@ async function settleStudent(
 
   const startedRows = await trx
     .selectFrom('set_logs')
+    .where('is_warmup', '=', false)
     .select('logged_date')
     .where('student_id', '=', studentId)
     .where('assumed', '=', false)

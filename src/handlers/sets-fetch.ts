@@ -21,6 +21,7 @@ type SerializableSetLogRow = Pick<
   | 'failed'
   | 'assumed'
   | 'adhoc'
+  | 'is_warmup'
   | 'logged_date'
   | 'logged_at'
 >;
@@ -41,6 +42,7 @@ export interface SetLogResponse {
   failed: boolean;
   assumed: boolean;
   adhoc: boolean;
+  is_warmup: boolean;
   logged_date: string;
   logged_at: string;
 }
@@ -62,6 +64,7 @@ export function toSetLog(row: SerializableSetLogRow): SetLogResponse {
     failed: row.failed,
     assumed: row.assumed,
     adhoc: row.adhoc,
+    is_warmup: row.is_warmup,
     logged_date: dateOnly(row.logged_date),
     logged_at: timestamp(row.logged_at),
   };
@@ -112,6 +115,7 @@ export async function fetchCoachSetLogs(
 ): Promise<SetLogResponse[]> {
   const rows = await db
     .selectFrom('set_logs as sl')
+    .where('sl.is_warmup', '=', false)
     .innerJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
     .innerJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
     .innerJoin('plans as p', 'p.id', 'pd.plan_id')
@@ -131,6 +135,7 @@ export async function fetchCoachSetLogs(
       'sl.failed as failed',
       'sl.assumed as assumed',
       'sl.adhoc as adhoc',
+      'sl.is_warmup as is_warmup',
       'sl.logged_date as logged_date',
       'sl.logged_at as logged_at',
     ])
@@ -147,6 +152,7 @@ export async function fetchCoachSetLogs(
 
   const added = await db
     .selectFrom('set_logs as sl')
+    .where('sl.is_warmup', '=', false)
     .innerJoin('plan_days as pd', 'pd.id', 'sl.plan_day_id')
     .innerJoin('plans as p', 'p.id', 'pd.plan_id')
     .selectAll('sl')

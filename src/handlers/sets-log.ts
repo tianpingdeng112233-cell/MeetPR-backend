@@ -6,6 +6,7 @@ import { uuidEquals } from '../utils/uuid';
 import { timestamp } from './serialization';
 
 export interface SetLogInput {
+  is_warmup?: boolean;
   plan_id: string;
   plan_day_id: string;
   plan_exercise_id: string;
@@ -128,11 +129,26 @@ export async function isAccessoryExercise(
 
 export class PlanDayRestError extends Error {}
 
+export class SetLogValidationError extends Error {
+  constructor(
+    readonly code:
+      | 'SET_WARMUP_PLAN_REQUIRED'
+      | 'SET_WARMUP_INDEX'
+      | 'SET_WARMUP_LIMIT'
+      | 'SET_WARMUP_CONFLICT'
+      | 'SET_EXTRA_LIMIT',
+    readonly status: 409 | 422,
+  ) {
+    super(code);
+  }
+}
+
 async function withWritablePlanDay<T>(
   db: Kysely<Database>,
   studentId: string,
   dayId: string | null,
   write: (db: Kysely<Database>) => Promise<T>,
+  requireCoach = false,
 ): Promise<T> {
   if (!dayId) return write(db);
   return db.transaction().execute(async (trx) => {
@@ -144,7 +160,7 @@ async function withWritablePlanDay<T>(
     if (!ref) throw new PlanDayRestError('PLAN_DAY_NOT_ACTIVE');
     const plan = await trx
       .selectFrom('plans')
-      .select(['id', 'status', 'trainee_id'])
+      .select(['id', 'status', 'trainee_id', 'coach_id'])
       .where('id', '=', ref.plan_id)
       .forUpdate()
       .executeTakeFirst();
@@ -162,6 +178,9 @@ async function withWritablePlanDay<T>(
       day.is_rest
     )
       throw new PlanDayRestError('PLAN_DAY_NOT_ACTIVE');
+    if (requireCoach && plan.coach_id === null) {
+      throw new SetLogValidationError('SET_WARMUP_PLAN_REQUIRED', 422);
+    }
     return write(trx);
   });
 }
@@ -179,53 +198,94 @@ export async function upsertSetLog(
   // (David 2026-08-08, revising spec 035 拍板 1's auto half; coach backfill
   // imports are untouched). The plan/day lock serializes this write against
   // a coach switching the day to rest; completion is still entirely explicit.
-  const saved = await withWritablePlanDay(db, studentId, input.plan_day_id, async (lockedDb) =>
-    lockedDb
-      .insertInto('set_logs')
-      .values({
-        student_id: studentId,
-        plan_exercise_id: input.plan_exercise_id,
-        exercise_id: input.exercise_id,
-        logged_date: input.logged_date,
-        set_index: input.set_index,
-        weight_kg: input.weight_kg,
-        reps: input.reps,
-        rpe: input.rpe,
-        actual_rir: input.actual_rir ?? null,
-        completed: input.completed,
-        failed,
-        assumed: false,
-      })
-      .onConflict((oc) =>
-        input.update_logged_date
-          ? oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
-              weight_kg: (eb) => eb.ref('excluded.weight_kg'),
-              reps: (eb) => eb.ref('excluded.reps'),
-              rpe: (eb) => eb.ref('excluded.rpe'),
-              ...(input.actual_rir !== undefined || input.rpe !== null
-                ? { actual_rir: input.actual_rir ?? null }
-                : {}),
-              completed: (eb) => eb.ref('excluded.completed'),
-              failed: (eb) => eb.ref('excluded.failed'),
-              assumed: false,
-              logged_date: (eb) => eb.ref('excluded.logged_date'),
-              logged_at: sql<Date>`now()`,
-            })
-          : oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
-              weight_kg: (eb) => eb.ref('excluded.weight_kg'),
-              reps: (eb) => eb.ref('excluded.reps'),
-              rpe: (eb) => eb.ref('excluded.rpe'),
-              ...(input.actual_rir !== undefined || input.rpe !== null
-                ? { actual_rir: input.actual_rir ?? null }
-                : {}),
-              completed: (eb) => eb.ref('excluded.completed'),
-              failed: (eb) => eb.ref('excluded.failed'),
-              assumed: false,
-              logged_at: sql<Date>`now()`,
-            }),
-      )
-      .returning(['id', 'logged_at'])
-      .executeTakeFirstOrThrow(),
+  const saved = await withWritablePlanDay(
+    db,
+    studentId,
+    input.plan_day_id,
+    async (lockedDb) => {
+      // The plan/day lock serializes identity and quota checks with every planned write.
+      const warmup = input.is_warmup ?? false;
+      const existing = await lockedDb
+        .selectFrom('set_logs')
+        .select('is_warmup')
+        .where('student_id', '=', studentId)
+        .where('plan_exercise_id', '=', input.plan_exercise_id)
+        .where('set_index', '=', input.set_index)
+        .executeTakeFirst();
+      if (existing && existing.is_warmup !== warmup) {
+        throw new SetLogValidationError('SET_WARMUP_CONFLICT', 409);
+      }
+      const prescribed = await lockedDb
+        .selectFrom('plan_sets')
+        .select((eb) => eb.fn.countAll<string | number>().as('count'))
+        .where('plan_exercise_id', '=', input.plan_exercise_id)
+        .executeTakeFirstOrThrow();
+      const prescribedCount = Number(prescribed.count);
+      if (warmup && input.set_index < prescribedCount) {
+        throw new SetLogValidationError('SET_WARMUP_INDEX', 422);
+      }
+      if (!existing && input.set_index >= prescribedCount) {
+        const count = await lockedDb
+          .selectFrom('set_logs')
+          .select((eb) => eb.fn.countAll<string | number>().as('count'))
+          .where('student_id', '=', studentId)
+          .where('plan_exercise_id', '=', input.plan_exercise_id)
+          .where('is_warmup', '=', warmup)
+          .$if(!warmup, (query) => query.where('set_index', '>=', prescribedCount))
+          .executeTakeFirstOrThrow();
+        if (Number(count.count) >= (warmup ? 5 : 10)) {
+          throw new SetLogValidationError(warmup ? 'SET_WARMUP_LIMIT' : 'SET_EXTRA_LIMIT', 422);
+        }
+      }
+      return lockedDb
+        .insertInto('set_logs')
+        .values({
+          student_id: studentId,
+          plan_exercise_id: input.plan_exercise_id,
+          exercise_id: input.exercise_id,
+          logged_date: input.logged_date,
+          set_index: input.set_index,
+          weight_kg: input.weight_kg,
+          reps: input.reps,
+          rpe: input.rpe,
+          actual_rir: input.actual_rir ?? null,
+          completed: input.completed,
+          failed,
+          assumed: false,
+          is_warmup: input.is_warmup ?? false,
+        })
+        .onConflict((oc) =>
+          input.update_logged_date
+            ? oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
+                weight_kg: (eb) => eb.ref('excluded.weight_kg'),
+                reps: (eb) => eb.ref('excluded.reps'),
+                rpe: (eb) => eb.ref('excluded.rpe'),
+                ...(input.actual_rir !== undefined || input.rpe !== null
+                  ? { actual_rir: input.actual_rir ?? null }
+                  : {}),
+                completed: (eb) => eb.ref('excluded.completed'),
+                failed: (eb) => eb.ref('excluded.failed'),
+                assumed: false,
+                logged_date: (eb) => eb.ref('excluded.logged_date'),
+                logged_at: sql<Date>`now()`,
+              })
+            : oc.columns(['student_id', 'plan_exercise_id', 'set_index']).doUpdateSet({
+                weight_kg: (eb) => eb.ref('excluded.weight_kg'),
+                reps: (eb) => eb.ref('excluded.reps'),
+                rpe: (eb) => eb.ref('excluded.rpe'),
+                ...(input.actual_rir !== undefined || input.rpe !== null
+                  ? { actual_rir: input.actual_rir ?? null }
+                  : {}),
+                completed: (eb) => eb.ref('excluded.completed'),
+                failed: (eb) => eb.ref('excluded.failed'),
+                assumed: false,
+                logged_at: sql<Date>`now()`,
+              }),
+        )
+        .returning(['id', 'logged_at'])
+        .executeTakeFirstOrThrow();
+    },
+    input.is_warmup ?? false,
   );
 
   return {

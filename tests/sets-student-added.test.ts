@@ -424,3 +424,163 @@ describe('student-added deletion compatibility', () => {
     expect(await ctx.db.selectFrom('student_signals').selectAll().execute()).toEqual(signals);
   });
 });
+
+describe('SPEC 068 warm-up set identity', () => {
+  it('adds a warm-up, exposes the flag to its student and allows deletion', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    const saved = await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+      plan_exercise_id: plan.planExerciseId,
+      logged_date: payload.logged_date,
+      set_index: 1,
+      weight_kg: '20.00',
+      reps: 5,
+      completed: true,
+      is_warmup: true,
+    });
+    expect(saved.status).toBe(201);
+    const read = await request(ctx.app)
+      .get(`/students/${ids.trainee}/sets?${window}`)
+      .set(auth(ctx.traineeToken));
+    expect(read.body.logs).toEqual([
+      expect.objectContaining({ id: saved.body.id, is_warmup: true }),
+    ]);
+    expect(
+      (
+        await request(ctx.app)
+          .delete(`/sets/${String(saved.body.id)}`)
+          .set(auth(ctx.traineeToken))
+      ).status,
+    ).toBe(204);
+    expect(
+      (
+        await request(ctx.app)
+          .get(`/students/${ids.trainee}/sets?${window}`)
+          .set(auth(ctx.traineeToken))
+      ).body.logs,
+    ).toEqual([]);
+  });
+});
+
+describe('SPEC 068 warm-up validation and independent limits', () => {
+  const log = (
+    ctx: Awaited<ReturnType<typeof makeContext>>,
+    pe: string,
+    index: number,
+    warmup = false,
+  ) =>
+    request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+      plan_exercise_id: pe,
+      logged_date: payload.logged_date,
+      set_index: index,
+      weight_kg: '20.00',
+      reps: 5,
+      completed: true,
+      is_warmup: warmup,
+    });
+
+  it('rejects a prescribed index and non-plan/adhoc warm-ups with 422', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    const prescribed = await log(ctx, plan.planExerciseId, 0, true);
+    expect(prescribed.status).toBe(422);
+    expect(prescribed.body.error).toBe('SET_WARMUP_INDEX');
+    for (const shape of [
+      {},
+      { plan_day_id: plan.dayId },
+      { plan_exercise_id: plan.planExerciseId, adhoc: true },
+    ]) {
+      const invalid = await request(ctx.app)
+        .post('/sets/log')
+        .set(auth(ctx.traineeToken))
+        .send({ ...payload, ...shape, is_warmup: true });
+      expect(invalid.status).toBe(422);
+    }
+  });
+
+  it.each([false, true])(
+    'refuses toggling an existing is_warmup=%s row without modifying it',
+    async (warmup) => {
+      const ctx = await makeContext();
+      const plan = await createPublishedPlan(ctx);
+      expect((await log(ctx, plan.planExerciseId, 1, warmup)).status).toBe(201);
+      const read = () =>
+        request(ctx.app).get(`/students/${ids.trainee}/sets?${window}`).set(auth(ctx.traineeToken));
+      const before = (await read()).body;
+      const conflict = await log(ctx, plan.planExerciseId, 1, !warmup);
+      expect(conflict.status).toBe(409);
+      expect(conflict.body.error).toBe('SET_WARMUP_CONFLICT');
+      expect((await read()).body).toEqual(before);
+    },
+  );
+
+  it('counts five warm-ups separately from ten extra sets and allows updates at both limits', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    for (let index = 1; index <= 5; index++)
+      expect((await log(ctx, plan.planExerciseId, index, true)).status).toBe(201);
+    const sixth = await log(ctx, plan.planExerciseId, 6, true);
+    expect(sixth.status).toBe(422);
+    expect(sixth.body.error).toBe('SET_WARMUP_LIMIT');
+    expect((await log(ctx, plan.planExerciseId, 1, true)).status).toBe(201);
+    for (let index = 6; index <= 15; index++)
+      expect((await log(ctx, plan.planExerciseId, index)).status).toBe(201);
+    expect((await log(ctx, plan.planExerciseId, 16)).status).toBe(422);
+    expect((await log(ctx, plan.planExerciseId, 6)).status).toBe(201);
+    const read = await request(ctx.app)
+      .get(`/students/${ids.trainee}/sets?${window}`)
+      .set(auth(ctx.traineeToken));
+    expect(read.body.logs).toHaveLength(15);
+  });
+
+  it('keeps omitted is_warmup writes and same-key updates ordinary, including coach-prescribed warmup sets', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    await ctx.db
+      .updateTable('plan_sets')
+      .set({ set_type: 'warmup' })
+      .where('plan_exercise_id', '=', plan.planExerciseId)
+      .execute();
+    const body = {
+      plan_exercise_id: plan.planExerciseId,
+      logged_date: payload.logged_date,
+      set_index: 0,
+      weight_kg: '80',
+      reps: 5,
+      completed: true,
+    };
+    const first = await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send(body);
+    const replay = await request(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.traineeToken))
+      .send({ ...body, reps: 6 });
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(201);
+    expect(replay.body.id).toBe(first.body.id);
+    const read = await request(ctx.app)
+      .get(`/students/${ids.trainee}/sets?${window}`)
+      .set(auth(ctx.traineeToken));
+    expect(read.body.logs).toEqual([expect.objectContaining({ is_warmup: false, reps: 6 })]);
+  });
+});
+
+it('SPEC 068: only coach-authored plans accept warm-ups, while legacy writes stay allowed', async () => {
+  const ctx = await makeContext();
+  const plan = await createPublishedPlan(ctx);
+  await ctx.db.updateTable('plans').set({ coach_id: null }).where('id', '=', plan.planId).execute();
+  const body = {
+    plan_exercise_id: plan.planExerciseId,
+    set_index: 1,
+    weight_kg: '20',
+    reps: 5,
+    completed: true,
+  };
+  const warmup = await request(ctx.app)
+    .post('/sets/log')
+    .set(auth(ctx.traineeToken))
+    .send({ ...body, is_warmup: true });
+  expect(warmup.status).toBe(422);
+  expect(warmup.body).toEqual({ error: 'SET_WARMUP_PLAN_REQUIRED' });
+  const legacy = await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send(body);
+  expect(legacy.status).toBe(201);
+});

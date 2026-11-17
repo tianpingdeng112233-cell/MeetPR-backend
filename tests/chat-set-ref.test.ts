@@ -1186,3 +1186,41 @@ it('carries exercise_ref in realtime hints and keeps push preview as ordinary te
   expect(outbox.payload).toMatchObject({ preview: body });
   expect(outbox.payload).not.toHaveProperty('preview_is_system');
 });
+
+it('SPEC 068: refuses a logged warm-up reference in coach chat', async () => {
+  const ctx = await makeContext();
+  await chooseCanonicalCoach(ctx);
+  const conversation = await createConversation(ctx);
+  const plan = await createPublishedPlan(ctx);
+  const log = await ctx.db
+    .insertInto('set_logs')
+    .values({
+      student_id: ids.trainee,
+      plan_exercise_id: plan.planExerciseId,
+      exercise_id: ids.exercise,
+      set_index: 1,
+      weight_kg: '20',
+      reps: 5,
+      completed: true,
+      is_warmup: true,
+      logged_date: DAY,
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  const snapshot = setRef(log.id);
+  const sent = await request(ctx.app)
+    .post(`/conversations/${conversation.id}/messages`)
+    .set(auth(ctx.traineeToken))
+    .send({
+      kind: 'text',
+      body: formatSetRefFirstLine(snapshot),
+      set_ref: snapshot,
+      client_id: 'warmup-private',
+    });
+  expect(sent.status).toBe(400);
+  const messages = await request(ctx.app)
+    .get(`/conversations/${conversation.id}/messages`)
+    .set(auth(ctx.coachToken));
+  expect(messages.status).toBe(200);
+  expect(messages.body.messages).toEqual([]);
+});

@@ -348,3 +348,27 @@ it('negotiates linked null weights while preserving unlinked video metadata', as
     ).toBeNull();
   }
 });
+
+it('SPEC 068: refuses a warm-up video before creating an attachment or calling OSS', async () => {
+  const ctx = await makeUploadsContext();
+  const plan = await createPublishedPlan(ctx);
+  const saved = await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+    plan_exercise_id: plan.planExerciseId,
+    set_index: 1,
+    weight_kg: '20',
+    reps: 5,
+    completed: true,
+    is_warmup: true,
+  });
+  expect(saved.status).toBe(201);
+  const upload = await request(ctx.app).post('/uploads/initiate').set(auth(ctx.traineeToken)).send({
+    kind: 'set_video',
+    content_type: 'video/mp4',
+    size_bytes: 1024,
+    part_count: 1,
+    set_log_id: saved.body.id,
+  });
+  expect(upload.status).toBe(409);
+  expect(upload.body).toEqual({ error: 'SET_WARMUP_NO_VIDEO' });
+  expect(ctx.oss.calls.initiate).toHaveLength(0);
+});
