@@ -439,7 +439,7 @@ function createSchema(mem: ReturnType<typeof newDb>): void {
       CHECK (body IS NULL OR length(body) BETWEEN 1 AND 4000),
       CHECK (length(client_id) BETWEEN 1 AND 64),
       CONSTRAINT messages_set_ref_text_only CHECK (set_ref IS NULL OR kind = 'text'),
-      CONSTRAINT messages_video_needs_set_ref CHECK (video_id IS NULL OR set_ref IS NOT NULL),
+      CONSTRAINT messages_video_text_only CHECK (video_id IS NULL OR kind = 'text'),
       UNIQUE (conversation_id, sender_id, client_id),
       UNIQUE (conversation_id, seq)
     );
