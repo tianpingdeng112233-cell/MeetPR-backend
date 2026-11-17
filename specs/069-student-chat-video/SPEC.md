@@ -1,6 +1,6 @@
 # 学员独立聊天视频（App 113 / backend 069）
 
-- 状态：InReview。2026-11-17 David 批准 HTML 后明确「安卓和 iOS 一起实装」。T2 / P1；本地后端验收通过，真实部署与跨端 OSS 验收待批准。
+- 状态：InReview。2026-11-17 David 批准 HTML 后明确「安卓和 iOS 一起实装」。T2 / P1；本地后端验收通过；三仓已合并，0089经David执行并复核，国内后端5ac8da8已部署（run44091508530）。真实跨端OSS验收已授权，等待测试登录会话。备份成功记录尚未提供，见JOURNAL。
 - 先读本仓 CONTEXT、AGENTS、CLAUDE；旧角色分工以 David 全局规约为准。
 - 视觉正典：本目录 `approved-prototype.html`（本机交互示意，不把示例人物/聊天/占位视频写进真实产品）。保留两端原导航与现有入口。
 

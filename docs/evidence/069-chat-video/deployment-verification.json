@@ -1,0 +1,36 @@
+{
+  "checked_at": "2026-11-17T13:20:57.988917+00:00",
+  "image_sha": "5ac8da8386958ec4a997cb86df1dc65483cd2973",
+  "checks": {
+    "health": {
+      "status": 200,
+      "body": {
+        "status": "ok"
+      }
+    },
+    "login_route": {
+      "status": 401,
+      "error": "AUTH_INVALID_CREDENTIALS"
+    },
+    "unauthenticated_upload": {
+      "status": 401,
+      "error": "AUTH_INVALID_TOKEN"
+    },
+    "web": {
+      "html_sha256": "fc7e9d37101af0410ee30d6b58f12ae47a9758ee5780439eb3f291c26592059c",
+      "assets": [
+        {
+          "path": "/assets/index-Cmpmwkks.css",
+          "sha256": "be592019b5ad1154eb96188e1e19ef6a2180759a3a9d4aafe03819e1716d06ad"
+        },
+        {
+          "path": "/assets/index-DAYvx1ov.js",
+          "sha256": "ebe9708b9fe572dbd02dd6c60e36675e95407ef40f1dd2eb64ddf510b20b6196"
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "No authenticated student/coach session available; real chat-video transfer is not verified by these deployment probes."
+  ]
+}
