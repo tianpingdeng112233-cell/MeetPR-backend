@@ -212,3 +212,45 @@ it.each(['feedback', 'three-consecutive', 'abandoned-tail', 'all-completed', 'no
     expect(response.body).toEqual(fixture);
   },
 );
+
+it('SPEC 068: handoff preserves warm-up-only record presence and the student marker', async () => {
+  const a = await createPublishedPlan(ctx);
+  const b = await createPublishedPlan(ctx);
+  await ctx.db
+    .updateTable('plans')
+    .set({ start_date: '2026-05-29', end_date: '2026-06-25' })
+    .where('id', '=', b.planId)
+    .execute();
+  await ctx.db
+    .insertInto('plan_day_completions')
+    .values({
+      plan_day_id: a.dayId,
+      student_id: ids.trainee,
+      source: 'manual',
+      completed_at: new Date('2026-05-20T12:00:00Z'),
+    })
+    .execute();
+  const saved = await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+    plan_exercise_id: b.planExerciseId,
+    set_index: 1,
+    weight_kg: '20',
+    reps: 5,
+    completed: true,
+    is_warmup: true,
+    logged_date: '2026-05-29',
+  });
+  expect(saved.status).toBe(201);
+  // Undoing the old cycle cannot pull the student away from records in the new one.
+  await ctx.db.deleteFrom('plan_day_completions').where('plan_day_id', '=', a.dayId).execute();
+  expect((await get()).body.current_plan_id).toBe(b.planId);
+  const read = await request(ctx.app)
+    .get(`/students/${ids.trainee}/sets?from=2026-05-29&to=2026-05-30`)
+    .set(auth(ctx.traineeToken));
+  expect(read.body.logs).toEqual([
+    expect.objectContaining({
+      id: saved.body.id,
+      plan_exercise_id: b.planExerciseId,
+      is_warmup: true,
+    }),
+  ]);
+});

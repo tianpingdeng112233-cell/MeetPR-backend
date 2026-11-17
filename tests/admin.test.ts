@@ -222,6 +222,7 @@ function makeContext(): TestContext {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE TABLE set_logs (
+      is_warmup BOOLEAN NOT NULL DEFAULT FALSE,
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       plan_exercise_id UUID REFERENCES plan_exercises(id)
     );

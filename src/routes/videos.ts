@@ -63,6 +63,7 @@ export function studentVideosRouter(deps: StudentVideosRouterDeps): ExpressRoute
       let query = db
         .selectFrom('attachments as a')
         .leftJoin('set_logs as sl', 'sl.id', 'a.set_log_id')
+        .where((eb) => eb.or([eb('sl.is_warmup', '=', false), eb('sl.id', 'is', null)]))
         .leftJoin('exercises as e', 'e.id', 'sl.exercise_id')
         .leftJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
         .leftJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')

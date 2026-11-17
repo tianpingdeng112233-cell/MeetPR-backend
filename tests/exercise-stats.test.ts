@@ -1,3 +1,5 @@
+import { request as warmupRequest } from './helpers/inMemoryRequest';
+import { createPublishedPlan } from './helpers/studentActions';
 import request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -1394,4 +1396,55 @@ describe('spec 053 adopted exercise statistics', () => {
     ]);
     await ctx.db.destroy();
   });
+});
+
+it('SPEC 068: two warm-ups leave four prescribed sets e1RM, PR and volume unchanged', async () => {
+  const ctx = await makeContext();
+  const plan = await createPublishedPlan(ctx);
+  await ctx.db
+    .insertInto('plan_sets')
+    .values(
+      [2, 3, 4].map((set_number) => ({
+        plan_exercise_id: plan.planExerciseId,
+        set_number,
+        target_reps: 5,
+        intensity_mode: 'weight' as const,
+        target_value: '100',
+        set_type: 'working' as const,
+      })),
+    )
+    .execute();
+  const write = (set_index: number, is_warmup = false) =>
+    warmupRequest(ctx.app)
+      .post('/sets/log')
+      .set(auth(ctx.traineeToken))
+      .send({
+        plan_exercise_id: plan.planExerciseId,
+        logged_date: daysFromToday(0),
+        set_index,
+        weight_kg: is_warmup ? '500' : '100',
+        reps: 5,
+        rpe: 8,
+        completed: true,
+        is_warmup,
+      });
+  for (let index = 0; index < 4; index++) expect((await write(index)).status).toBe(201);
+  const stats = async () => {
+    const results: unknown[] = [];
+    for (const query of ['', `?exercise_id=${ids.exercise}`]) {
+      const response = await warmupRequest(ctx.app)
+        .get(`/coach/students/${ids.trainee}/exercise-stats${query}`)
+        .set(auth(ctx.coachToken));
+      expect(response.status).toBe(200);
+      results.push(response.body);
+    }
+    return results;
+  };
+  const before = await stats();
+  expect(before[0]).toMatchObject({
+    exercises: [expect.any(Object)],
+    e1rm: { squat: expect.any(Object) },
+  });
+  for (let index = 4; index < 6; index++) expect((await write(index, true)).status).toBe(201);
+  expect(await stats()).toEqual(before);
 });

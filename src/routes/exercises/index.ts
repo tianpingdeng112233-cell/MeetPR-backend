@@ -354,6 +354,7 @@ export function exercisesRouter(deps: ExerciseRouterDeps): ExpressRouter {
           .executeTakeFirstOrThrow();
         const logUsage = await trx
           .selectFrom('set_logs')
+          .where('is_warmup', '=', false)
           .select((eb) => eb.fn.countAll<string>().as('log_count'))
           .where('exercise_id', '=', exercise.id)
           .executeTakeFirstOrThrow();

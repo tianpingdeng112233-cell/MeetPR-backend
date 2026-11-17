@@ -292,3 +292,30 @@ it('negotiates null weights in coach exercise history without changing e1RM or P
     expect(response.body.by_set_count).toEqual(before.body.by_set_count);
   }
 });
+
+describe('SPEC 068 student-only warm-ups', () => {
+  it('hides warm-ups from both coach set scopes and the web plan has_logs projection', async () => {
+    const ctx = await makeContext();
+    const plan = await createPublishedPlan(ctx);
+    const saved = await request(ctx.app).post('/sets/log').set(auth(ctx.traineeToken)).send({
+      plan_exercise_id: plan.planExerciseId,
+      logged_date: '2026-05-15',
+      set_index: 1,
+      weight_kg: '20',
+      reps: 5,
+      completed: true,
+      is_warmup: true,
+    });
+    expect(saved.status).toBe(201);
+    for (const scope of ['plan', 'all']) {
+      const path = `/students/${ids.trainee}/sets?from=2026-05-15&to=2026-05-16&scope=${scope}`;
+      expect((await request(ctx.app).get(path).set(auth(ctx.coachToken))).body.logs).toEqual([]);
+      expect((await request(ctx.app).get(path).set(auth(ctx.traineeToken))).body.logs).toEqual([
+        expect.objectContaining({ id: saved.body.id, is_warmup: true }),
+      ]);
+    }
+    const tree = await request(ctx.app).get(`/plans/${plan.planId}`).set(auth(ctx.coachToken));
+    expect(tree.status).toBe(200);
+    expect(tree.body.days[0].exercises[0].has_logs).toBe(false);
+  });
+});

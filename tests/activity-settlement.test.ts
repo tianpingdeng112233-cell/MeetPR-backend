@@ -528,3 +528,58 @@ describe('session sweep job', () => {
     expect(await ctx.db.selectFrom('student_events').selectAll().execute()).toHaveLength(1);
   });
 });
+
+it('SPEC 068: warm-ups do not interrupt missed-training detection or resolve an absence', async () => {
+  const ctx = await makeContext();
+  const plan = await createPublishedPlan(ctx);
+  await addPlanDays(ctx.db, plan.planId, [2, 3, 4]);
+  for (const [set_index, logged_date] of [
+    [1, '2026-05-02'],
+    [2, '2026-05-03'],
+  ] as const) {
+    await ctx.db
+      .insertInto('set_logs')
+      .values({
+        student_id: ids.trainee,
+        plan_exercise_id: plan.planExerciseId,
+        exercise_id: ids.exercise,
+        set_index,
+        weight_kg: '20',
+        reps: 5,
+        completed: true,
+        is_warmup: true,
+        logged_date,
+        logged_at: new Date(`${logged_date}T12:00:00Z`),
+      })
+      .execute();
+  }
+  await runDailySettlement(ctx.db, '2026-05-03', new Date('2026-05-03T20:05:00Z'));
+  const before = await ctx.db
+    .selectFrom('student_signals')
+    .selectAll()
+    .where('signal_type', '=', 'missed_training')
+    .execute();
+  expect(before).toEqual([expect.objectContaining({ status: 'open' })]);
+  await ctx.db
+    .insertInto('set_logs')
+    .values({
+      student_id: ids.trainee,
+      plan_exercise_id: plan.planExerciseId,
+      exercise_id: ids.exercise,
+      set_index: 3,
+      weight_kg: '20',
+      reps: 5,
+      completed: true,
+      is_warmup: true,
+      logged_date: '2026-05-04',
+      logged_at: new Date('2026-05-04T12:00:00Z'),
+    })
+    .execute();
+  await runDailySettlement(ctx.db, '2026-05-04', new Date('2026-05-04T20:05:00Z'));
+  const after = await ctx.db
+    .selectFrom('student_signals')
+    .selectAll()
+    .where('signal_type', '=', 'missed_training')
+    .execute();
+  expect(after).toEqual([expect.objectContaining({ id: before[0]?.id, status: 'open' })]);
+});

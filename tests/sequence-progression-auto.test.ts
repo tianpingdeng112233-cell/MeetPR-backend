@@ -144,3 +144,29 @@ describe('student-added extra sets and prescription progress', () => {
     expect((await sessionProgress(ctx.db, completeLogs)).plannedComplete).toBe(true);
   });
 });
+
+it('SPEC 068: three prescribed sets remain incomplete when only warm-ups are logged', async () => {
+  const ctx = await makeContext();
+  const plan = await createPublishedPlan(ctx);
+  await ctx.db
+    .insertInto('plan_sets')
+    .values(
+      [2, 3].map((set_number) => ({
+        plan_exercise_id: plan.planExerciseId,
+        set_number,
+        target_reps: 5,
+        intensity_mode: 'weight' as const,
+        target_value: '100',
+        set_type: 'working' as const,
+      })),
+    )
+    .execute();
+  for (const index of [3, 4])
+    await upsertSetLog(ctx.db, ids.trainee, {
+      ...coachedInput(plan, index, true, false),
+      is_warmup: true,
+    });
+  const logs = await ctx.db.selectFrom('set_logs').selectAll().execute();
+  expect((await sessionProgress(ctx.db, logs, [plan.dayId])).plannedComplete).toBe(false);
+  expect((await sessionProgress(ctx.db, logs)).planDayIds).toEqual([]);
+});

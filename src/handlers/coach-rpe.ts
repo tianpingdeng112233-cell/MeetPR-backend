@@ -18,6 +18,7 @@ export async function updateCoachRpe(
   return db.transaction().execute(async (trx) => {
     const setLog = await trx
       .selectFrom('set_logs')
+      .where('is_warmup', '=', false)
       .select(['id', 'student_id', 'coach_rpe'])
       .where('id', '=', setLogId)
       .forUpdate()

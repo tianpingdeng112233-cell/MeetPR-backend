@@ -76,6 +76,7 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
               .selectFrom('set_logs as sl')
               .innerJoin('exercises as e', 'e.id', 'sl.exercise_id')
               .select(['e.name', 'e.created_by_coach_id'])
+              .where('sl.is_warmup', '=', false)
               .where('sl.id', '=', attachment.set_log_id)
               .executeTakeFirst();
       return {
@@ -266,12 +267,21 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
           .innerJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
           .innerJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
           .innerJoin('plans as p', 'p.id', 'pd.plan_id')
-          .select(['sl.id as id', 'p.id as source_plan_id', 'p.coach_id as source_coach_id'])
+          .select([
+            'sl.id as id',
+            'sl.is_warmup',
+            'p.id as source_plan_id',
+            'p.coach_id as source_coach_id',
+          ])
           .where('sl.id', '=', body.data.set_log_id)
           .where('sl.student_id', '=', req.user.id)
           .executeTakeFirst();
         if (!ownedLog) {
           res.status(404).json({ error: 'SET_LOG_NOT_FOUND' });
+          return;
+        }
+        if (ownedLog.is_warmup) {
+          res.status(409).json({ error: 'SET_WARMUP_NO_VIDEO' });
           return;
         }
         provenance = {

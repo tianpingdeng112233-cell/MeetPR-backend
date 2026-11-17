@@ -853,6 +853,7 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
               if (setRef.source === 'logged') {
                 const sourceSet = await trx
                   .selectFrom('set_logs')
+                  .where('is_warmup', '=', false)
                   .select('id')
                   .where('id', '=', setRef.set_log_id)
                   .where('student_id', '=', user.id)

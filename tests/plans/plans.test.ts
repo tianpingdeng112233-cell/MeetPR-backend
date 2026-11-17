@@ -213,6 +213,7 @@ async function makeContext(logger = pino({ level: 'silent' })): Promise<TestCont
     -- both read/write set_logs from the plans router. Keep in sync with
     -- tests/helpers/studentActions.ts.
     CREATE TABLE set_logs (
+      is_warmup BOOLEAN NOT NULL DEFAULT FALSE,
       plan_day_id UUID REFERENCES plan_days(id) ON DELETE SET NULL,
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

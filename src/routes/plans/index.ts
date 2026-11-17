@@ -214,6 +214,7 @@ export async function getPlanWithChildren(
   db: Kysely<Database>,
   plan: PlanRow,
   includeRestDays = false,
+  includeWarmups = false,
 ): Promise<PlanWithChildrenResponse> {
   const dayRows = await db
     .selectFrom('plan_days as pd')
@@ -243,7 +244,7 @@ export async function getPlanWithChildren(
   const shiftRows = shiftData.shiftsByPlan.get(plan.id) ?? [];
 
   const exerciseIds = exerciseRows.map((exercise) => exercise.id);
-  const loggedExerciseIds = await planExercisesWithLogs(db, exerciseIds);
+  const loggedExerciseIds = await planExercisesWithLogs(db, exerciseIds, includeWarmups);
   const setRows =
     exerciseIds.length === 0
       ? []
@@ -511,12 +512,17 @@ async function planDayHasLogs(db: DbExecutor, dayId: string): Promise<boolean> {
   return (await loggedExerciseIdsForDay(db, dayId)).length > 0;
 }
 
-async function planExercisesWithLogs(db: DbExecutor, exerciseIds: string[]): Promise<Set<string>> {
+async function planExercisesWithLogs(
+  db: DbExecutor,
+  exerciseIds: string[],
+  includeWarmups = true,
+): Promise<Set<string>> {
   if (exerciseIds.length === 0) return new Set();
 
   const rows = await db
     .selectFrom('set_logs')
     .select('plan_exercise_id')
+    .$if(!includeWarmups, (query) => query.where('is_warmup', '=', false))
     .where('plan_exercise_id', 'in', exerciseIds)
     .groupBy('plan_exercise_id')
     .orderBy('plan_exercise_id', 'asc')
@@ -1070,6 +1076,7 @@ export async function createImportedHistory(
     .select('pe.plan_day_id')
     .where('sl.student_id', '=', plan.trainee_id)
     .where('sl.assumed', '=', true)
+    .where('sl.is_warmup', '=', false)
     .where('pe.plan_day_id', 'in', candidateDayIds)
     .groupBy('pe.plan_day_id')
     .execute();
@@ -1493,7 +1500,12 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       }
 
       const includeRestDays = user.role === 'coach' && req.query.include_rest_days === 'true';
-      const response = await getPlanWithChildren(deps.db, plan, includeRestDays);
+      const response = await getPlanWithChildren(
+        deps.db,
+        plan,
+        includeRestDays,
+        user.role !== 'coach',
+      );
       res.status(200).json(
         user.role === 'coach'
           ? {

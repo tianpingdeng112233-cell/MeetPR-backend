@@ -67,6 +67,7 @@ export async function fetchWeightSuggestions(
   if (targets.length === 0) return [];
   const logs = await db
     .selectFrom('set_logs as sl')
+    .where('sl.is_warmup', '=', false)
     .innerJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
     .innerJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
     .innerJoin('plans as p', 'p.id', 'pd.plan_id')

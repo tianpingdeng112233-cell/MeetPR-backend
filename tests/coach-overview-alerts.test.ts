@@ -354,3 +354,40 @@ it('excludes ended students from overview alerts and plan-viewed writes', async 
   });
   expect((await viewed(ctx)).status).toBe(403);
 });
+
+it('SPEC 068: warm-ups never appear as coach RPE alerts', async () => {
+  const ctx = await context();
+  const plan = await seed(ctx);
+  // A later prescription expansion may overlap a historical warm-up index.
+  await ctx.db
+    .insertInto('plan_sets')
+    .values({
+      plan_exercise_id: plan.planExerciseId,
+      set_number: 3,
+      target_reps: 5,
+      intensity_mode: 'rpe',
+      target_value: '8',
+      load_mode: 'rpe',
+      target_rpe: '8',
+      set_type: 'working',
+    })
+    .execute();
+  const before = await get(ctx);
+  await ctx.db
+    .insertInto('set_logs')
+    .values({
+      student_id: ids.trainee,
+      plan_exercise_id: plan.planExerciseId,
+      exercise_id: ids.exercise,
+      set_index: 2,
+      weight_kg: '20',
+      reps: 5,
+      rpe: '10',
+      completed: true,
+      is_warmup: true,
+      logged_date: '2026-10-20',
+      logged_at: new Date('2026-10-22T11:00:00Z'),
+    })
+    .execute();
+  expect((await get(ctx)).body).toEqual(before.body);
+});

@@ -1,3 +1,4 @@
+import { request as warmupRequest } from './helpers/inMemoryRequest';
 import pino from 'pino';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -152,4 +153,34 @@ describe('PATCH /coach/set-logs/:id/coach-rpe', () => {
     expect(response.status).toBe(403);
     expect(response.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
   });
+});
+
+it('SPEC 068: coach cannot calibrate a warm-up', async () => {
+  const ctx = await makeContext();
+  const plan = await createPublishedPlan(ctx);
+  const row = await ctx.db
+    .insertInto('set_logs')
+    .values({
+      student_id: ids.trainee,
+      plan_exercise_id: plan.planExerciseId,
+      exercise_id: ids.exercise,
+      set_index: 1,
+      weight_kg: '20',
+      reps: 5,
+      completed: true,
+      is_warmup: true,
+      logged_date: '2026-11-17',
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  const response = await warmupRequest(ctx.app)
+    .patch(`/coach/set-logs/${row.id}/coach-rpe`)
+    .set(auth(ctx.coachToken))
+    .send({ coach_rpe: 9 });
+  expect(response.status).toBe(403);
+  expect(response.body).toEqual({ error: 'AUTHORIZATION_FORBIDDEN' });
+  const own = await warmupRequest(ctx.app)
+    .get(`/students/${ids.trainee}/sets?from=2026-11-17&to=2026-11-18`)
+    .set(auth(ctx.traineeToken));
+  expect(own.body.logs).toEqual([expect.objectContaining({ is_warmup: true, coach_rpe: null })]);
 });

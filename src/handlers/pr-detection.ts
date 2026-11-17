@@ -165,6 +165,7 @@ export async function detectSetLogPr(
 ): Promise<PrCongratsPushCandidate | null> {
   const trigger = await db
     .selectFrom('set_logs as sl')
+    .where('sl.is_warmup', '=', false)
     .innerJoin('exercises as e', 'e.id', 'sl.exercise_id')
     .leftJoin('plan_exercises as pe', 'pe.id', 'sl.plan_exercise_id')
     .leftJoin('plan_days as pd', 'pd.id', 'pe.plan_day_id')
@@ -210,6 +211,7 @@ export async function detectSetLogPr(
 
   const candidates = await db
     .selectFrom('set_logs as sl')
+    .where('sl.is_warmup', '=', false)
     .innerJoin('exercises as e', 'e.id', 'sl.exercise_id')
     .select([
       'sl.weight_kg as weight_kg',

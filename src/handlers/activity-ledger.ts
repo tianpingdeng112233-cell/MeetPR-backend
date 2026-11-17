@@ -104,6 +104,7 @@ export async function recordSetLogActivity(
   await db.transaction().execute(async (trx) => {
     const triggeringLog = await trx
       .selectFrom('set_logs as sl')
+      .where('sl.is_warmup', '=', false)
       .innerJoin('users as student', 'student.id', 'sl.student_id')
       .select(['sl.logged_date', 'sl.logged_at', 'sl.assumed', 'student.timezone as timezone'])
       .where('sl.id', '=', setLogId)
@@ -149,6 +150,7 @@ export async function recordSetLogActivity(
     // overwrite the session with a stale snapshot of the day's logs.
     const logs = await trx
       .selectFrom('set_logs')
+      .where('is_warmup', '=', false)
       .select(['plan_exercise_id', 'set_index', 'completed', 'failed', 'logged_at'])
       .where('student_id', '=', studentId)
       .where('logged_date', '=', sessionDate)
@@ -270,6 +272,7 @@ export async function sweepTimedOutSessions(db: Kysely<Database>, now: Date): Pr
       const sessionDate = normalizeDateOnly(session.session_date);
       const logs = await trx
         .selectFrom('set_logs')
+        .where('is_warmup', '=', false)
         .select(['plan_exercise_id', 'set_index', 'completed', 'failed', 'logged_at'])
         .where('student_id', '=', session.student_id)
         .where('logged_date', '=', sessionDate)

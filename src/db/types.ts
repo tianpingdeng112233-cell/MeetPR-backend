@@ -587,6 +587,7 @@ export interface SetLogsTable {
   failed: Generated<boolean>;
   assumed: Generated<boolean>;
   adhoc: Generated<boolean>;
+  is_warmup: Generated<boolean>;
   actual_rir: NullableColumn<number>;
   accommodating_tension: NullableColumn<boolean>;
   e1rm_confidence: NullableColumn<E1rmConfidence>;

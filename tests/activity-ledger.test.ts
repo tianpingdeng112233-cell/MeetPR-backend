@@ -518,3 +518,57 @@ describe('activity ledger session state machine', () => {
     expect(response.body).toEqual({ id: expect.any(String), logged_at: expect.any(String) });
   });
 });
+
+it('SPEC 068: warm-ups create no activity and do not affect session counts or timeout', async () => {
+  const ctx = await makeContext();
+  const plan = await createPublishedPlan(ctx);
+  await addPlanSet(ctx, plan.planExerciseId, 2);
+  const warmup = await ctx.db
+    .insertInto('set_logs')
+    .values({
+      student_id: ids.trainee,
+      plan_exercise_id: plan.planExerciseId,
+      exercise_id: ids.exercise,
+      set_index: 2,
+      weight_kg: '500',
+      reps: 5,
+      completed: true,
+      is_warmup: true,
+      logged_date: '2026-07-10',
+      logged_at: new Date('2026-07-10T10:00:00Z'),
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  await recordSetLogActivity(ctx.db, ids.trainee, warmup.id, new Date('2026-07-10T10:00:00Z'));
+  expect(await ctx.db.selectFrom('training_sessions').selectAll().execute()).toEqual([]);
+  expect(await ctx.db.selectFrom('student_events').selectAll().execute()).toEqual([]);
+  const working = await ctx.db
+    .insertInto('set_logs')
+    .values({
+      student_id: ids.trainee,
+      plan_exercise_id: plan.planExerciseId,
+      exercise_id: ids.exercise,
+      set_index: 0,
+      weight_kg: '100',
+      reps: 5,
+      completed: true,
+      logged_date: '2026-07-10',
+      logged_at: new Date('2026-07-10T04:00:00Z'),
+    })
+    .returning('id')
+    .executeTakeFirstOrThrow();
+  await recordSetLogActivity(ctx.db, ids.trainee, working.id, new Date('2026-07-10T04:00:00Z'));
+  const before = await ctx.db.selectFrom('training_sessions').selectAll().execute();
+  expect(before).toEqual([
+    expect.objectContaining({
+      status: 'in_progress',
+      last_set_at: new Date('2026-07-10T04:00:00Z'),
+    }),
+  ]);
+  await recordSetLogActivity(ctx.db, ids.trainee, warmup.id, new Date('2026-07-10T10:00:00Z'));
+  expect(await ctx.db.selectFrom('training_sessions').selectAll().execute()).toEqual(before);
+  await sweepTimedOutSessions(ctx.db, new Date('2026-07-10T10:01:00Z'));
+  expect(await ctx.db.selectFrom('training_sessions').selectAll().execute()).toEqual([
+    expect.objectContaining({ status: 'partial', archived_sets_logged: 1 }),
+  ]);
+});
