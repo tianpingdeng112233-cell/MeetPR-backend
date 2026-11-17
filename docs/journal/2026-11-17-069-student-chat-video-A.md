@@ -49,3 +49,13 @@ David 明确批准合并三仓、备份、0089、后端部署和 Android/iOS 真
 用户提供同一国内meetpr-rds-v01-staging/meetpr DMS截图：0089七条语句全部绿，最后第七条成功（7ms）；另一次只读复查返回三条public约束：attachments_kind_check、messages_exercise_ref_excludes_video、messages_video_text_only，validated均t，旧messages_video_needs_set_ref未返回。两张原图保存在docs/evidence/069-chat-video/dms-0089-\*.png。不重跑0089。
 
 第二张的definition列位于可视范围右侧，当前未看到完整表达式。RDS手动备份成功记录尚未提供；第一张DMS的“备份未开启”不作为RDS实例备份状态的证据。实际迁移执行证据已收到，备份与完整定义复核仍待补齐，尚未dispatch后端部署，也未进行真实跨端收发。
+
+## 约束定义确认与明确部署指令
+
+David补充definition列截图并再次明确“部署后端”：attachments_kind_check保留四种旧类型并新增chat_video；messages_exercise_ref_excludes_video为exercise_ref为空或video_id为空；messages_video_text_only为video_id为空或kind=text，三项validated均t。结合前图DMS7/7成功，0089应用与最终schema已核实。原图dms-0089-definitions.png。备份成功记录仍未提供，不能宣称已验证备份；按本次明确部署指令继续，不重跑迁移、不进行其他数据库写入。
+
+部署前核对：origin/staging仍为5ac8da8；最近成功国内部署为05009bd/run44073221991，无更新部署正在执行；5ac8da8镜像构建run44086090295成功。指定完整image_sha=5ac8da8386958ec4a997cb86df1dc65483cd2973发起deploy-staging，migrations_applied=true仅表示迁移证据已确认。部署结果另行记录。
+
+## 国内部署成功
+
+[部署run44091508530](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/44091508530)于2026-11-17 13:20:03 UTC成功，SAE change order、health/login/web smoke均绿；镜像精确为5ac8da8386958ec4a997cb86df1dc65483cd2973，未改env、Global、App版本或数据库数据。独立13:20:57 UTC开始的验证：/health200；无效登录401/AUTH_INVALID_CREDENTIALS；未登录chat_video上传401/AUTH_INVALID_TOKEN；网页HTML及JS/CSS与本镜像源web文件逐字节一致。原始机器结果见deployment-verification.json。鉴权前的探针不能证明真实上传/接收/播放，待已绑定测试账号会话恢复后继续双端联调。
