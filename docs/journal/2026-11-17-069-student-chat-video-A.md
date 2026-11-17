@@ -32,3 +32,14 @@
 
 - [PR #429](https://github.com/tianpingdeng112233-cell/MeetPR-backend/pull/429)，本卡fa720d4 CI Build & Test / Lint & Format均通过；T2未合并。
 - 收尾fetch确认staging已到6f1382a（热身组#427及台账#428），PR可合并。上游台账记录0088已应用/05009bd部署；本卡0089仍待批准执行，未复用其它任务的部署授权。
+
+## 已批准上线，2026-11-17 继续执行
+
+David 明确批准合并三仓、备份、0089、后端部署和 Android/iOS 真实跨端收发，无需再次申请这组操作的许可。
+
+- backend #429 已于12:45 UTC合并：`5ac8da8386958ec4a997cb86df1dc65483cd2973`。ACR镜像构建 [44086090295](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/44086090295) 成功（verify与image push均绿）。
+- iOS #478：`c3c1b34ef705deeb25ffe2971fbb633d02de0528`；Android #207：`a6f848ce4f09eca7a73b609ce93bbfa939ab0e3e`，均已合入原目标分支；三仓合并前CI全绿。
+- 国内当前/health=200，网页入口仍`/assets/index-DAYvx1ov.js`。本轮尚未触发deploy，不能把health当作新镜像已上线。
+- CUA控制台连接连续两次30秒超时；本机无现成Bitwarden CLI/解锁会话、DATABASE_URL或云CLI凭证。已请求恢复控制台或获准凭证通道，并请求已绑定的测试师生登录会话；没有读取/输出密码或绕过备份。
+- 0089未执行，实际schema未重新核实，备份未完成，deploy-staging的migrations_applied不能勾选。国内联调用双端CN配置；Global最近可见迁移workflow仍在0068，不能盲跑全量历史迁移。本轮未改Global。
+- 已准备原样0089与只读前后核对SQL，待访问恢复后继续。
