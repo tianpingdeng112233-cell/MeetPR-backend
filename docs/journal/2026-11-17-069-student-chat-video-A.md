@@ -19,12 +19,16 @@
 
 ## 尚待完成
 
-- PR CI。
 - 实际迁移/部署、真实OSS上传及跨端账号收发；本机 fake OSS / HTTP测试不冒充已部署验收。
-- 0088 被 backend PR #427占用，本卡0089；应用前再次核对实际schema/号段并按ROLLOUT备份，等待David具体批准。
+- 本卡0089应用前再次核对实际schema/号段并按ROLLOUT备份，等待David具体批准。
 
 ## 独立收货（第 1 轮）
 
 - Standards：独立只读 reviewer `review_standards_113`，backend CLEAN，无实质违规。
 - Spec：独立只读 reviewer `review_spec_113`，完整后端 diff / 迁移 / API 与约束测试及调用链覆盖，backend CLEAN。
 - 主代理复读最终差异；typecheck、lint、format:check、build 均 exit 0；全量测试结果见上。仅后端本地收货通过，不代表尚未执行的真实部署/跨端 OSS 验收。
+
+## PR 与收尾现场
+
+- [PR #429](https://github.com/tianpingdeng112233-cell/MeetPR-backend/pull/429)，本卡fa720d4 CI Build & Test / Lint & Format均通过；T2未合并。
+- 收尾fetch确认staging已到6f1382a（热身组#427及台账#428），PR可合并。上游台账记录0088已应用/05009bd部署；本卡0089仍待批准执行，未复用其它任务的部署授权。

@@ -1,6 +1,8 @@
 # 069 上线与回滚方案（待 David 批准）
 
-迁移 0089：新增 chat_video 附件类型；放宽 messages_video_needs_set_ref，允许 kind=text 的独立 video_id，保留 exercise_ref 互斥。无删行、无 ID remap、无回填，旧行合法。0088 已被 PR #427 热身组占用；2026-11-17 现场分支最大0087，账本0087已应用。上线前重新核实号段和实际 schema。
+迁移 0089：新增 chat_video 附件类型；放宽 messages_video_needs_set_ref，允许 kind=text 的独立 video_id，保留 exercise_ref 互斥。无删行、无 ID remap、无回填，旧行合法。
+
+2026-11-17 收尾复核：`origin/staging@6f1382a` 已合入热身组 PR #427 与台账 #428，当前迁移最大0088；该台账记录国内0088已应用、镜像05009bd已部署。本卡0089仍未应用。PR #429 可合并，CI Build & Test / Lint & Format 在本卡fa720d4通过。上线前仍需重新核实实际schema及CN/Global各自账本，不把本会话读取台账视作再次执行真实库核验。
 
 先备份并核实成功，再应用0089，部署同一已审 SHA，验学员上传/教练读取/旧包聊天，之后放行新 App。CN / Global 各独立核对。
 
