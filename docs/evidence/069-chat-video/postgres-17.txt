@@ -1,0 +1,50 @@
+CREATE TABLE
+CREATE TABLE
+BEGIN
+CREATE TABLE
+CREATE INDEX
+CREATE INDEX
+CREATE TABLE
+CREATE INDEX
+CREATE TABLE
+ALTER TABLE
+ALTER TABLE
+COMMIT
+BEGIN
+SET
+ALTER TABLE
+ALTER TABLE
+CREATE INDEX
+COMMIT
+BEGIN
+ALTER TABLE
+ALTER TABLE
+COMMIT
+INSERT 0 2
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+SELECT 1
+SELECT 1
+BEGIN
+SET
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+COMMIT
+DO
+INSERT 0 1
+INSERT 0 1
+DO
+                                                            version                                                            
+-------------------------------------------------------------------------------------------------------------------------------
+ PostgreSQL 17.11 (Homebrew) on aarch64-apple-darwin25.6.0, compiled by Apple clang version 21.0.0 (clang-2100.3.34.2), 64-bit
+(1 row)
+
+ kind |    body    | independent | has_video 
+------+------------+-------------+-----------
+ text | legacy set | f           | t
+ text | [视频]     | t           | t
+(2 rows)
+
