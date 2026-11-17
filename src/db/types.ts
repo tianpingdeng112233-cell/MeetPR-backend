@@ -140,6 +140,7 @@ export const ATTACHMENT_KINDS = [
   'onboarding_video',
   'onboarding_doc',
   'chat_image',
+  'chat_video',
 ] as const;
 export const ATTACHMENT_STATUSES = [
   'uploading',

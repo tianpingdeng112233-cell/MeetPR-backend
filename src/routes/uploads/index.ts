@@ -4,7 +4,7 @@ import { Router, type Router as ExpressRouter } from 'express';
 import type { Kysely } from 'kysely';
 import { sql } from 'kysely';
 
-import type { Database } from '../../db/types';
+import type { AttachmentKind, Database } from '../../db/types';
 import { requesterOssSignOptions } from '../../handlers/oss-sign-options';
 import { hasCoachReadAccess } from '../../db/bonds';
 import { resolveSetVideoAccess } from '../../handlers/set-video-access';
@@ -143,7 +143,12 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
       const referenced = await trx
         .selectFrom('messages')
         .select('id')
-        .where('attachment_id', '=', attachment.id)
+        .where((eb) =>
+          eb.or([
+            eb('attachment_id', '=', attachment.id),
+            ...(attachment.kind === 'chat_video' ? [eb('video_id', '=', attachment.id)] : []),
+          ]),
+        )
         .limit(1)
         .executeTakeFirst();
       if (referenced) return { outcome: 'in_use' as const };
@@ -179,11 +184,19 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
     });
   }
 
-  async function attachmentIsReferenced(attachmentId: string): Promise<boolean> {
+  async function attachmentIsReferenced(attachment: {
+    id: string;
+    kind: AttachmentKind;
+  }): Promise<boolean> {
     const referenced = await db
       .selectFrom('messages')
       .select('id')
-      .where('attachment_id', '=', attachmentId)
+      .where((eb) =>
+        eb.or([
+          eb('attachment_id', '=', attachment.id),
+          ...(attachment.kind === 'chat_video' ? [eb('video_id', '=', attachment.id)] : []),
+        ]),
+      )
       .limit(1)
       .executeTakeFirst();
     return referenced !== undefined;
@@ -583,7 +596,7 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
         // attachment row lock makes this redundant in production, but it closes
         // the same safe send-wins branch in lockless test adapters. New sends
         // revalidate status in their INSERT and cannot start once claimed.
-        if (await attachmentIsReferenced(deletion.attachment.id)) {
+        if (await attachmentIsReferenced(deletion.attachment)) {
           res.status(409).json({ error: 'ATTACHMENT_IN_USE' });
           return;
         }
@@ -639,7 +652,7 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
       // A send that read `ready` before this transaction claimed `deleting`
       // may have committed its FK in a lockless adapter. Resolve that race before
       // any OSS side effect, then restore the pre-claim state for the live message.
-      if (await attachmentIsReferenced(deletion.attachment.id)) {
+      if (await attachmentIsReferenced(deletion.attachment)) {
         await releaseDeletionClaim(deletion.attachment.id, deletion.previousStatus);
         res.status(409).json({ error: 'ATTACHMENT_IN_USE' });
         return;
@@ -703,7 +716,7 @@ export function uploadsRouter(deps: UploadsRouterDeps): ExpressRouter {
           return;
         }
       } else if (!uuidEquals(attachment.owner_id, req.user.id)) {
-        if (attachment.kind === 'chat_image') {
+        if (attachment.kind === 'chat_image' || attachment.kind === 'chat_video') {
           res.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' });
           return;
         }

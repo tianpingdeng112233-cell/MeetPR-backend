@@ -87,6 +87,7 @@ interface MessageWire extends VideoPreview {
   image_expires_in: number | null;
   set_ref: SetRefV1 | null;
   exercise_ref: ExerciseRefV1 | null;
+  video_id?: string;
   video_url: string | null;
   video_expires_in: number | null;
   client_id: string;
@@ -290,6 +291,7 @@ async function serializeMessage(
     image_expires_in: isImage ? IMAGE_URL_TTL_SECONDS : null,
     set_ref: row.set_ref,
     exercise_ref: row.exercise_ref,
+    ...(row.video_id !== null && row.set_ref === null ? { video_id: row.video_id } : {}),
     video_url: videoUrl,
     ...(await videoPreview(row.video_id === null ? null : row.video_oss_key, oss, signOptions)),
     video_expires_in: videoUrl === null ? null : IMAGE_URL_TTL_SECONDS,
@@ -821,10 +823,23 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
           if (body.data.kind === 'text') {
             if (body.data.set_ref === undefined) {
               if (body.data.video_id !== undefined) {
-                return {
-                  outcome: 'validation_error',
-                  error: messageValidationError(['video_id'], 'video_id requires a valid set_ref'),
-                };
+                if (!uuidEquals(user.id, conversation.student_id)) {
+                  return { outcome: 'authorization_forbidden' };
+                }
+                if (body.data.body !== '[视频]') {
+                  return {
+                    outcome: 'validation_error',
+                    error: messageValidationError(['body'], 'standalone video body must be [视频]'),
+                  };
+                }
+                const parsedVideoId = UuidSchema.safeParse(body.data.video_id);
+                if (!parsedVideoId.success) {
+                  return {
+                    outcome: 'validation_error',
+                    error: messageValidationError(['video_id'], 'video_id must be a UUID'),
+                  };
+                }
+                videoId = parsedVideoId.data;
               }
             } else {
               if (!uuidEquals(user.id, conversation.student_id)) {
@@ -929,7 +944,7 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
             }
           }
 
-          if (videoId !== null && setRef !== null) {
+          if (videoId !== null) {
             const video = await trx
               .selectFrom('attachments')
               .select(['id', 'owner_id', 'kind', 'status', 'set_log_id'])
@@ -939,9 +954,9 @@ export function conversationsRouter(deps: ConversationsRouterDeps): ExpressRoute
             if (
               !video ||
               !uuidEquals(video.owner_id, user.id) ||
-              video.kind !== 'set_video' ||
+              video.kind !== (setRef === null ? 'chat_video' : 'set_video') ||
               video.status !== 'ready' ||
-              !uuidEquals(video.set_log_id, setRef.set_log_id)
+              (setRef !== null && !uuidEquals(video.set_log_id, setRef.set_log_id))
             ) {
               return { outcome: 'invalid_attachment' };
             }
