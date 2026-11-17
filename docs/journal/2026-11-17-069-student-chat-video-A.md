@@ -43,3 +43,9 @@ David 明确批准合并三仓、备份、0089、后端部署和 Android/iOS 真
 - CUA控制台连接连续两次30秒超时；本机无现成Bitwarden CLI/解锁会话、DATABASE_URL或云CLI凭证。已请求恢复控制台或获准凭证通道，并请求已绑定的测试师生登录会话；没有读取/输出密码或绕过备份。
 - 0089未执行，实际schema未重新核实，备份未完成，deploy-staging的migrations_applied不能勾选。国内联调用双端CN配置；Global最近可见迁移workflow仍在0068，不能盲跑全量历史迁移。本轮未改Global。
 - 已准备原样0089与只读前后核对SQL，待访问恢复后继续。
+
+## David手动应用0089的回执
+
+用户提供同一国内meetpr-rds-v01-staging/meetpr DMS截图：0089七条语句全部绿，最后第七条成功（7ms）；另一次只读复查返回三条public约束：attachments_kind_check、messages_exercise_ref_excludes_video、messages_video_text_only，validated均t，旧messages_video_needs_set_ref未返回。两张原图保存在docs/evidence/069-chat-video/dms-0089-\*.png。不重跑0089。
+
+第二张的definition列位于可视范围右侧，当前未看到完整表达式。RDS手动备份成功记录尚未提供；第一张DMS的“备份未开启”不作为RDS实例备份状态的证据。实际迁移执行证据已收到，备份与完整定义复核仍待补齐，尚未dispatch后端部署，也未进行真实跨端收发。
