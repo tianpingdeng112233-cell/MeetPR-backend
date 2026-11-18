@@ -59,3 +59,7 @@ David补充definition列截图并再次明确“部署后端”：attachments_ki
 ## 国内部署成功
 
 [部署run44091508530](https://github.com/tianpingdeng112233-cell/MeetPR-backend/actions/runs/44091508530)于2026-11-17 13:20:03 UTC成功，SAE change order、health/login/web smoke均绿；镜像精确为5ac8da8386958ec4a997cb86df1dc65483cd2973，未改env、Global、App版本或数据库数据。独立13:20:57 UTC开始的验证：/health200；无效登录401/AUTH_INVALID_CREDENTIALS；未登录chat_video上传401/AUTH_INVALID_TOKEN；网页HTML及JS/CSS与本镜像源web文件逐字节一致。原始机器结果见deployment-verification.json。鉴权前的探针不能证明真实上传/接收/播放，待已绑定测试账号会话恢复后继续双端联调。
+
+## 真实双向验收闭合（2026-11-18）
+
+David手动登录并交换测试师生角色后，Android MP4→iOS教练、iOS MOV→Android教练均经国内真实对象存储/消息链路送达，四角色完整播放及冷启动历史回读通过。[逐项验收、截图、SHA与限制](../evidence/069-chat-video/interop-2026-11-18/README.md)。国内SPEC标Done，双端按P1进下一班车，App未发布、Global未动。Android首次播放链接错误保留为未复现观察，不宣称修复。此提交仅台账与证据，无需重部署、迁移或改账号数据。

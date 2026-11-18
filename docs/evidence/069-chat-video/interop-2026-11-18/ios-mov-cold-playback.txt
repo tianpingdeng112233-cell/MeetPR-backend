@@ -1,0 +1,27 @@
+targets
+e43|typeText|text-field||发消息给MonsterXTY|
+e63|typeText|text-field||00:00:06.967 209|
+e31|tap|button|视频||chat.video.message
+e36|tap|button|视频||chat.video.message
+e40|tap|button|添加照片或训练视频||coach.attachments
+e41|tap|button|||
+e49|tap|button|训练||
+e50|tap|button|教练||
+e51|tap|button|成长||
+e52|tap|button|我的||
+e69|tap|button|关闭播放||xmark
+e71|tap|button|播放速度 1x||
+scroll
+e21|swipe|scroll-view|||
+text
+e29|text|text|hiii||
+e30|text|text|07:00||
+e19|text|text|MonsterXTY||
+e18|text|text|M||
+e70|text|text|视频回放 //||
+e20|text|text|反馈、留言和计划通知都在这里||
+e34|text|text|QA113-Android-video-upload-test||
+e35|text|text|08:17||
+e39|text|text|已读||
+e72|text|text|0:07||
+e74|text|text|0:07||
