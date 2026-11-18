@@ -1,0 +1,2 @@
+Tap: Play video [468,942][1033,1585]
+PASS: Android remote video played to 0:06 / 0:06
