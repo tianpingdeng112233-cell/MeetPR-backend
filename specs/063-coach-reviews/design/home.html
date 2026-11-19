@@ -36,8 +36,8 @@ a { color: inherit; }
 
 /* ---------- 首屏 ---------- */
 .hero { position: relative; min-height: 900px; display: flex; flex-direction: column; overflow: hidden; isolation: isolate; }
-.hero__photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 60% 55%; filter: grayscale(1) contrast(1.15) brightness(.42); z-index: -2; }
-.hero::after { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 50% 45%, rgba(11,11,11,.15) 0%, rgba(11,11,11,.7) 70%, var(--bg) 100%), linear-gradient(180deg, rgba(11,11,11,.75) 0%, rgba(11,11,11,0) 22%, rgba(11,11,11,0) 70%, var(--bg) 100%); }
+.hero__photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; filter: grayscale(1) contrast(1.1) brightness(.62); z-index: -2; }
+.hero::after { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 50% 45%, rgba(11,11,11,.1) 0%, rgba(11,11,11,.35) 75%, rgba(11,11,11,.6) 100%), linear-gradient(180deg, rgba(11,11,11,.75) 0%, rgba(11,11,11,0) 22%, rgba(11,11,11,0) 70%, var(--bg) 100%); }
 
 .dots { position: absolute; z-index: -1; background-image: radial-gradient(circle, rgba(255,255,255,.55) 1.1px, transparent 1.6px); background-size: 9px 9px; opacity: .5; pointer-events: none; }
 .hero .dots { left: 22%; top: 18%; width: 34%; height: 70%; -webkit-mask-image: linear-gradient(100deg, transparent 0%, #000 35%, #000 55%, transparent 100%); mask-image: linear-gradient(100deg, transparent 0%, #000 35%, #000 55%, transparent 100%); }
@@ -81,7 +81,9 @@ a { color: inherit; }
 
 /* ---------- 教练分布 ---------- */
 .band { position: relative; padding: 120px 40px 0; isolation: isolate; }
-.band__photo { position: absolute; inset: 0 0 auto 0; height: 600px; width: 100%; object-fit: cover; object-position: 65% 35%; filter: grayscale(1) contrast(1.2) brightness(.38); z-index: -2; }
+.band__photo { position: absolute; inset: 0 0 auto 0; height: 600px; width: 100%; object-fit: cover; object-position: 55% 45%; filter: grayscale(1) contrast(1.2) brightness(.38); z-index: -2; }
+/* 教练分布横幅的照片：整张缩放到横幅高度、靠右放，选手手臂完整露出，左缘渐隐进底色 */
+.band__photo { left: auto; right: 0; width: auto; max-width: 70%; height: 510px; object-fit: cover; object-position: 50% 100%; -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 30%); mask-image: linear-gradient(90deg, transparent 0%, #000 30%); }
 .band::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 600px; z-index: -1; background: linear-gradient(90deg, var(--bg) 0%, rgba(11,11,11,.55) 55%, rgba(11,11,11,.35) 100%), linear-gradient(180deg, rgba(11,11,11,0) 55%, var(--bg) 100%); }
 .band__grid { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr auto; gap: 40px; align-items: end; }
 .huge { margin: 14px 0 0; font-weight: 900; font-size: clamp(64px, 8vw, 120px); line-height: 1; letter-spacing: .02em; }
@@ -164,6 +166,7 @@ footer nav a.hot { color: var(--red); }
   .regions { gap: 12px 20px; padding: 16px 16px 32px; }
   .band { padding: 80px 16px 0; }
   .band__photo, .band::before { height: 460px; }
+  .band__photo { left: 0; width: 100%; max-width: none; object-position: 50% 92%; -webkit-mask-image: none; mask-image: none; }
   .band__grid { grid-template-columns: 1fr; gap: 28px; }
   .stats { grid-template-columns: repeat(3, 1fr); text-align: left; gap: 10px; }
   .stat b { font-size: 34px; }
@@ -201,8 +204,8 @@ footer nav a.hot { color: var(--red); }
 
   <div class="hero__body">
     <span class="tag hero__tag">COACH REVIEWS // CHINA</span>
-    <h1 id="hero-h">中国力量举教练<span>学员点评</span></h1>
-    <p class="hero__lead">按城市或名字查教练，看学员怎么打分。</p>
+    <h1 id="hero-h">中国力量举教练<span>评价平台</span></h1>
+    <p class="hero__lead">收录全国力量举教练，查看学员真实评分与评价。</p>
     <form class="search" role="search">
       <div class="search__tabs" role="tablist" aria-label="查询方式">
         <button type="button" role="tab" aria-selected="true" class="on">按城市</button>
@@ -226,7 +229,7 @@ footer nav a.hot { color: var(--red); }
 </section>
 
 <section class="band" id="map" aria-labelledby="map-h">
-  <img class="band__photo" src="img/plates.jpg" alt="" aria-hidden="true">
+  <img class="band__photo" src="img/squat.jpg" alt="" aria-hidden="true">
   <div class="dots" aria-hidden="true"></div>
   <div class="band__grid">
     <div>
