@@ -95,6 +95,11 @@ export const ConfigSchema = z
     APPLE_CLIENT_ID: z.string().min(1).optional(),
     GOOGLE_CLIENT_ID: z.string().optional(),
     EMAIL_SIGNUP_VERIFICATION: z.enum(['off', 'required']).default('off'),
+    SMS_PROVIDER: z.enum(['stub', 'aliyun']).default('stub'),
+    ALIYUN_SMS_ACCESS_KEY_ID: z.string().trim().min(1).optional(),
+    ALIYUN_SMS_ACCESS_KEY_SECRET: z.string().trim().min(1).optional(),
+    ALIYUN_SMS_SIGN_NAME: z.string().trim().min(1).optional(),
+    ALIYUN_SMS_TEMPLATE_CODE: z.string().trim().min(1).optional(),
     COACH_REVIEWS_ENABLED: BooleanEnvSchema,
     COACH_REVIEWS_CONTACT: z.string().max(1000).default(''),
     COACH_ONBOARDING_ENABLED: BooleanEnvSchema,
@@ -186,7 +191,32 @@ export const ConfigSchema = z
       }
     }
 
+    if (config.SMS_PROVIDER === 'aliyun') {
+      for (const field of [
+        'ALIYUN_SMS_ACCESS_KEY_ID',
+        'ALIYUN_SMS_ACCESS_KEY_SECRET',
+        'ALIYUN_SMS_SIGN_NAME',
+        'ALIYUN_SMS_TEMPLATE_CODE',
+      ] as const) {
+        if (config[field] === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: `${field} is required when SMS_PROVIDER=aliyun`,
+          });
+        }
+      }
+    }
+
     if (config.NODE_ENV !== 'production') return;
+
+    if (config.COACH_REVIEWS_ENABLED === true && config.SMS_PROVIDER === 'stub') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SMS_PROVIDER'],
+        message: 'SMS_PROVIDER must be aliyun when production coach reviews are enabled',
+      });
+    }
 
     if (config.PLAN_IMPORT_DEBUG_DIR !== undefined) {
       ctx.addIssue({
@@ -266,6 +296,7 @@ type ParsedConfig = z.infer<typeof ConfigSchema>;
 // loadConfig materializes their defaults.
 export type Config = Omit<
   ParsedConfig,
+  | 'SMS_PROVIDER'
   | 'STORAGE_BACKEND'
   | 'COACH_PLAN_SHIFT_ENABLED'
   | 'GOOGLE_CLIENT_IDS'
@@ -275,6 +306,7 @@ export type Config = Omit<
   | 'MIN_ANDROID_VERSION_CODE'
   | 'COACH_REVIEWS_CONTACT'
 > & {
+  SMS_PROVIDER?: ParsedConfig['SMS_PROVIDER'];
   COACH_REVIEWS_CONTACT?: ParsedConfig['COACH_REVIEWS_CONTACT'];
   MIN_IOS_BUILD?: ParsedConfig['MIN_IOS_BUILD'];
   MIN_ANDROID_VERSION_CODE?: ParsedConfig['MIN_ANDROID_VERSION_CODE'];

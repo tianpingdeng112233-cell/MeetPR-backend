@@ -250,3 +250,66 @@ describe('email signup configuration', () => {
     expect(ConfigSchema.safeParse({ ...validEnv, MAIL_LOCALE: 'fr' }).success).toBe(false);
   });
 });
+
+describe('SMS configuration', () => {
+  const aliyunEnv = {
+    ...validEnv,
+    SMS_PROVIDER: 'aliyun',
+    ALIYUN_SMS_ACCESS_KEY_ID: 'placeholder-access-key-id',
+    ALIYUN_SMS_ACCESS_KEY_SECRET: 'placeholder-access-key-secret',
+    ALIYUN_SMS_SIGN_NAME: 'placeholder-sign-name',
+    ALIYUN_SMS_TEMPLATE_CODE: 'SMS_PLACEHOLDER',
+  };
+
+  it('defaults to stub and rejects unknown providers', () => {
+    expect(loadConfig(validEnv).SMS_PROVIDER).toBe('stub');
+    expect(ConfigSchema.safeParse({ ...validEnv, SMS_PROVIDER: 'unknown' }).success).toBe(false);
+  });
+
+  it.each([
+    'ALIYUN_SMS_ACCESS_KEY_ID',
+    'ALIYUN_SMS_ACCESS_KEY_SECRET',
+    'ALIYUN_SMS_SIGN_NAME',
+    'ALIYUN_SMS_TEMPLATE_CODE',
+  ])('requires nonblank %s for Aliyun', (field) => {
+    for (const value of [undefined, '', '   ']) {
+      const result = ConfigSchema.safeParse({ ...aliyunEnv, [field]: value });
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('expected invalid SMS configuration');
+      expect(result.error.issues).toContainEqual(expect.objectContaining({ path: [field] }));
+    }
+  });
+
+  it('accepts fully configured Aliyun including production reviews', () => {
+    expect(
+      loadConfig({ ...aliyunEnv, NODE_ENV: 'production', COACH_REVIEWS_ENABLED: 'true' }),
+    ).toMatchObject({
+      SMS_PROVIDER: 'aliyun',
+      ALIYUN_SMS_ACCESS_KEY_ID: aliyunEnv.ALIYUN_SMS_ACCESS_KEY_ID,
+      ALIYUN_SMS_ACCESS_KEY_SECRET: aliyunEnv.ALIYUN_SMS_ACCESS_KEY_SECRET,
+      ALIYUN_SMS_SIGN_NAME: aliyunEnv.ALIYUN_SMS_SIGN_NAME,
+      ALIYUN_SMS_TEMPLATE_CODE: aliyunEnv.ALIYUN_SMS_TEMPLATE_CODE,
+    });
+  });
+
+  it.each([undefined, 'stub'])('rejects production reviews using provider %j', (provider) => {
+    const result = ConfigSchema.safeParse({
+      ...validEnv,
+      NODE_ENV: 'production',
+      COACH_REVIEWS_ENABLED: 'true',
+      SMS_PROVIDER: provider,
+    });
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error('expected production safety gate');
+    expect(result.error.issues).toContainEqual(expect.objectContaining({ path: ['SMS_PROVIDER'] }));
+  });
+
+  it('allows stub for development reviews and production with reviews disabled', () => {
+    expect(() =>
+      loadConfig({ ...validEnv, NODE_ENV: 'development', COACH_REVIEWS_ENABLED: 'true' }),
+    ).not.toThrow();
+    expect(() =>
+      loadConfig({ ...validEnv, NODE_ENV: 'production', COACH_REVIEWS_ENABLED: 'false' }),
+    ).not.toThrow();
+  });
+});

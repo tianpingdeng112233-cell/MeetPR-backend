@@ -41,8 +41,7 @@ export async function requestCoachReviewOtp(deps: CoachReviewDeps, phone: string
       return 'OTP_COOLDOWN';
     const count = row.day === day ? row.daily_count : 0;
     if (count >= 10) return 'OTP_DAILY_LIMIT';
-    // No logger passed: the shared placeholder logs phone when a logger is supplied.
-    const code = await (deps.sendOtp ?? sendOtp)(phone);
+    const code = await (deps.sendOtp ?? sendOtp)(phone, deps.config);
     if (!/^\d{6}$/u.test(code)) throw new Error('Invalid SMS provider code');
     await trx
       .updateTable('coach_review_otps')

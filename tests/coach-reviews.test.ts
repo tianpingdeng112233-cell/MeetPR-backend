@@ -999,6 +999,49 @@ describe('coach reviews HTTP', () => {
     vi.setSystemTime(Date.now() + 30 * 24 * 60 * 60 * 1000);
     expect((await request(app).get('/public/coach-reviews/me').set(auth)).status).toBe(401);
   });
+  it('uses configured Aliyun delivery and accepts only the delivered OTP', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(Response.json({ Code: 'OK' }));
+    const { app } = await context({
+      SMS_PROVIDER: 'aliyun',
+      ALIYUN_SMS_ACCESS_KEY_ID: 'placeholder-access-key-id',
+      ALIYUN_SMS_ACCESS_KEY_SECRET: 'placeholder-access-key-secret',
+      ALIYUN_SMS_SIGN_NAME: 'placeholder-sign-name',
+      ALIYUN_SMS_TEMPLATE_CODE: 'SMS_PLACEHOLDER',
+    });
+    const phone = '13800000000';
+    expect((await request(app).post('/public/coach-reviews/auth/otp').send({ phone })).status).toBe(
+      204,
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const url = fetchMock.mock.calls[0]?.[0];
+    if (typeof url !== 'string') throw new Error('expected Aliyun request');
+    const payload = JSON.parse(new URL(url).searchParams.get('TemplateParam') ?? '{}') as {
+      code: string;
+    };
+    expect(payload.code).toMatch(/^\d{6}$/u);
+    const wrongCode = payload.code === '000000' ? '000001' : '000000';
+    expect(
+      (await request(app).post('/public/coach-reviews/auth/login').send({ phone, code: wrongCode }))
+        .status,
+    ).toBe(401);
+    expect(
+      (
+        await request(app)
+          .post('/public/coach-reviews/auth/login')
+          .send({ phone, code: payload.code })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(app)
+          .post('/public/coach-reviews/auth/login')
+          .send({ phone, code: payload.code })
+      ).status,
+    ).toBe(401);
+  });
+
   it('B4 rejects expiry, caps daily sends and limits the source IP', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-09T08:00:00Z'));
