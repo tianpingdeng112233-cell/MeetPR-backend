@@ -22,4 +22,4 @@
 
 ## 部署（2026-11-20）
 
-David 放行。#433、plan-web #183 合并，#434 换装 web；David 在 DMS 应用 0090 并截图复查。`sha-375a3e9` 经 deploy 44727016791 上线国内 staging；线上入口 `index-Cek3YvXH.js` 哈希与构建一致，`/health` 200。台账见 `db/MIGRATIONS-APPLIED.md`。线上真实账号走查未做。
+David 放行。#433、plan-web #183 合并，#434 换装 web；David 在 DMS 应用 0090 并截图复查。`sha-375a3e9` 经 deploy 44727016791 上线国内 staging；线上入口 `index-Cek3YvXH.js` 哈希与构建一致，`/health` 200。台账见 `db/MIGRATIONS-APPLIED.md`。同日 David 用真实教练账号在线上验证通过。
