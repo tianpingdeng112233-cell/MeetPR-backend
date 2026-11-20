@@ -274,6 +274,7 @@ async function settleStudent(
       : await trx
           .selectFrom('plan_days')
           .where('is_rest', '=', false)
+          .where('is_placeholder', '=', false)
           .selectAll()
           .where('plan_id', 'in', planIds)
           .orderBy('week_number', 'asc')

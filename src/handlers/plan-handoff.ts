@@ -15,6 +15,7 @@ export async function readHandoffPlans(
   const ids = plans.map((plan) => plan.id);
   const days = await db
     .selectFrom('plan_days as d')
+    .where('d.is_placeholder', '=', false)
     .leftJoin('plan_day_completions as c', 'c.plan_day_id', 'd.id')
     .select(['d.id', 'd.plan_id', 'd.is_rest', 'c.completed_at'])
     .where('d.plan_id', 'in', ids)

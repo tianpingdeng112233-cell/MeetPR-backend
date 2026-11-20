@@ -26,7 +26,7 @@ function range(plan: Plan, days: readonly Day[], shifts: readonly CalendarPlanDa
     start_date: normalizeDateOnly(plan.start_date),
     end_date: effectivePlanDays(
       plan,
-      days.filter((day) => !day.is_rest),
+      days.filter((day) => !day.is_rest && !day.is_placeholder),
       shifts,
     ).reduce(
       (end, day) => (day.effectiveDate > end ? day.effectiveDate : end),

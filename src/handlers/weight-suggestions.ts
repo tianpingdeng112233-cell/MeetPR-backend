@@ -40,6 +40,7 @@ export async function fetchWeightSuggestions(
     .select(['pd.id', 'u.timezone'])
     .where('pd.id', '=', planDayId)
     .where('pd.is_rest', '=', false)
+    .where('pd.is_placeholder', '=', false)
     .where('p.trainee_id', '=', studentId)
     .executeTakeFirst();
   if (!day) return null;

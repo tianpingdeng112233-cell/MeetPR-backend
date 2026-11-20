@@ -49,7 +49,8 @@ async function lockCompletionContext(
     .where('plan_id', '=', plan.id)
     .forUpdate()
     .executeTakeFirst();
-  if (lockedDay?.is_rest) return { type: 'error', error: 'PLAN_DAY_REST' };
+  if (lockedDay?.is_rest || lockedDay?.is_placeholder)
+    return { type: 'error', error: 'PLAN_DAY_REST' };
   return lockedDay
     ? { type: 'context', plan, day: lockedDay }
     : { type: 'error', error: 'NOT_PLAN_STUDENT' };
