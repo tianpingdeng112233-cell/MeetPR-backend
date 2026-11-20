@@ -214,7 +214,7 @@ export async function getPlanWithChildren(
   db: Kysely<Database>,
   plan: PlanRow,
   includeRestDays = false,
-  includeWarmups = false,
+  studentView = false,
 ): Promise<PlanWithChildrenResponse> {
   const dayRows = await db
     .selectFrom('plan_days as pd')
@@ -223,6 +223,7 @@ export async function getPlanWithChildren(
     .select(['pdc.completed_at as completion_completed_at', 'pdc.source as completion_source'])
     .where('pd.plan_id', '=', plan.id)
     .$if(!includeRestDays, (query) => query.where('pd.is_rest', '=', false))
+    .$if(studentView, (query) => query.where('pd.is_placeholder', '=', false))
     .orderBy('pd.week_number', 'asc')
     .orderBy('pd.day_of_week', 'asc')
     .orderBy('pd.sort_order', 'asc')
@@ -240,11 +241,11 @@ export async function getPlanWithChildren(
           .orderBy('sort_order', 'asc')
           .execute();
 
-  const shiftData = await planShiftSummaries(db, [plan], includeRestDays);
+  const shiftData = await planShiftSummaries(db, [plan], includeRestDays, studentView);
   const shiftRows = shiftData.shiftsByPlan.get(plan.id) ?? [];
 
   const exerciseIds = exerciseRows.map((exercise) => exercise.id);
-  const loggedExerciseIds = await planExercisesWithLogs(db, exerciseIds, includeWarmups);
+  const loggedExerciseIds = await planExercisesWithLogs(db, exerciseIds, studentView);
   const setRows =
     exerciseIds.length === 0
       ? []
@@ -283,6 +284,7 @@ export async function getPlanWithChildren(
     ...shiftSummary,
     days: dayRows.map((day) => ({
       ...(includeRestDays ? { is_rest: day.is_rest } : {}),
+      ...(!studentView && day.is_placeholder ? { is_placeholder: true } : {}),
       ...toPlanDay(
         day,
         exercisesByDay.get(day.id) ?? [],
@@ -298,6 +300,7 @@ async function planShiftSummaries(
   db: Kysely<Database>,
   plans: Pick<PlanRow, 'id' | 'start_date'>[],
   includeRestDays = false,
+  studentView = false,
 ): Promise<{
   summaries: Map<string, PlanShiftSummaryResponse>;
   shiftsByPlan: Map<string, PlanDayShiftRow[]>;
@@ -310,6 +313,7 @@ async function planShiftSummaries(
     .selectFrom('plan_day_shifts as pds')
     .innerJoin('plan_days as pd', 'pd.id', 'pds.plan_day_id')
     .$if(!includeRestDays, (query) => query.where('pd.is_rest', '=', false))
+    .$if(studentView, (query) => query.where('pd.is_placeholder', '=', false))
     .leftJoin('plan_shift_batches as psb', 'psb.id', 'pds.batch_id')
     .select([
       'pd.plan_id as plan_id',
@@ -455,8 +459,12 @@ async function publishCounts(db: DbExecutor, planId: string): Promise<PublishCou
   };
 }
 
-function isPublishIncomplete(counts: PublishCounts): boolean {
-  return counts.day_count === 0 || counts.empty_day_count > 0 || counts.empty_exercise_count > 0;
+function isPublishIncomplete(counts: PublishCounts, allowEmptyDays: boolean): boolean {
+  return (
+    counts.exercise_count === 0 ||
+    counts.empty_exercise_count > 0 ||
+    (!allowEmptyDays && counts.empty_day_count > 0)
+  );
 }
 
 function normalizeTargetValue(value: string): string {
@@ -586,6 +594,7 @@ async function lockPlanShiftContext(
     .selectFrom('plan_days')
     .selectAll()
     .where('plan_id', '=', plan.id)
+    .where('is_placeholder', '=', false)
     .orderBy('week_number', 'asc')
     .orderBy('day_of_week', 'asc')
     .orderBy('sort_order', 'asc')
@@ -1510,7 +1519,12 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         user.role === 'coach'
           ? {
               ...response,
-              ...(includeRestDays ? { rest_days_enabled: deps.restDaysEnabled === true } : {}),
+              ...(includeRestDays
+                ? {
+                    rest_days_enabled: deps.restDaysEnabled === true,
+                    partial_plan_publication_enabled: true,
+                  }
+                : {}),
               pending_revision_saved_at:
                 pendingRevisionSavedAt === null ? null : timestamp(pendingRevisionSavedAt),
             }
@@ -1825,11 +1839,31 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           return { type: 'weeks-overflow' as const, planId: plan.id };
         }
 
+        const allowEmptyDays = req.query.allow_empty_training_days === 'true';
+        if (allowEmptyDays) await lockPlanDescendants(trx, plan.id);
         const counts = await publishCounts(trx, plan.id);
-        if (isPublishIncomplete(counts)) {
+        if (isPublishIncomplete(counts, allowEmptyDays)) {
           return { type: 'incomplete' as const, planId: plan.id, counts };
         }
 
+        if (allowEmptyDays && counts.empty_day_count > 0) {
+          const marked = await trx
+            .updateTable('plan_days')
+            .set({ is_placeholder: true })
+            .where('plan_id', '=', plan.id)
+            .where('is_rest', '=', false)
+            .where('id', 'not in', trx.selectFrom('plan_exercises').select('plan_day_id'))
+            .where('id', 'not in', trx.selectFrom('plan_day_completions').select('plan_day_id'))
+            .where(
+              'id',
+              'not in',
+              trx.selectFrom('set_logs').select('plan_day_id').where('plan_day_id', 'is not', null),
+            )
+            .returning('id')
+            .execute();
+          const ids = new Set(marked.map((day) => day.id));
+          for (const day of calendar.days) if (ids.has(day.id)) day.is_placeholder = true;
+        }
         assertPlanDates(calendar, { ...plan, status: 'published' });
 
         const updated = await trx
@@ -1960,6 +1994,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
+      const allowEmptyDays = req.query.allow_empty_training_days === 'true';
       const includesRestDays =
         body.data.day_types !== undefined ||
         body.data.upsert_days.some((day) => day.is_rest !== undefined);
@@ -2005,7 +2040,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         if (!calendar) return { type: 'not-found' } as const;
         let currentPlan = calendar.plan;
 
-        if (hasCalendarMetadataMutation || includesRestDays) {
+        if (hasCalendarMetadataMutation || includesRestDays || allowEmptyDays) {
           const lockedExerciseIds = await lockPlanDescendants(trx, currentPlan.id);
           if (
             hasCalendarMetadataMutation &&
@@ -2065,7 +2100,8 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         ) {
           return { type: 'invalid-day-types' } as const;
         }
-        if (includesRestDays && currentPlan.status === 'published') {
+        const placeholderSwitches = new Set<string>();
+        if ((includesRestDays || allowEmptyDays) && currentPlan.status === 'published') {
           // Validate the proposed tree before any write, so refusal cannot commit a partial switch.
           const tree = await getPlanWithChildren(trx, currentPlan, true);
           const proposed = [
@@ -2077,12 +2113,30 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
               })),
             ...body.data.upsert_days,
           ];
-          const incomplete = proposed.filter(
+          const active = proposed.filter((day) => !day.is_rest);
+          const incomplete = active.filter(
             (day) =>
-              !day.is_rest &&
-              (!day.exercises.length || day.exercises.some((exercise) => !exercise.sets.length)),
+              day.exercises.some((exercise) => !exercise.sets.length) ||
+              (!allowEmptyDays &&
+                !day.exercises.length &&
+                !('is_placeholder' in day && day.is_placeholder)),
           );
-          if (incomplete.length)
+          if (allowEmptyDays) {
+            for (const change of changes) {
+              const day = tree.days.find((candidate) => candidate.id === change.day_id);
+              if (
+                !change.is_rest &&
+                day &&
+                !day.exercises.length &&
+                (day.is_rest || day.is_placeholder)
+              )
+                placeholderSwitches.add(day.id);
+            }
+          }
+          if (
+            incomplete.length ||
+            (allowEmptyDays && hasTreeMutation && !active.some((day) => day.exercises.length))
+          )
             return {
               type: 'incomplete-days',
               days: incomplete.map((day) => ({
@@ -2135,14 +2189,14 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         for (const deleteDay of ownedDeleteDays) {
           const lockedDay = await lockPlanDayTree(trx, deleteDay.id);
           const completed =
-            includesRestDays &&
+            (includesRestDays || allowEmptyDays) &&
             (await trx
               .selectFrom('plan_day_completions')
               .select('id')
               .where('plan_day_id', '=', deleteDay.id)
               .executeTakeFirst());
           const added =
-            includesRestDays &&
+            (includesRestDays || allowEmptyDays) &&
             (await trx
               .selectFrom('set_logs')
               .select('id')
@@ -2160,22 +2214,53 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           return { type: 'day-history-immutable', dayIds: immutableDayIds } as const;
         }
 
-        const deletedIds = new Set(body.data.delete_day_ids);
+        // Filling a retained placeholder keeps its row, so the calendar identity and any
+        // shift stay attached. Clients express the fill as delete + upsert of the same slot.
+        const refills = new Map<(typeof body.data.upsert_days)[number], string>();
+        if (allowEmptyDays && body.data.delete_day_ids.length) {
+          const placeholders = calendar.days.filter(
+            (day) => day.is_placeholder && body.data.delete_day_ids.includes(day.id),
+          );
+          for (const upsert of body.data.upsert_days) {
+            if (upsert.is_rest || !upsert.exercises.length) continue;
+            const index = placeholders.findIndex(
+              (day) =>
+                day.week_number === upsert.week_number && day.day_of_week === upsert.day_of_week,
+            );
+            const [slot] = index < 0 ? [] : placeholders.splice(index, 1);
+            if (slot) refills.set(upsert, slot.id);
+          }
+        }
+        const refilledIds = new Set(refills.values());
+        const deleteDayIds = body.data.delete_day_ids.filter((id) => !refilledIds.has(id));
+
+        const deletedIds = new Set(deleteDayIds);
         const dayTypes = new Map(
           (body.data.day_types ?? []).map((day) => [day.day_id, day.is_rest]),
         );
         const proposedDays = [
           ...calendar.days
             .filter((day) => !deletedIds.has(day.id))
-            .map((day) => ({ ...day, is_rest: dayTypes.get(day.id) ?? day.is_rest })),
-          ...body.data.upsert_days.map((day) => ({
-            id: randomUUID(),
-            plan_id: plan.id,
-            is_rest: day.is_rest ?? false,
-            week_number: day.week_number,
-            day_of_week: day.day_of_week,
-            sort_order: day.sort_order,
-          })),
+            .map((day) => ({
+              ...day,
+              is_rest: dayTypes.get(day.id) ?? day.is_rest,
+              is_placeholder: day.is_placeholder && !refilledIds.has(day.id),
+            })),
+          ...body.data.upsert_days
+            .filter((day) => !refills.has(day))
+            .map((day) => ({
+              id: randomUUID(),
+              plan_id: plan.id,
+              is_rest: day.is_rest ?? false,
+              is_placeholder:
+                allowEmptyDays &&
+                currentPlan.status === 'published' &&
+                !day.is_rest &&
+                !day.exercises.length,
+              week_number: day.week_number,
+              day_of_week: day.day_of_week,
+              sort_order: day.sort_order,
+            })),
         ];
         assertPlanDates(
           calendar,
@@ -2223,36 +2308,53 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         for (const change of body.data.day_types ?? []) {
           await trx
             .updateTable('plan_days')
-            .set({ is_rest: change.is_rest })
+            .set({
+              is_rest: change.is_rest,
+              is_placeholder: placeholderSwitches.has(change.day_id),
+            })
             .where('id', '=', change.day_id)
             .where('plan_id', '=', plan.id)
             .execute();
         }
 
         const deletedDays =
-          body.data.delete_day_ids.length === 0
+          deleteDayIds.length === 0
             ? []
             : await trx
                 .deleteFrom('plan_days')
                 .where('plan_id', '=', plan.id)
-                .where('id', 'in', body.data.delete_day_ids)
+                .where('id', 'in', deleteDayIds)
                 .returning('id')
                 .execute();
 
         let exercisesCreated = 0;
         let setsCreated = 0;
         for (const day of body.data.upsert_days) {
-          const createdDay = await trx
-            .insertInto('plan_days')
-            .values({
-              plan_id: plan.id,
-              ...(day.is_rest !== undefined ? { is_rest: day.is_rest } : {}),
-              week_number: day.week_number,
-              day_of_week: day.day_of_week,
-              sort_order: day.sort_order,
-            })
-            .returning('id')
-            .executeTakeFirstOrThrow();
+          const refillId = refills.get(day);
+          const createdDay = refillId
+            ? await trx
+                .updateTable('plan_days')
+                .set({ is_placeholder: false, is_rest: false, sort_order: day.sort_order })
+                .where('id', '=', refillId)
+                .where('plan_id', '=', plan.id)
+                .returning('id')
+                .executeTakeFirstOrThrow()
+            : await trx
+                .insertInto('plan_days')
+                .values({
+                  plan_id: plan.id,
+                  ...(day.is_rest !== undefined ? { is_rest: day.is_rest } : {}),
+                  is_placeholder:
+                    allowEmptyDays &&
+                    currentPlan.status === 'published' &&
+                    !day.is_rest &&
+                    !day.exercises.length,
+                  week_number: day.week_number,
+                  day_of_week: day.day_of_week,
+                  sort_order: day.sort_order,
+                })
+                .returning('id')
+                .executeTakeFirstOrThrow();
 
           for (const exercise of day.exercises) {
             const createdExercise = await trx
@@ -2375,7 +2477,10 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
           includesRestDays || req.query.include_rest_days === 'true',
         )),
         ...(includesRestDays || req.query.include_rest_days === 'true'
-          ? { rest_days_enabled: deps.restDaysEnabled === true }
+          ? {
+              rest_days_enabled: deps.restDaysEnabled === true,
+              partial_plan_publication_enabled: true,
+            }
           : {}),
       });
     }),
@@ -2411,7 +2516,13 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
       const day = await deps.db.transaction().execute(async (trx) => {
         const calendar = await lockPlanCalendarChange(trx, plan.id, user.id);
         if (!calendar) return null;
-        const proposed = { id: randomUUID(), plan_id: plan.id, is_rest: false, ...body.data };
+        const proposed = {
+          id: randomUUID(),
+          plan_id: plan.id,
+          is_rest: false,
+          is_placeholder: false,
+          ...body.data,
+        };
         assertPlanDates(calendar, calendar.plan, [...calendar.days, proposed]);
         return trx
           .insertInto('plan_days')
@@ -3353,7 +3464,7 @@ export function studentPlansRouter(deps: PlansRouterDeps): ExpressRouter {
         .where('status', '=', 'published')
         .orderBy('created_at', 'desc')
         .execute();
-      const { summaries: shiftSummaries } = await planShiftSummaries(deps.db, plans);
+      const { summaries: shiftSummaries } = await planShiftSummaries(deps.db, plans, false, true);
       const facts = query.data.include_all ? [] : await readHandoffPlans(deps.db, plans);
       const factsById = new Map(facts.map((plan) => [plan.id, plan]));
       const groups = new Map<string | null, typeof facts>();

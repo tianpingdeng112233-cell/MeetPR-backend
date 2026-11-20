@@ -357,6 +357,7 @@ export interface PlanPendingRevisionsTable {
 }
 
 export interface PlanDaysTable {
+  is_placeholder: Generated<boolean>;
   is_rest: Generated<boolean>;
   id: Generated<string>;
   plan_id: string;

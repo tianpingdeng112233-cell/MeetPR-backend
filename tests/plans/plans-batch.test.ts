@@ -930,3 +930,80 @@ it('keeps a training day added through the individual-day route between the init
     await ctx.db.destroy();
   }
 });
+
+it('publishes prescribed days while retaining unfilled dates for the coach', async () => {
+  const ctx = await makeContext(undefined, { config: { PLAN_REST_DAYS_ENABLED: true } });
+  try {
+    const plan = await createDraftPlan(ctx);
+    const stored = await batch(ctx, plan.id, {
+      upsert_days: [upsertDay(1, 1), { ...upsertDay(4, 2), exercises: [], is_rest: false }],
+    });
+    expect(stored.status).toBe(200);
+    const published = await request(ctx.app)
+      .post(`/plans/${plan.id}/publish?allow_empty_training_days=true`)
+      .set(auth(ctx.coachToken))
+      .send({});
+    expect(published.status).toBe(200);
+    const path = `/plans/${plan.id}?include_rest_days=true`;
+    const coach = await request(ctx.app).get(path).set(auth(ctx.coachToken));
+    expect(coach.body.days[1]).toMatchObject({
+      id: stored.body.days[1].id,
+      week_number: 4,
+      is_rest: false,
+      exercises: [],
+    });
+    const student = await request(ctx.app).get(path).set(auth(ctx.traineeToken));
+    expect(student.body.days.map((day: { id: string }) => day.id)).toEqual([
+      stored.body.days[0].id,
+    ]);
+    const handoff = await request(ctx.app)
+      .get(`/students/${ids.trainee}/plan-handoff`)
+      .set(auth(ctx.coachToken));
+    expect(handoff.body.plans[0].total_training_days).toBe(1);
+    const emptyDayId = String(stored.body.days[1].id);
+    const completion = await request(ctx.app)
+      .post(`/plans/days/${emptyDayId}/complete`)
+      .set(auth(ctx.traineeToken))
+      .send({});
+    expect(completion.status).toBe(409);
+  } finally {
+    await ctx.db.destroy();
+  }
+});
+
+it('fills a retained empty date after partial publication and delivers it to the student', async () => {
+  const ctx = await makeContext(undefined, { config: { PLAN_REST_DAYS_ENABLED: true } });
+  try {
+    const plan = await createDraftPlan(ctx);
+    const stored = await batch(ctx, plan.id, {
+      upsert_days: [upsertDay(1, 1), { ...upsertDay(3, 2), exercises: [], is_rest: false }],
+    });
+    expect(stored.status).toBe(200);
+    const placeholderId = stored.body.days[1].id;
+    const published = await request(ctx.app)
+      .post(`/plans/${plan.id}/publish?allow_empty_training_days=true`)
+      .set(auth(ctx.coachToken))
+      .send({});
+    expect(published.status).toBe(200);
+    const filled = await request(ctx.app)
+      .post(`/plans/${plan.id}/days/batch?include_rest_days=true&allow_empty_training_days=true`)
+      .set(auth(ctx.coachToken))
+      .send({
+        delete_day_ids: [placeholderId],
+        upsert_days: [{ ...upsertDay(3, 2), is_rest: false }],
+      });
+    expect(filled.status, JSON.stringify(filled.body)).toBe(200);
+    const student = await request(ctx.app).get(`/plans/${plan.id}`).set(auth(ctx.traineeToken));
+    expect(student.body.days.map((day: { week_number: number }) => day.week_number)).toEqual([
+      1, 3,
+    ]);
+    // Filling keeps the slot's calendar identity, so its shifts and links survive.
+    expect(student.body.days[1].id).toBe(placeholderId);
+    const coach = await request(ctx.app)
+      .get(`/plans/${plan.id}?include_rest_days=true`)
+      .set(auth(ctx.coachToken));
+    expect(coach.body.days[1]).not.toHaveProperty('is_placeholder');
+  } finally {
+    await ctx.db.destroy();
+  }
+});

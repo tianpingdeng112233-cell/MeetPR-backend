@@ -108,6 +108,7 @@ export interface PlanExerciseResponse {
 export interface PlanDayResponse {
   /** Present only on the owning coach's opt-in editor projection. */
   is_rest?: boolean;
+  is_placeholder?: boolean;
   id: string;
   plan_id: string;
   day_of_week: number;

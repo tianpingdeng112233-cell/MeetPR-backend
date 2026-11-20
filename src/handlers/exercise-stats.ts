@@ -509,6 +509,7 @@ async function recentPlanDates(db: Kysely<Database>, coachId: string, studentId:
   const rows = await db
     .selectFrom('plan_days as pd')
     .where('pd.is_rest', '=', false)
+    .where('pd.is_placeholder', '=', false)
     .innerJoin('plans as p', 'p.id', 'pd.plan_id')
     .select(['p.start_date', 'pd.week_number', 'pd.day_of_week'])
     .where('p.coach_id', '=', coachId)

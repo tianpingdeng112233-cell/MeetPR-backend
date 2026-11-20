@@ -100,6 +100,7 @@ export async function canLogPlanDay(
     .where('p.trainee_id', '=', studentId)
     .where('p.status', '=', 'published')
     .where('pd.is_rest', '=', false)
+    .where('pd.is_placeholder', '=', false)
     .executeTakeFirst();
   return day !== undefined;
 }
@@ -167,6 +168,7 @@ async function withWritablePlanDay<T>(
     const day = await trx
       .selectFrom('plan_days')
       .select('is_rest')
+      .where('is_placeholder', '=', false)
       .where('id', '=', dayId)
       .forUpdate()
       .executeTakeFirst();

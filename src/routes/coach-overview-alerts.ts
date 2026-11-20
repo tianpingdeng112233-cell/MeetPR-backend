@@ -110,6 +110,7 @@ export function coachOverviewAlertsRouter({ db }: { db: Kysely<Database> }): Rou
       const days = await db
         .selectFrom('plan_days')
         .where('is_rest', '=', false)
+        .where('is_placeholder', '=', false)
         .select(['id', 'plan_id', 'week_number', 'day_of_week'])
         .where('plan_id', 'in', planIds)
         .execute();
