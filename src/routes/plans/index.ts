@@ -63,6 +63,7 @@ import {
   ExerciseIdParamSchema,
   BatchDaysBodySchema,
   CoachPlanShiftBodySchema,
+  CompletePlanDayBodySchema,
   CreatePlanBodySchema,
   CreatePlanDayBodySchema,
   CreatePlanExerciseBodySchema,
@@ -220,7 +221,11 @@ export async function getPlanWithChildren(
     .selectFrom('plan_days as pd')
     .leftJoin('plan_day_completions as pdc', 'pdc.plan_day_id', 'pd.id')
     .selectAll('pd')
-    .select(['pdc.completed_at as completion_completed_at', 'pdc.source as completion_source'])
+    .select([
+      'pdc.completed_at as completion_completed_at',
+      'pdc.source as completion_source',
+      'pdc.actual_completion_date',
+    ])
     .where('pd.plan_id', '=', plan.id)
     .$if(!includeRestDays, (query) => query.where('pd.is_rest', '=', false))
     .$if(studentView, (query) => query.where('pd.is_placeholder', '=', false))
@@ -291,6 +296,7 @@ export async function getPlanWithChildren(
         shiftsByDay.get(day.id)?.shifted_to_date ?? null,
         day.completion_completed_at ?? null,
         day.completion_source ?? null,
+        day.actual_completion_date,
       ),
     })),
   };
@@ -1528,7 +1534,7 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
               pending_revision_saved_at:
                 pendingRevisionSavedAt === null ? null : timestamp(pendingRevisionSavedAt),
             }
-          : response,
+          : { ...response, actual_completion_date_enabled: true },
       );
     }),
   );
@@ -2675,11 +2681,29 @@ export function plansRouter(deps: PlansRouterDeps): ExpressRouter {
         return;
       }
 
+      const body = CompletePlanDayBodySchema.safeParse(req.body ?? {});
+      if (!body.success) {
+        res.status(400).json(validationEnvelope(body.error));
+        return;
+      }
       const result = await deps.db
         .transaction()
-        .execute((trx) => manuallyCompletePlanDay(trx, params.data.dayId, user.id));
+        .execute((trx) =>
+          manuallyCompletePlanDay(
+            trx,
+            params.data.dayId,
+            user.id,
+            body.data.actual_completion_date,
+          ),
+        );
       if (result.type === 'error') {
-        res.status(result.error === 'NOT_PLAN_STUDENT' ? 403 : 409).json({ error: result.error });
+        const status =
+          result.error === 'NOT_PLAN_STUDENT'
+            ? 403
+            : result.error === 'FUTURE_COMPLETION_DATE'
+              ? 400
+              : 409;
+        res.status(status).json({ error: result.error });
         return;
       }
 

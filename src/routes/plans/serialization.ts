@@ -116,6 +116,7 @@ export interface PlanDayResponse {
   sort_order: number;
   shifted_to_date: string | null;
   completed_at: string | null;
+  actual_completion_date: string | null;
   completion_source: PlanDayCompletionSource | null;
   exercises: PlanExerciseResponse[];
 }
@@ -126,6 +127,7 @@ export interface PlanDayCompletionResponse {
   student_id: string;
   source: PlanDayCompletionSource;
   completed_at: string;
+  actual_completion_date: string | null;
 }
 
 export interface PlanShiftSummaryResponse {
@@ -198,6 +200,7 @@ export function toPlanDay(
   shiftedToDate: string | Date | null = null,
   completedAt: Date | string | null = null,
   completionSource: PlanDayCompletionSource | null = null,
+  actualCompletionDate: string | null = null,
 ): PlanDayResponse {
   return {
     id: row.id,
@@ -208,6 +211,8 @@ export function toPlanDay(
     shifted_to_date: shiftedToDate === null ? null : normalizeDateOnly(shiftedToDate),
     completed_at: nullableTimestamp(completedAt),
     completion_source: completionSource,
+    actual_completion_date:
+      actualCompletionDate === null ? null : normalizeDateOnly(actualCompletionDate),
     exercises,
   };
 }
@@ -219,6 +224,8 @@ export function toPlanDayCompletion(row: PlanDayCompletionRow): PlanDayCompletio
     student_id: row.student_id,
     source: row.source,
     completed_at: timestamp(row.completed_at),
+    actual_completion_date:
+      row.actual_completion_date === null ? null : normalizeDateOnly(row.actual_completion_date),
   };
 }
 

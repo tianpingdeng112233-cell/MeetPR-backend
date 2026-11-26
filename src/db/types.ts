@@ -371,6 +371,7 @@ export interface PlanDayCompletionsTable {
   plan_day_id: string;
   student_id: string;
   source: PlanDayCompletionSource;
+  actual_completion_date: NullableColumn<string>;
   completed_at: TimestampColumn;
 }
 

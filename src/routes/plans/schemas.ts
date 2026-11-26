@@ -40,6 +40,10 @@ const TargetValueSchema = z
   .transform((value) => (typeof value === 'number' ? String(value) : value))
   .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, 'target_value must have at most 2 decimals'));
 
+export const CompletePlanDayBodySchema = z.object({
+  actual_completion_date: CalendarDateSchema.optional(),
+});
+
 export const IdParamSchema = z.object({
   id: UuidSchema,
 });

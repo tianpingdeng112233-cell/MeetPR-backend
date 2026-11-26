@@ -88,6 +88,23 @@ const viewed = (ctx: TestContext, token = ctx.coachToken) =>
   request(ctx.app).post(`/coach/students/${ids.trainee}/plan-viewed`).set(auth(token));
 
 describe('coach overview alert routes', () => {
+  it('attributes a backdated session and its missing-set alert to the actual training day', async () => {
+    const ctx = await context();
+    const plan = await seed(ctx);
+    await ctx.db.deleteFrom('plan_day_completions').where('plan_day_id', '=', plan.dayId).execute();
+    const response = await request(ctx.app)
+      .post(`/plans/days/${plan.dayId}/complete`)
+      .set(auth(ctx.traineeToken))
+      .send({ actual_completion_date: '2026-10-20' });
+    expect(response.status).toBe(200);
+    const alerts = await get(ctx);
+    expect(alerts.body.training[0].items).toContainEqual(
+      expect.objectContaining({ type: 'incomplete', date: '2026-10-20', reason: 'missing' }),
+    );
+    const roster = await request(ctx.app).get('/coach/students').set(auth(ctx.coachToken));
+    expect(roster.body.students[0].today.state).toBe('rest');
+  });
+
   it('summarizes plan/log data and dismisses training after plan-viewed, preserving plan ending', async () => {
     const ctx = await context();
     const plan = await seed(ctx);

@@ -100,6 +100,7 @@ async function makeContext(): Promise<TestContext> {
       sort_order INT NOT NULL DEFAULT 0
     );
     CREATE TABLE plan_day_completions (
+      actual_completion_date DATE,
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       plan_day_id UUID NOT NULL REFERENCES plan_days(id) ON DELETE CASCADE,
       student_id UUID NOT NULL REFERENCES users(id),

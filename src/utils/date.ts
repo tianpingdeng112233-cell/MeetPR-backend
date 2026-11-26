@@ -69,6 +69,16 @@ export function trainingDay(now: Date, timezone: string): string {
   return utcDateOnly(previousDate);
 }
 
+/** Actual day of a confirmed session, preserving the legacy timestamp rule for undated completions. */
+export function completionTrainingDay(
+  completion: { actual_completion_date: string | Date | null; completed_at: Date },
+  timezone: string,
+): string {
+  return completion.actual_completion_date === null
+    ? trainingDay(completion.completed_at, timezone)
+    : normalizeDateOnly(completion.actual_completion_date);
+}
+
 /** Calendar date in an IANA timezone, for non-gym-day plan calendar rules. */
 export function localCalendarDate(now: Date, timezone: string): string {
   return now.toLocaleDateString('en-CA', { timeZone: timezone });
