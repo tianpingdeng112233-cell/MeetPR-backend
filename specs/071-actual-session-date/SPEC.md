@@ -1,6 +1,6 @@
 # 071 — Actual training date on explicit completion
 
-Status: InProgress. David approved App 115 on 2026-11-26 for the next train. Read CONTEXT.md first.
+Status: Deployed to domestic staging on 2026-11-26 ([deployment ledger](../../db/MIGRATIONS-APPLIED.md)). David approved App 115 on 2026-11-26 for the next train. Read CONTEXT.md first.
 
 ## Backend card A
 
