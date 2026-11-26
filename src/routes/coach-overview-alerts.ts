@@ -156,7 +156,7 @@ export function coachOverviewAlertsRouter({ db }: { db: Kysely<Database> }): Rou
           .execute(),
         db
           .selectFrom('plan_day_completions')
-          .select(['student_id', 'plan_day_id', 'completed_at'])
+          .select(['student_id', 'plan_day_id', 'completed_at', 'actual_completion_date'])
           .where('plan_day_id', 'in', dayIds)
           .where('student_id', 'in', studentIds)
           .execute(),

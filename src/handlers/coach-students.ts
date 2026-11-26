@@ -2,7 +2,7 @@ import { sql, type Kysely } from 'kysely';
 
 import type { Database } from '../db/types';
 import { effectivePlanDays } from '../domain/plan-calendar';
-import { normalizeDateOnly, trainingDay } from '../utils/date';
+import { completionTrainingDay, normalizeDateOnly, trainingDay } from '../utils/date';
 import { DEFAULT_TIME_ZONE } from '../utils/timezone';
 import { coachSetVideoProvenancePredicate } from './set-video-access';
 import { timestamp } from './serialization';
@@ -146,7 +146,7 @@ export async function listCoachStudents(
       .selectFrom('plan_day_completions as c')
       .innerJoin('plan_days as pd', 'pd.id', 'c.plan_day_id')
       .innerJoin('plans as p', 'p.id', 'pd.plan_id')
-      .select(['c.student_id', 'c.plan_day_id', 'c.completed_at'])
+      .select(['c.student_id', 'c.plan_day_id', 'c.completed_at', 'c.actual_completion_date'])
       .where('p.coach_id', '=', coachId)
       .where('c.student_id', 'in', studentIds)
       .where('c.completed_at', '>=', completionWindowStart)
@@ -177,7 +177,7 @@ export async function listCoachStudents(
     const today = trainingDay(now, timezone);
     const completed = (completionsByStudent.get(row.id) ?? []).reduce<Date | null>(
       (earliest, completion) => {
-        if (trainingDay(completion.completed_at, timezone) !== today) return earliest;
+        if (completionTrainingDay(completion, timezone) !== today) return earliest;
         return earliest === null || completion.completed_at < earliest
           ? completion.completed_at
           : earliest;

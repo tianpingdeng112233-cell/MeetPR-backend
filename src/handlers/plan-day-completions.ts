@@ -1,6 +1,7 @@
 import type { Selectable, Transaction } from 'kysely';
 
 import type { Database, PlanDayCompletionsTable, PlanDaysTable, PlansTable } from '../db/types';
+import { normalizeDateOnly, trainingDay } from '../utils/date';
 import { uuidEquals } from '../utils/uuid';
 
 const COMPLETION_UNDO_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -60,9 +61,10 @@ export async function manuallyCompletePlanDay(
   db: Transaction<Database>,
   dayId: string,
   studentId: string,
+  actualCompletionDate?: string,
 ): Promise<
   | { type: 'completed'; completion: PlanDayCompletionRow }
-  | { type: 'error'; error: CompletionCommandError }
+  | { type: 'error'; error: CompletionCommandError | 'FUTURE_COMPLETION_DATE' }
 > {
   const context = await lockCompletionContext(db, dayId, studentId);
   if (context.type === 'error') return context;
@@ -72,11 +74,32 @@ export async function manuallyCompletePlanDay(
     .selectAll()
     .where('plan_day_id', '=', dayId)
     .executeTakeFirst();
+  // An identical retry remains successful even after the athlete changes timezone.
+  const recordedDate = existing?.actual_completion_date;
+  if (
+    actualCompletionDate !== undefined &&
+    (recordedDate == null || normalizeDateOnly(recordedDate) !== actualCompletionDate)
+  ) {
+    const athlete = await db
+      .selectFrom('users')
+      .select('timezone')
+      .where('id', '=', studentId)
+      .executeTakeFirstOrThrow();
+    if (actualCompletionDate > trainingDay(new Date(), athlete.timezone)) {
+      return { type: 'error', error: 'FUTURE_COMPLETION_DATE' };
+    }
+  }
+
   if (existing) return { type: 'completed', completion: existing };
 
   const inserted = await db
     .insertInto('plan_day_completions')
-    .values({ plan_day_id: dayId, student_id: studentId, source: 'manual' })
+    .values({
+      plan_day_id: dayId,
+      student_id: studentId,
+      source: 'manual',
+      actual_completion_date: actualCompletionDate ?? null,
+    })
     .onConflict((oc) => oc.column('plan_day_id').doNothing())
     .returningAll()
     .executeTakeFirst();

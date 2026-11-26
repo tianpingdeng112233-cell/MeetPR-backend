@@ -1,5 +1,11 @@
 import { effectivePlanDays, type CalendarPlanDayShift } from './plan-calendar';
-import { normalizeDateOnly, trainingDay, utcDate, utcDateOnly } from '../utils/date';
+import {
+  completionTrainingDay,
+  normalizeDateOnly,
+  trainingDay,
+  utcDate,
+  utcDateOnly,
+} from '../utils/date';
 import { DEFAULT_TIME_ZONE } from '../utils/timezone';
 
 type DateOnly = string | Date;
@@ -37,7 +43,12 @@ export interface OverviewAlertsInput {
     logged_date: DateOnly;
     logged_at: Date;
   }[];
-  completions: { student_id: string; plan_day_id: string; completed_at: Date }[];
+  completions: {
+    student_id: string;
+    plan_day_id: string;
+    completed_at: Date;
+    actual_completion_date: DateOnly | null;
+  }[];
 }
 interface SetIdentity {
   date: string;
@@ -206,7 +217,7 @@ export function buildOverviewAlerts(input: OverviewAlertsInput): OverviewAlerts 
             if (completion && (!log?.completed || log.failed)) {
               const date = log
                 ? normalizeDateOnly(log.logged_date)
-                : trainingDay(completion.completed_at, timezone);
+                : completionTrainingDay(completion, timezone);
               // Incomplete becomes actionable when the training day is completed.
               const at = completion.completed_at;
               if (inWindow(date) && afterSeen(at)) {

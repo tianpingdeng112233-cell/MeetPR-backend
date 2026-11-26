@@ -49,7 +49,12 @@ function fixture(): OverviewAlertsInput {
       },
     ],
     completions: [
-      { student_id: 'student', plan_day_id: 'day', completed_at: new Date('2026-10-21T13:00:00Z') },
+      {
+        student_id: 'student',
+        plan_day_id: 'day',
+        actual_completion_date: null,
+        completed_at: new Date('2026-10-21T13:00:00Z'),
+      },
     ],
   };
 }
